@@ -10,6 +10,12 @@
     --color-border-subtle: #2f5539;
     --color-text-primary: #f2f8f4;
     --color-text-muted: #9bc4a5;
+    --color-focus-ring: #6ea57c;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
   }
 
   body {
@@ -49,6 +55,6 @@
   }
 
   .pill-provenance {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium tracking-wide uppercase;
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider;
   }
 }
