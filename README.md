@@ -8,7 +8,7 @@ It is not a tab manager. Tab groups, session savers and AI tab sorters file URLs
 
 Built for GirlHacks 2026 (NJIT).
 
-> **Status:** pre-implementation. This repository currently holds the specification. See [SPEC.md](SPEC.md) for the full build contract.
+> **Status:** pre-implementation. This repository currently holds the specification and the team plan. See [SPEC.md](SPEC.md) for the full build contract and [BUILD_TASKS.md](BUILD_TASKS.md) for lanes, tasks and timeline.
 
 ## The difference
 
@@ -104,6 +104,8 @@ Confidence is capped by the amount and diversity of evidence, not by the model's
 - No `history`, `cookies`, `webRequest` or host permissions. No content scripts.
 - Pause capture, exclude domains, choose retention (7 / 30 / 90 days), or delete everything at any time.
 
+**Limited Use:** data is used only to provide TabForest features. It is never sold, never used for advertising, and never used to train models.
+
 ## Tech stack
 
 | Layer | Choice |
@@ -120,14 +122,14 @@ Confidence is capped by the amount and diversity of evidence, not by the model's
 
 ```
 apps/
-  extension/     MV3 extension: service worker + React/D3 grove page
-  api/           FastAPI engine: ingest, clustering, inference, validation
+  extension/     MV3 extension: service worker; bundles the grove UI as grove.html
+  grove/         Grove UI: React + D3 Living Grove (standalone Vite app)
+  api/           FastAPI: platform (ingest, auth, timeline) + app/engine (clustering, inference, validation)
   demo-seed/     Seed script for demo history
-packages/
-  shared/        JSON Schema generated from Pydantic, shared with TypeScript
-db/migrations/   Plain SQL migrations
+contracts/       Frozen example payloads + bridge.types.ts (no shared runtime package)
+db/migrations/   Plain SQL migrations: 1xx (platform), 2xx (engine)
 infrastructure/  Azure deploy script
-docs/            Architecture, privacy, demo script
+docs/            Architecture, metrics, privacy, demo script, failure drills
 ```
 
 ## Development (planned)
@@ -146,4 +148,7 @@ The extension loads unpacked from `apps/extension/dist`. The API runs from `apps
 
 ## Documentation
 
-- [SPEC.md](SPEC.md): requirements, architecture, data model, API, security, build plan
+- [SPEC.md](SPEC.md): requirements, architecture, data model, API, security
+- [BUILD_TASKS.md](BUILD_TASKS.md): team lanes, ownership, tasks, timeline, cut order (plan v3)
+- [CLAUDE.md](CLAUDE.md): development rules for the team and AI agents
+- [changelog.md](changelog.md): what changed

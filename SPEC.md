@@ -6,6 +6,8 @@ Version 1.0 · Derived from *TabForest Project Proposal v1.0* (GirlHacks 2026, N
 
 This document is the build contract. Where it and the proposal disagree, fix this file first, then the code.
 
+Team plan v3 ([BUILD_TASKS.md](BUILD_TASKS.md)) is authoritative for lanes, ownership, endpoints, tables, the `contracts/` folder and the timeline. Where this file and BUILD_TASKS.md §16 ("Deliberate differences from the proposal") disagree, BUILD_TASKS.md wins.
+
 ---
 
 ## 1. Product definition
@@ -57,7 +59,7 @@ An **Intent** is a goal the user is pursuing, reconstructed from a cluster of br
 |---|---|
 | Page title + domain | Subject matter and source type (docs, Q&A, code, discussion) |
 | Opener chain (`openerTabId`) | Which tab spawned which: a deterministic reasoning trail |
-| Search queries (parsed from search-result titles) | The user's questions in their own words; rephrasings are the strongest open-loop signal |
+| Search queries (parsed on device from the URL, e.g. `q=`; search-result titles as fallback) | The user's questions in their own words; rephrasings are the strongest open-loop signal |
 | Dwell time and revisits | Which sources mattered versus tabs opened and abandoned |
 | Ordering over time | How research evolved: broad → narrow → specific sub-problem |
 | User notes, pins, corrections | The only source of stated decisions in personal mode |
@@ -144,7 +146,15 @@ Cut in exactly this order when behind:
 5. Grow animation → simple fade-and-scale
 6. Entra ID → fallback login
 
-**Never cut:** real capture, the Tiger Data timeline, evidence + provenance labels, the grove itself.
+**Never cut:**
+
+1. Real capture
+2. The Hollow
+3. Intent reconstruction
+4. Evidence and provenance
+5. The Living Grove
+6. The Tiger Data timeline
+7. Save → restart Chrome → Resume
 
 ### 3.5 Feature detail
 
@@ -205,18 +215,27 @@ CHROME (device)
     tab_ref minting · active-time tracker · search-query parser
     local cache: chrome.storage.local (URLs, queue ≤ 5,000 events)
     auth: launchWebAuthFlow (Entra ID, PKCE) → token in storage.session
-            │  HTTPS · Bearer token · batch every 10 s          ▲ grove JSON
-            ▼                                                   │
-  GROVE PAGE (React + D3)
-    Current Grove · Tree Detail · Timeline · Saved Groves · Work Context · Privacy
+     │                          ▲
+     │                          │ bridge messages only (chrome.runtime.sendMessage):
+     │                          │ GET_SNAPSHOT · GET_TOKEN · OPEN_TAB · RESTORE · …
+     │                          ▼
+     │                GROVE PAGE (React + D3)
+     │                  Current Grove · Tree Detail · Timeline · Saved Groves
+     │                  Work Context · Privacy · token from GET_TOKEN, in memory only
+     │                          │                     ▲
+     │ HTTPS · Bearer token     │ HTTPS · Bearer      │ grove JSON / NDJSON stream,
+     │ event batches every 10 s │ token (fetch)       │ timeline, contexts, memory,
+     │ privacy sync             │                     │ work context
+     ▼                          ▼                     │
 
 AZURE APP SERVICE — FastAPI "TabForest Engine"
   auth middleware (JWKS verify → user_id) · rate limits · Pydantic validation
   ┌──────────┬──────────────────────┬────────────────┬────────────────┐
   │ Ingest   │ Grove builder        │ Memory search  │ Work Context   │
-  │ ctx-     │ dedupe · cluster     │ embed query    │ text extract   │
-  │ switch   │ open-loop detector   │ vector + time  │ quote verify   │
-  │ flag     │ evidence validator   │                │                │
+  │ tab-     │ dedupe · cluster     │ embed query    │ text extract   │
+  │ switch · │ open-loop detector   │ vector + time  │ quote verify   │
+  │ sessions │ evidence validator   │                │                │
+  │ · dedup  │                      │                │                │
   └──────────┴──────────────────────┴────────────────┴────────────────┘
         │                                   │
         ▼                                   ▼
@@ -232,9 +251,9 @@ AZURE APP SERVICE — FastAPI "TabForest Engine"
 1. **Sign in.** The grove page asks the service worker to run `launchWebAuthFlow`. Entra returns an authorization code; the worker exchanges it (PKCE) for an access token stored in `chrome.storage.session`. `GET /api/me` provisions the user.
 2. **Capture.** Tab and idle listeners produce raw events. The Hollow drops excluded tabs, strips query strings, redacts titles, extracts search queries, mints a `tab_ref`.
 3. **Local cache.** Events go to a bounded queue in `chrome.storage.local`. Full URLs are stored locally against `tab_ref`.
-4. **Ingest.** The worker flushes every 10 s while awake. FastAPI derives `user_id` from the token, computes `is_context_switch`, and bulk-inserts with `COPY`.
+4. **Ingest.** The worker flushes every 10 s while awake. Each event carries a client-generated `event_id`, and `FOCUS` events carry `previous_tab_ref`. FastAPI derives `user_id` from the token, sets `is_tab_switch` from `previous_tab_ref`, stamps `session_id` (30-minute gap rule; the platform lane is the only owner of sessions), and inserts idempotently with `INSERT … ON CONFLICT (user_id, ts, event_id) DO NOTHING`. The response is `{ accepted, duplicates }`.
 5. **Aggregate.** The continuous-aggregate policy refreshes every minute; real-time mode covers the gap.
-6. **Grow.** Opening the grove calls `POST /api/grove/grow` with the open-tab snapshot.
+6. **Grow.** On open (and on "Grow grove") the grove page gets `GET_SNAPSHOT`, `GET_HOLLOW_COUNT` and `GET_TOKEN` from the service worker, then calls `POST /api/grove/grow?stream=1` with the open-tab snapshot. The response is NDJSON: one `clusters` line as soon as clustering finishes, one `tree` line per cluster as each AI result lands, then `done` (with `run_id` and `degraded`). Without `?stream=1` the full response comes back in one piece.
 7. **Understand.** One Azure OpenAI call per cluster, in parallel.
 8. **Validate.** Drop unknown refs, verify quotes, enforce provenance rules, compute final confidence.
 9. **Persist.** Upsert projects, clusters, decisions, questions, actions and insight embeddings in one transaction.
@@ -293,7 +312,8 @@ Every emit passes through the Hollow first: drop if `tab.incognito`, if the URL 
 ### 5.4 Runtime rules
 
 - **Worker lifecycle.** MV3 workers sleep after ~30 s idle. All state (`tab_ref` map, focus start time, queue) is persisted to `chrome.storage` on every change and rehydrated on wake. On restart, focus time is reconciled from the last persisted timestamp, capped at the idle threshold. No periodic alarm: events wake the worker and the flush runs opportunistically and on grove open.
-- **Message passing.** The grove page talks to the worker via `chrome.runtime.sendMessage`: `GET_SNAPSHOT`, `OPEN_TAB`, `CLOSE_TABS`, `RESTORE`, `SIGN_IN`. Only the worker holds the token and calls the API.
+- **Message passing.** The grove page talks to the worker via `chrome.runtime.sendMessage`. Every reply is `{ ok, data?, error? }`. Messages: `GET_SNAPSHOT`, `OPEN_TAB {tab_ref}`, `CLOSE_TABS {tab_refs}`, `RESTORE {tab_refs, group_name?, fallback_urls?}`, `GET_URLS {tab_refs}`, `SIGN_IN`, `SIGN_OUT`, `GET_AUTH_STATE`, `GET_TOKEN`, `PAUSE {until}`, `EXCLUDE_DOMAIN {domain}`, `GET_HOLLOW_COUNT`, `GET_SEND_PREVIEW`, `GET_WORK_ITEMS`, `CLEAR_WORK_ITEMS`, `WIPE_LOCAL` (BUILD_TASKS.md §4.3).
+- **Token and API calls.** The worker persists the token only in `chrome.storage.session`. The grove page asks for it with `GET_TOKEN`, keeps it in memory only (never in `localStorage` or IndexedDB), and calls the API itself with `fetch`. The worker also calls the API for event batches and privacy sync.
 - **Content scripts.** None declared. The single injected Work Context function returns plain text and exits; it never reads inputs, cookies or storage.
 - **On install.** Snapshot open tabs with `chrome.tabs.query({})` as `OPEN` events so an existing 30-tab window produces a grove immediately.
 - **Primary UI.** Full-page extension tab `grove.html`, opened from the toolbar icon. No popup, no side panel.
@@ -348,12 +368,12 @@ One model call per cluster. Everything that can be computed is computed.
 | 3 | Exact duplicates | Deterministic, on device | Normalized URL equality (scheme, `www`, trailing slash, tracking params removed) |
 | 4 | Embed | Azure OpenAI | `"{title} \| {domain} \| {source_type}"` → 1536-d vector; cached by SHA-256 of the string |
 | 5 | Cluster | Deterministic | See 7.1 |
-| 6 | Feature extraction | Deterministic | Open-loop flags, per-tab dwell share, revisit counts, session boundaries (gap > 30 min), staleness (no focus 3+ days) |
+| 6 | Feature extraction | Deterministic | Open-loop flags, per-tab dwell share, revisit counts, research phases inside a cluster (using the stored `session_id`; the engine never computes sessions), staleness (no focus 3+ days) |
 | 7 | Retrieve memory | pgvector | Top-3 past insights for the cluster centroid (similarity ≥ 0.78, same user) passed as "prior research" |
 | 8 | Infer intent | Azure OpenAI | Structured Outputs call per cluster, in parallel |
 | 9 | Validate & calibrate | Deterministic | Evidence refs exist, quotes verified, provenance rules applied, confidence capped ([2.4](#24-confidence)) |
 | 10 | Persist | Tiger Data | Upsert projects / clusters / insights; embed insights |
-| 11 | Render | Client | Clusters are sent as soon as step 5 finishes so trees start growing while step 8 runs |
+| 11 | Render | Client | With `?stream=1`, clusters are sent as an NDJSON `clusters` line as soon as step 5 finishes so trees start growing while step 8 runs |
 
 ### 7.1 Clustering
 
@@ -393,7 +413,7 @@ USER: <DATA>
 
 ### 7.4 Structured output schema
 
-Pydantic models are the single source of truth: they generate the JSON Schema passed to Azure OpenAI and validate the response. TypeScript types are generated from the same schema (`packages/shared/schema/intent.schema.json`).
+Pydantic models are the single source of truth for the model call: they generate the JSON Schema passed to Azure OpenAI and validate the response. There is no shared runtime package; each lane keeps its own types and tests against the frozen example payloads in `contracts/` (BUILD_TASKS.md §5.1).
 
 ```json
 {
@@ -474,7 +494,7 @@ Every table carries `user_id`. Every foreign key to a user-owned row is checked 
 
 | Table | Key columns | Indexes | Type |
 |---|---|---|---|
-| `users` | `id` uuid PK, `entra_tid`, `entra_oid`, `display_name`, `created_at`, `deleted_at` | unique (`entra_tid`, `entra_oid`) | Relational |
+| `users` | `id` uuid PK (= `uuid5(NAMESPACE_URL, "tabforest:" + tid + ":" + oid)`), `entra_tid`, `entra_oid`, `display_name`, `created_at`, `deleted_at` | unique (`entra_tid`, `entra_oid`) | Relational |
 | `privacy_settings` | `user_id` PK/FK, `excluded_domains` text[], `paused_until`, `retention_days`, `cloud_ai_enabled`, `updated_at` | PK | Relational |
 | `browser_sessions` | `id`, `user_id`, `started_at`, `ended_at`, `event_count` (closed after 30 min gap) | (`user_id`, `started_at` DESC) | Relational |
 | `browser_events` | see 8.2 | PK (`user_id`, `ts`, `event_id`); (`user_id`, `tab_ref`, `ts` DESC) | Hypertable |
@@ -487,10 +507,10 @@ Every table carries `user_id`. Every foreign key to a user-owned row is checked 
 | `decisions` | `id`, `user_id`, `cluster_id`, `text`, `provenance`, `quote`, `confidence`, `evidence` jsonb, `confirmed_at` | (`user_id`, `cluster_id`) | Relational |
 | `unresolved_questions` | `id`, `user_id`, `cluster_id`, `question`, `kind`, `confidence`, `evidence` jsonb, `status` (open / resolved), `resolved_at`, `answer` | (`user_id`, `status`) | Relational |
 | `suggested_actions` | `id`, `user_id`, `cluster_id`, `action`, `unblocks_question_id`, `confidence`, `status` (open / done / dismissed) | (`user_id`, `status`) | Relational |
-| `saved_contexts` | `id`, `user_id`, `project_id`, `title`, `snapshot` jsonb, `saved_at`, `last_resumed_at` | (`user_id`, `saved_at` DESC) | Relational |
+| `saved_contexts` | `id`, `user_id`, `project_id`, `title`, `kind` (resume / references), `snapshot` jsonb, `saved_at`, `last_resumed_at` | (`user_id`, `saved_at` DESC) | Relational |
 | `user_notes` | `id`, `user_id`, `cluster_id`, `text`, `created_at` | (`user_id`, `cluster_id`) | Relational |
 | `memory_embeddings` | `id`, `user_id`, `kind` (insight / context / tab / query), `source_id`, `embedding` vector(1536), `content_hash`, `created_at` | diskann (`embedding`); (`user_id`, `kind`); unique `content_hash` | Relational + vector |
-| `analysis_runs` | `ts`, `user_id`, `run_id`, `clusters`, `model`, `latency_ms`, `downgraded_claims`, `fallback_used` | (`user_id`, `ts` DESC) | Hypertable |
+| `analysis_runs` | `ts`, `user_id`, `run_id`, `clusters`, `model`, `latency_ms`, `downgraded_claims`, `fallback_used` | (`user_id`, `ts` DESC) | Relational (AI-quality trends live in Application Insights) |
 
 `cluster_tabs` is many-to-many: one tab can serve two intents. The leaf appears on both trees, linked by a faint vine, with importance computed per intent.
 
@@ -500,16 +520,17 @@ Every table carries `user_id`. Every foreign key to a user-owned row is checked 
 CREATE TABLE browser_events (
   ts                timestamptz NOT NULL,
   user_id           uuid        NOT NULL,
-  event_id          uuid        NOT NULL DEFAULT gen_random_uuid(),
+  event_id          uuid        NOT NULL,  -- generated on the client; retries resend it
   session_id        uuid        NOT NULL,
   tab_ref           uuid        NOT NULL,  -- random per-tab id minted on device
   event_type        text        NOT NULL,  -- OPEN FOCUS BLUR UPDATE CLOSE IDLE ACTIVE
   domain            text,
   title             text,                  -- redacted locally
-  search_query      text,                  -- parsed from search-result titles
+  search_query      text,                  -- parsed on device from the URL
   opener_tab_ref    uuid,
+  previous_tab_ref  uuid,                  -- FOCUS: tab focused just before
   active_ms         integer     NOT NULL DEFAULT 0,
-  is_context_switch boolean     NOT NULL DEFAULT false,
+  is_tab_switch     boolean     NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, ts, event_id)
 );
 
@@ -526,7 +547,7 @@ WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
 SELECT time_bucket('15 minutes', ts) AS bucket, user_id, tab_ref,
        sum(active_ms)                               AS active_ms,
        count(*) FILTER (WHERE event_type = 'FOCUS') AS focus_count,
-       count(*) FILTER (WHERE is_context_switch)    AS switches
+       count(*) FILTER (WHERE is_tab_switch)        AS tab_switches
 FROM browser_events
 GROUP BY bucket, user_id, tab_ref
 WITH NO DATA;
@@ -540,7 +561,7 @@ SELECT add_continuous_aggregate_policy('tab_attention_15m',
 CREATE MATERIALIZED VIEW user_attention_daily
 WITH (timescaledb.continuous) AS
 SELECT time_bucket('1 day', bucket) AS day, user_id,
-       sum(active_ms) AS active_ms, sum(switches) AS switches
+       sum(active_ms) AS active_ms, sum(tab_switches) AS tab_switches
 FROM tab_attention_15m
 GROUP BY day, user_id
 WITH NO DATA;
@@ -549,9 +570,10 @@ WITH NO DATA;
 | Aggregate | Powers |
 |---|---|
 | `tab_attention_15m` | Timeline lanes, leaf size, trunk thickness, importance scores, sprout detection |
-| `user_attention_daily` (on 15m) | Daily / weekly attention summary, context switches per day, canopy season |
+| `user_attention_daily` (on 15m) | Daily / weekly attention summary, tab switches per day, canopy season |
 | `search_activity_1h` | Search events and distinct queries per hour: recurring questions over weeks |
-| `analysis_quality_daily` (on `analysis_runs`) | Downgrade rate and fallback rate |
+
+Downgrade rate and fallback rate are not a database aggregate: they are charted in Application Insights from the engine's custom metrics (`claims_downgraded`, `fallback_used`, BUILD_TASKS.md §4.8).
 
 ### 8.4 Lifecycle and vectors
 
@@ -567,7 +589,7 @@ CREATE INDEX ON memory_embeddings USING diskann (embedding vector_cosine_ops);
 ### 8.5 Design rules
 
 - Aggregates are keyed by `tab_ref`, **not** by cluster. Intent assignment changes when the user reassigns a leaf, so per-intent attention is computed at query time by joining the aggregate to `cluster_tabs`. Corrections apply instantly without re-materializing.
-- `is_context_switch` is computed at ingest (focus moved to a tab in a different cluster than the previous focus) because window functions are not allowed inside continuous aggregates.
+- Ingest records only facts: `previous_tab_ref` and `is_tab_switch` (focus moved to a different tab). At ingest most tabs have no cluster yet, so **intent switches are derived at query time**: a tab switch counts as an intent switch only when `previous_tab_ref` and `tab_ref` belong to different clusters in `cluster_tabs`. Tabs with no cluster yet are reported as "unassigned", never guessed from domains.
 - At hackathon scale, vector search uses the (`user_id`, `kind`) filter and an exact distance scan. DiskANN is the fast path as memory grows.
 
 Timeline query:
@@ -646,27 +668,32 @@ The animation is choreographed around the real pipeline. If a result is late, it
 
 ## 10. API
 
-All endpoints require `Authorization: Bearer <token>`. User identity always comes from the token. Errors use RFC 7807 problem JSON. Request bodies are validated with `extra="forbid"`; a body containing `user_id` returns 422.
+All endpoints except `/health` and `/demo/*` require `Authorization: Bearer <token>`. User identity always comes from the token. Exception: with `AUTH_MODE=dev` (local runs and the H6.5 smoke test only; see [11.1](#111-authentication)) the dev header `X-Dev-User: <uuid>` is accepted instead. Errors use RFC 7807 problem JSON. Request bodies are validated with `extra="forbid"`; a body containing `user_id` returns 422.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/me` | Provision on first call; return profile + privacy settings |
 | `DELETE /api/me` | Delete account and all data |
 | `POST /api/events` | Ingest a batch of ≤ 500 events |
-| `POST /api/grove/grow` | Analyze the open-tab snapshot; return the grove |
+| `POST /api/grove/grow` | Analyze the open-tab snapshot; return the grove (plain JSON, or an NDJSON stream with `?stream=1`: `clusters` → `tree` × n → `done`) |
 | `GET /api/grove` | Last grove for this user (cached fallback) |
 | `GET /api/sessions`, `GET /api/sessions/{id}` | Browsing sessions with attention summaries |
 | `POST /api/projects/{id}/analyze` | Re-analyze one project after user edits |
 | `PATCH /api/claims/{id}` | Confirm / edit / dismiss a decision, question or action |
 | `POST /api/tabs/{tab_ref}/assign` | Move a leaf to another tree |
-| `POST /api/projects/{id}/save-context` | Save a resume snapshot |
+| `POST /api/notes` | Add a user note ("Clear the fog": naming a goal creates a stated note) |
+| `POST /api/projects/{id}/save-context` | Save a resume snapshot (`kind`: resume or references) |
+| `GET /api/contexts` | List saved contexts |
 | `POST /api/contexts/{id}/resume` | Return the resume card + important tab list |
 | `GET /api/projects/{id}/timeline?range=24h` | Bucketed attention per branch |
 | `POST /api/tabs/prune-suggestions` | Duplicate / redundant / stale suggestions |
 | `GET /api/memory/search?q=` | "Have I researched this before?" |
-| `POST /api/work-context/analyze` | Enterprise reconstruction from captured text, uploads and paste |
+| `POST /api/work-context/analyze` | Enterprise reconstruction from captured pages and paste (`application/json`) |
+| `POST /api/work-context/upload` | Same reconstruction from files (`multipart/form-data`: `files[]` plus optional `items_json` string); returns the same response as `analyze` |
 | `GET`, `PATCH /api/privacy` | Read / update privacy settings |
 | `DELETE /api/projects/{id}` | Delete a single forest |
+| `POST /api/auth/login` | Fallback login (email + password), only when Entra is cut |
+| `/demo/*` | Labeled SAMPLE enterprise pages for Work Context Mode |
 | `GET /health` | Liveness (unauthenticated) |
 
 ### 10.1 Examples
@@ -674,22 +701,23 @@ All endpoints require `Authorization: Bearer <token>`. User identity always come
 ```http
 POST /api/events
 { "session_hint": "3f2c...", "events": [
-  { "ts": "2026-10-04T14:02:31Z", "type": "OPEN", "tab_ref": "9b1e...",
+  { "event_id": "5d0a...", "ts": "2026-10-04T14:02:31Z", "type": "OPEN", "tab_ref": "9b1e...",
     "domain": "fastapi.tiangolo.com", "title": "Security - FastAPI", "opener_tab_ref": null },
-  { "ts": "2026-10-04T14:08:42Z", "type": "BLUR", "tab_ref": "9b1e...", "active_ms": 371000 },
-  { "ts": "2026-10-04T14:08:44Z", "type": "OPEN", "tab_ref": "a77c...", "domain": "www.google.com",
+  { "event_id": "7e42...", "ts": "2026-10-04T14:08:42Z", "type": "BLUR", "tab_ref": "9b1e...", "active_ms": 371000 },
+  { "event_id": "c9b1...", "ts": "2026-10-04T14:08:44Z", "type": "OPEN", "tab_ref": "a77c...", "domain": "www.google.com",
     "title": "where to store refresh token - Google Search",
     "search_query": "where to store refresh token" }
 ] }
 
-202 { "accepted": 3, "dropped": 0 }
+202 { "accepted": 3, "duplicates": 0 }
 ```
 
 ```http
 POST /api/grove/grow
 { "open_tabs": [
   { "tab_ref": "9b1e...", "domain": "fastapi.tiangolo.com", "title": "Security - FastAPI",
-    "opener_tab_ref": null, "opened_at": "2026-10-04T14:02:31Z" }
+    "opener_tab_ref": null, "opened_at": "2026-10-04T14:02:31Z", "active": true, "pinned": false,
+    "dup_key": "3a7f...", "search_query": null }
 ] }
 
 200 {
@@ -744,11 +772,15 @@ PATCH /api/privacy
 
 Microsoft Entra ID via `chrome.identity.launchWebAuthFlow`, OAuth 2.0 authorization code + PKCE, app registration configured for work/school and personal Microsoft accounts. The extension requests a token for scope `api://tabforest/user_impersonation`. FastAPI validates every bearer token against Microsoft's JWKS (cached): signature, issuer, audience, expiry, ≤ 60 s clock skew.
 
-**Timebox: 75 minutes.** If Entra is not working by then, switch to the fallback: email + password with Argon2id hashing and a backend-issued 1-hour JWT. The authorization model below is identical on both paths.
+**Timebox: 75 minutes (H6:30–7:45, task D-6).** If Entra is not working by then, switch to the fallback within the same D-6 window (until H8:30): email + password with Argon2id hashing and a backend-issued 1-hour JWT (`POST /api/auth/login`). The authorization model below is identical on both paths.
+
+There is exactly one production auth implementation, the platform lane's `current_user()`. The engine's routes use it through a FastAPI dependency override when mounted into the main app; run standalone, they accept only `X-Dev-User` (BUILD_TASKS.md §4.1).
+
+**Dev mode.** `AUTH_MODE` defaults to `prod`. `AUTH_MODE=dev` also accepts `X-Dev-User: <uuid>` and is only for local runs and the H6.5 smoke test. The app logs a loud startup warning whenever it runs in dev mode, and the deployed App Service is switched back to `prod` right after the H6.5 smoke test; on the deployed API a request with only `X-Dev-User` must return 401.
 
 ### 11.2 Authorization
 
-- A FastAPI dependency `current_user()` resolves the token to an internal `users.id`.
+- A FastAPI dependency `current_user()` resolves the token to `users.id` = `uuid5(NAMESPACE_URL, "tabforest:" + tid + ":" + oid)` (fallback JWT: `sub = user_id`), so no table lookup is needed to know the user.
 - Request bodies never contain `user_id`.
 - Every repository function takes `user_id` as a required first argument; every SQL statement filters on it.
 - Resource lookups use `WHERE id = $1 AND user_id = $2`. A miss returns **404, not 403**, to avoid revealing other users' IDs.
@@ -759,7 +791,7 @@ Microsoft Entra ID via `chrome.identity.launchWebAuthFlow`, OAuth 2.0 authorizat
 
 | Stage | Behavior |
 |---|---|
-| First sign-in | Just-in-time provisioning: a `users` row keyed by tenant ID + object ID, and a default `privacy_settings` row (Hollow defaults, 90-day retention) |
+| First sign-in | Just-in-time provisioning on the first `GET /api/me`: a `users` row whose `id` is the `uuid5` of tenant ID + object ID, and a default `privacy_settings` row (Hollow defaults, 90-day retention) |
 | Session | Token in `chrome.storage.session` (memory-only, not exposed to content scripts). Near expiry the worker renews with `launchWebAuthFlow({interactive:false})`; failure shows a "Sign in again" leaf |
 | Logout | Clears session storage and the local event queue; stops capture |
 | Delete | `DELETE /api/me` removes all rows for the user in one transaction across every table (including hypertable chunks and embeddings), refreshes continuous aggregates over the affected range, wipes `chrome.storage.local`, and returns the row counts deleted |
@@ -770,11 +802,11 @@ Microsoft Entra ID via `chrome.identity.launchWebAuthFlow`, OAuth 2.0 authorizat
 
 | Area | Control |
 |---|---|
-| Authentication | Entra tokens validated on every request. Tokens only in `chrome.storage.session`; never in URLs or logs |
+| Authentication | Entra tokens validated on every request. Tokens persisted only in `chrome.storage.session` (the grove page holds a copy in memory only, via `GET_TOKEN`); never in URLs, logs, `localStorage` or IndexedDB |
 | Authorization | Token-derived `user_id`; `id AND user_id` lookups returning 404; cross-user isolation test in CI |
 | SQL injection | asyncpg parameterized queries only; no string-built SQL; dynamic sort fields from an allow-list |
 | Validation | Length caps: title ≤ 300 chars, batch ≤ 500 events, text ≤ 12,000 chars, upload ≤ 5 MB, PDF ≤ 30 pages. Enum event types. `extra="forbid"` |
-| Rate limits | slowapi per user: events 60/min, grow 10/min, work-context 5/min. Per run: ≤ 60 tabs, ≤ 8 LLM calls. Daily token budget per user |
+| Rate limits | slowapi per user: events 60/min, grow 10/min, work-context analyze + upload 5/min combined. Per run: ≤ 60 tabs, ≤ 8 LLM calls. Daily token budget per user |
 | Secrets | App Service application settings. Nothing in the repo or extension bundle except the public Entra client ID |
 | Transport | HTTPS only (HSTS); Tiger Cloud with `sslmode=require`; CORS allows only the extension's fixed origin |
 | Output handling | All model and page text rendered as text nodes (React escaping, D3 `.text()`). No `innerHTML` / `dangerouslySetInnerHTML`. Strict extension CSP; no remote code |
@@ -842,54 +874,70 @@ ENTRA_TENANT=common
 ENTRA_API_AUDIENCE
 APPLICATIONINSIGHTS_CONNECTION_STRING
 ALLOWED_EXTENSION_ORIGIN
+AUTH_MODE=prod          # dev only for local runs and the H6.5 smoke test
 ```
 
-Extension: `VITE_API_BASE`, `VITE_ENTRA_CLIENT_ID`.
+Extension: `VITE_API_BASE`, `VITE_ENTRA_CLIENT_ID`. Grove UI (`apps/grove`): `VITE_MOCK` (`1` = mock API and mock bridge, `0` = live) plus the API base URL.
 
 ### 14.2 Repository layout
 
 ```
 tabforest/
 ├─ apps/
-│  ├─ extension/                       MV3 + React + D3
+│  ├─ extension/                       MV3 service worker (D)
 │  │  ├─ manifest.config.ts            permissions live here
+│  │  ├─ scripts/bundle-grove.mjs      copies apps/grove/dist in as grove.html
 │  │  └─ src/
-│  │     ├─ background/
-│  │     │  ├─ index.ts                listener registration, message router
-│  │     │  ├─ capture.ts              tab / idle / window events → normalized events
-│  │     │  ├─ focus-tracker.ts        active-time accounting, persisted across sleep
-│  │     │  ├─ hollow.ts               exclusions, incognito guard, redaction, URL stripping
-│  │     │  ├─ queue.ts                bounded local queue + batch flush
-│  │     │  ├─ auth.ts                 Entra PKCE, token in storage.session
-│  │     │  └─ work-context.ts         context menu + executeScript text grab
-│  │     └─ grove/
-│  │        ├─ App.tsx, routes/        Grove, TreeDetail, Timeline, Saved, WorkContext, Privacy
-│  │        ├─ viz/GroveCanvas.tsx     React ↔ D3 boundary
-│  │        ├─ viz/layout.ts           d3-hierarchy layout
-│  │        ├─ viz/grow-animation.ts
-│  │        └─ components/             EvidenceDrawer.tsx, ProvenancePill.tsx
+│  │     └─ background/
+│  │        ├─ index.ts                listener registration, message router
+│  │        ├─ capture.ts              tab / idle / window events → normalized events
+│  │        ├─ focus-tracker.ts        active-time accounting, persisted across sleep
+│  │        ├─ hollow.ts               exclusions, incognito guard, redaction, URL stripping
+│  │        ├─ queue.ts                bounded local queue + batch flush
+│  │        ├─ auth.ts                 Entra PKCE, token in storage.session
+│  │        └─ work-context.ts         context menu + executeScript text grab
+│  ├─ grove/                           Grove UI: React + D3, standalone Vite app (S)
+│  │  └─ src/
+│  │     ├─ App.tsx, routes/           Grove, TreeDetail, Timeline, Saved, WorkContext, Privacy
+│  │     ├─ adapters/                  grove, memory, workContext, platform, bridge
+│  │     ├─ viz/GroveCanvas.tsx        React ↔ D3 boundary
+│  │     ├─ viz/layout.ts              d3-hierarchy layout
+│  │     ├─ viz/grow-animation.ts
+│  │     └─ components/                EvidenceDrawer.tsx, ProvenancePill.tsx
 │  ├─ api/                             FastAPI
-│  │  ├─ app/main.py                   app factory, CORS, telemetry
-│  │  ├─ app/auth.py                   JWKS validation → current_user
-│  │  ├─ app/routers/                  events, grove, projects, memory, work_context, privacy, me
-│  │  ├─ app/engine/cluster.py         embeddings cache + affinity clustering
-│  │  ├─ app/engine/openloops.py       deterministic unresolved-question signals
-│  │  ├─ app/engine/infer.py           Azure OpenAI structured calls
-│  │  ├─ app/engine/validate.py        evidence, quotes, provenance, confidence
-│  │  ├─ app/db/repo.py                every function requires user_id
-│  │  ├─ app/demo/                     labeled sample enterprise pages
+│  │  ├─ app/main.py                   app factory, CORS, telemetry, mounts engine routes (P)
+│  │  ├─ app/auth.py                   current_user: JWKS + fallback JWT + dev mode (P)
+│  │  ├─ app/routers/                  P's endpoints (BUILD_TASKS.md §4.4)
+│  │  ├─ app/adapters/                 events_in, privacy_in, intents (P)
+│  │  ├─ app/db/repo.py                every function requires user_id (P)
+│  │  ├─ app/demo/                     labeled sample enterprise pages (P)
+│  │  ├─ app/engine/                   intelligence engine (R)
+│  │  │  ├─ routes.py                  R's endpoints, auto-included by main.py
+│  │  │  ├─ standalone.py              runs R's endpoints alone (dev header only)
+│  │  │  ├─ adapters/                  auth, stats, contexts
+│  │  │  ├─ cluster.py                 embeddings cache + affinity clustering
+│  │  │  ├─ openloops.py               deterministic unresolved-question signals
+│  │  │  ├─ infer.py                   Azure OpenAI structured calls
+│  │  │  └─ validate.py                evidence, quotes, provenance, confidence
 │  │  └─ tests/                        isolation, validator, fallback, hollow
-│  └─ demo-seed/                       past grove + sample docs
-├─ packages/shared/schema/intent.schema.json   generated from Pydantic → TS types
-├─ db/migrations/                      001_core.sql … 004_vector.sql
+│  └─ demo-seed/                       past grove + sample docs (P)
+├─ contracts/                          frozen example payloads + bridge.types.ts
+├─ db/migrations/                      1xx_*.sql (P) · 2xx_*.sql (R)
+├─ db/migrate.sh
 ├─ infrastructure/azure/deploy.sh
-├─ .github/workflows/api.yml
-└─ docs/                               architecture.md, privacy.md, demo-script.md
+├─ .github/workflows/
+├─ devpost/ · pitch/                   submission and pitch material (S)
+└─ docs/                               architecture.md, metrics.md (R) · privacy.md (D) ·
+                                       demo-script.md (S) · failure-drills.md (P)
 ```
+
+Ownership of every folder: BUILD_TASKS.md §1.
 
 ---
 
 ## 15. Build plan (24 hours)
+
+> **Superseded by [BUILD_TASKS.md](BUILD_TASKS.md)** (§5–§13: tasks, owners, integration windows, timeline). This solo plan is kept for reference only.
 
 Front-load risky integrations. Reach a working, ugly end-to-end by hour 10.
 
@@ -897,7 +945,7 @@ Front-load risky integrations. Reach a working, ugly end-to-end by hour 10.
 |---|---|---|
 | H0–1 | Repo + setup | Extension loads a blank grove page; `/health` deployed to App Service |
 | H1–3 | Tab capture | All listeners, focus/idle tracker, `tab_ref`, Hollow built-in list, redaction, local queue. Events visible in the worker console |
-| H3–4.5 | Tiger Data | Migrations, `POST /api/events` with COPY. Rows in `tab_attention_15m` |
+| H3–4.5 | Tiger Data | Migrations, idempotent `POST /api/events` (`INSERT … ON CONFLICT DO NOTHING`). Rows in `tab_attention_15m` |
 | H4.5–5.75 | Auth | Entra sign-in + JWKS validation, `/api/me`. Not done by H5.75 → fallback login |
 | H5.75–7.5 | Azure OpenAI + clustering | Embedding cache, affinity clustering, Pydantic schema, one call per cluster, validator |
 | H7.5–10 | Grove v1 | Trees / branches / leaves, click-to-open, detail drawer with provenance pills. **End-to-end on real tabs** |
