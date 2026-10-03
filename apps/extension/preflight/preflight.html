@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TabForest networking preflight</title>
+    <script src="preflight.js" defer></script>
+  </head>
+  <body>
+    <h1>TabForest networking preflight</h1>
+    <p>Extension ID: <code id="extension-id"></code></p>
+    <label for="api-base">API base URL (HTTPS, without /health)</label>
+    <input id="api-base" type="url" size="60" autocomplete="off">
+    <p>
+      <button id="page-fetch" type="button">Fetch from page</button>
+      <button id="worker-fetch" type="button">Fetch from service worker</button>
+    </p>
+    <h2>Page result</h2>
+    <pre id="page-result" role="status">Not run.</pre>
+    <h2>Service worker result</h2>
+    <pre id="worker-result" role="status">Not run.</pre>
+  </body>
+</html>

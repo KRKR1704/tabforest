@@ -1,4 +1,6 @@
 {
+  "_about": "SAMPLE demo set: 28 open tabs in the BUILD_TASKS.md §4.2 snapshot format (POST /api/grove/grow body). Titles are already redacted. tab_ref 01-10 Backend Authentication, 11-15 GirlHacks Prep, 16-20 Job Search, 21-23 Weeknight Dinner, 24-25 sprout, 26-27 meadow, 28 fog. 01/02 are an exact duplicate (same dup_key).",
+  "snapshot_at": "2026-10-04T11:40:00Z",
   "open_tabs": [
     {
       "tab_ref": "00000000-0000-4000-8000-000000000001",

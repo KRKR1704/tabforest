@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "TabForest preflight (throwaway)",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjdWh3hkU9XB7yXjzPY9+wl4rntbo3kundep6ySAG663zNsUd5JbMwrBH5BGpPtQirY2BScVGKqwFp0lmjAbVnYa2BNKI7o18I/HSnRHBVz9mUH1xYZKBdRLVTJj+f9OX469jNeKOuZQZW07SW6saJwCBanLE3S7QRfAM4EN+Q82SfCrPva2istkZO1Ts1lc0aIPydt4yAD/Hk24aC1TluEghiwki4g3F0p8N0HNwOJo6RoxN5nfhWaujbfNBcQbJzR5a1CJAMilzzqosOQdRytUX5EjogP3KW/HUwcWc7+T1opZLBEFJjhPBUBy/SpIT77zZMZH6lKlo2kC+rYBm8QIDAQAB",
+  "incognito": "not_allowed",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open TabForest preflight"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
