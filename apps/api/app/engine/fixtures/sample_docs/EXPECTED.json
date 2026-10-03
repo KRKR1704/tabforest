@@ -1,0 +1,150 @@
+{
+  "_banner": "SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.",
+  "_about": "Answer key for R-11 Work Context tests over the files in this folder. Every quote is a verbatim substring of its source file (checked by app/engine/scripts/check_sample_docs.py).",
+  "project": "Customer Authentication Migration",
+  "goal": {
+    "text": "Migrate customer authentication to Azure",
+    "provenance": "sourced",
+    "source": "jira-CAM-142.md",
+    "quote": "Migrate customer authentication to Azure before the Fabrikam go-live"
+  },
+  "decisions": [
+    {
+      "text": "Azure Functions selected for the token service (over App Service)",
+      "provenance": "sourced",
+      "source": "teams-transcript.vtt",
+      "timestamp": "00:14:32",
+      "speaker": "Marcus Lee",
+      "quote": "For the token service we'll go with Functions, Premium plan, one always-ready instance.",
+      "supporting": [
+        {
+          "source": "pr-418.md",
+          "quote": "Token service on Azure Functions (WIP)"
+        }
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "text": "Customer test credentials have not arrived",
+      "provenance": "sourced",
+      "source": "pr-418.md",
+      "quote": "Heads up: the customer test credentials have not arrived, so I can't run the end-to-end flow against the Fabrikam tenant yet.",
+      "supporting": [
+        {
+          "source": "teams-transcript.vtt",
+          "timestamp": "00:07:58",
+          "quote": "we still don't have test credentials from Fabrikam"
+        },
+        {
+          "source": "migration-doc.md",
+          "quote": "waiting for their test credentials"
+        },
+        {
+          "source": "customer-note.md",
+          "quote": "Jordan promised test tenant credentials for our engineers by"
+        }
+      ]
+    }
+  ],
+  "owners": [
+    {
+      "person": "Priya Shah",
+      "task": "Follow up with the customer on test credentials",
+      "provenance": "sourced",
+      "source": "pr-418.md",
+      "quote": "I'll follow up with the customer tomorrow and cc Dana"
+    },
+    {
+      "person": "You",
+      "task": "OAuth callback (CAM-145)",
+      "provenance": "sourced",
+      "source": "jira-CAM-142.md",
+      "quote": "Assigning the OAuth callback work to You (CAM-145)"
+    }
+  ],
+  "open_questions": [
+    {
+      "text": "Where should session state be stored?",
+      "answered": false,
+      "times_raised_in_transcript": 2,
+      "sources": [
+        {
+          "source": "teams-transcript.vtt",
+          "timestamp": "00:09:30",
+          "speaker": "Sam Rivera",
+          "quote": "where does session state actually get stored?"
+        },
+        {
+          "source": "teams-transcript.vtt",
+          "timestamp": "00:19:52",
+          "speaker": "You",
+          "quote": "We never said where session state should be stored, did we?"
+        },
+        {
+          "source": "pr-418.md",
+          "speaker": "Sam Rivera",
+          "quote": "Where should session state live once this runs on Functions?"
+        },
+        {
+          "source": "migration-doc.md",
+          "quote": "Session storage: TBD."
+        }
+      ]
+    }
+  ],
+  "next_actions": [
+    {
+      "rank": 1,
+      "text": "Test the OAuth callback",
+      "sources": [
+        {
+          "source": "jira-CAM-142.md",
+          "quote": "OAuth callback (`/auth/callback`) tested end to end against the Fabrikam test tenant"
+        },
+        {
+          "source": "teams-transcript.vtt",
+          "timestamp": "00:18:25",
+          "quote": "I'll test it against the staging app registration this week"
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "text": "Review migration doc §4 (Cutover and rollback)",
+      "sources": [
+        {
+          "source": "teams-transcript.vtt",
+          "timestamp": "00:15:40",
+          "quote": "Everyone please read section 4 of the migration doc, cutover and rollback, before Thursday."
+        },
+        {
+          "source": "migration-doc.md",
+          "quote": "§4 Cutover and rollback"
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "text": "Follow up on the customer test credentials",
+      "unblocks": "Customer test credentials have not arrived",
+      "sources": [
+        {
+          "source": "pr-418.md",
+          "quote": "I'll follow up with the customer tomorrow"
+        },
+        {
+          "source": "teams-transcript.vtt",
+          "timestamp": "00:08:15",
+          "quote": "I'll ping their IT contact again today and loop Dana in."
+        }
+      ]
+    }
+  ],
+  "noise_not_to_extract": [
+    "Fabrikam renewal / premium support add-on question",
+    "Fire drill email, double-booked meeting room",
+    "Flaky CI test test_refresh_rotation (CAM-139) as a project blocker",
+    "Employee SSO (explicitly out of scope)"
+  ]
+}
