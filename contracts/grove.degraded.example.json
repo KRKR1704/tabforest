@@ -1,45 +1,40 @@
 {
-  "run_id": "r_20000000-0000-4000-8000-000000000081",
+  "run_id": "r_20000000-0000-4000-8000-000000000082",
   "generated_at": "2026-10-04T11:40:04Z",
   "hollow_count": 3,
-  "degraded": false,
-  "banner_text": null,
+  "degraded": true,
+  "banner_text": "AI unavailable — showing groups only",
   "trees": [
     {
       "project_id": "p_10000000-0000-4000-8000-000000000001",
-      "name": "Backend Authentication",
+      "name": "jwt · refresh · fastapi",
       "is_existing_project_id": null,
       "goal": {
-        "id": "g_30000000-0000-4000-8000-000000000101",
-        "text": "Choose an authentication architecture for the application",
-        "provenance": "inferred",
-        "confidence": 0.82,
-        "display_text": "Appears to be choosing an authentication architecture for the application",
+        "id": "g_80000000-0000-4000-8000-000000000101",
+        "text": "Tabs about jwt, refresh, fastapi",
+        "provenance": "hypothesis",
+        "confidence": 0.45,
+        "display_text": "Maybe: tabs about jwt, refresh, fastapi",
         "evidence": [
           {
             "ref_kind": "tab",
             "ref": "00000000-0000-4000-8000-000000000001",
-            "why": "official FastAPI security docs, 9.5 min"
+            "why": "shares title terms with the group"
           },
           {
             "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000003",
-            "why": "compared JWT and sessions"
-          },
-          {
-            "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000005",
-            "why": "read the OAuth 2.0 authorization code flow"
+            "ref": "00000000-0000-4000-8000-000000000004",
+            "why": "shares title terms with the group"
           }
         ]
       },
       "attention_min": 134,
       "days_since_active": 0,
       "canopy": "green",
-      "fogged": false,
+      "fogged": true,
       "branches": [
         {
-          "label": "JWT",
+          "label": "All tabs",
           "status": "active",
           "leaves": [
             {
@@ -121,13 +116,7 @@
               "is_open": true,
               "importance": 0.08,
               "fallen": false
-            }
-          ]
-        },
-        {
-          "label": "OAuth 2.0",
-          "status": "explored",
-          "leaves": [
+            },
             {
               "tab_ref": "00000000-0000-4000-8000-000000000005",
               "title": "OAuth 2.0 authorization code flow - Microsoft identity platform | Microsoft Learn",
@@ -137,13 +126,7 @@
               "is_open": true,
               "importance": 0.62,
               "fallen": false
-            }
-          ]
-        },
-        {
-          "label": "Sessions",
-          "status": "explored",
-          "leaves": [
+            },
             {
               "tab_ref": "00000000-0000-4000-8000-000000000003",
               "title": "JWT vs session-based authentication for a REST API - Stack Overflow",
@@ -157,140 +140,11 @@
           ]
         }
       ],
-      "direction": {
-        "id": "dir_30000000-0000-4000-8000-000000000201",
-        "text": "JWT appears to be the preferred approach",
-        "provenance": "inferred",
-        "confidence": 0.71,
-        "display_text": "JWT appears to be the preferred approach",
-        "evidence": [
-          {
-            "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000004",
-            "why": "14 min dwell, 3 revisits"
-          },
-          {
-            "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000003",
-            "why": "opened the JWT example from this answer"
-          }
-        ]
-      },
-      "stones": [
-        {
-          "id": "dec_30000000-0000-4000-8000-000000000301",
-          "text": "Not using OAuth providers for v1",
-          "provenance": "stated",
-          "confidence": 1.0,
-          "display_text": "Not using OAuth providers for v1",
-          "kind": "carved",
-          "user_note_id": "n_40000000-0000-4000-8000-000000000007",
-          "quote": null,
-          "evidence": [
-            {
-              "ref_kind": "note",
-              "ref": "n_40000000-0000-4000-8000-000000000007",
-              "why": "user note"
-            }
-          ]
-        },
-        {
-          "id": "dec_30000000-0000-4000-8000-000000000302",
-          "text": "Using FastAPI's built-in OAuth2PasswordBearer instead of a third-party auth library",
-          "provenance": "inferred",
-          "confidence": 0.68,
-          "display_text": "Appears to be using FastAPI's built-in OAuth2PasswordBearer instead of a third-party auth library",
-          "kind": "mossy",
-          "user_note_id": null,
-          "quote": null,
-          "evidence": [
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000001",
-              "why": "9.5 min on the OAuth2PasswordBearer section"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000004",
-              "why": "the example kept open uses OAuth2PasswordBearer"
-            }
-          ]
-        }
-      ],
-      "mushrooms": [
-        {
-          "id": "q_30000000-0000-4000-8000-000000000401",
-          "text": "Where should refresh tokens be stored securely?",
-          "provenance": "inferred",
-          "confidence": 0.78,
-          "display_text": "Likely still open: where should refresh tokens be stored securely?",
-          "kind": "repeated_search",
-          "status": "open",
-          "answer": null,
-          "resolved_at": null,
-          "recurrence": 4,
-          "evidence": [
-            {
-              "ref_kind": "query",
-              "ref": "qf_50000000-0000-4000-8000-000000000001",
-              "why": "4 rephrasings in 33 min, no long read after"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000006",
-              "why": "search: where to store refresh token"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000007",
-              "why": "search: refresh token httponly cookie vs localstorage"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000008",
-              "why": "search: is it safe to keep refresh token in the browser"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000010",
-              "why": "short visit (24 s) from a search result"
-            }
-          ]
-        }
-      ],
-      "next_actions": [
-        {
-          "id": "a_30000000-0000-4000-8000-000000000501",
-          "text": "Prototype a refresh-token flow with HttpOnly, SameSite cookies",
-          "provenance": "inferred",
-          "confidence": 0.66,
-          "display_text": "Likely next: prototype a refresh-token flow with HttpOnly, SameSite cookies",
-          "unblocks": "q_30000000-0000-4000-8000-000000000401",
-          "reason": "Most-searched open question",
-          "evidence": [
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000007",
-              "why": "searched HttpOnly cookie vs localStorage"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000004",
-              "why": "the example has a refresh route to adapt"
-            }
-          ]
-        }
-      ],
+      "direction": null,
+      "stones": [],
+      "mushrooms": [],
+      "next_actions": [],
       "vines": [
-        {
-          "tab_refs": [
-            "00000000-0000-4000-8000-000000000009",
-            "00000000-0000-4000-8000-000000000010"
-          ],
-          "kind": "semantic",
-          "keep_ref": "00000000-0000-4000-8000-000000000001",
-          "reason": "Both restate the official FastAPI docs' JWT token section"
-        },
         {
           "tab_refs": [
             "00000000-0000-4000-8000-000000000001",
@@ -301,22 +155,7 @@
           "reason": "Same page open twice"
         }
       ],
-      "hypotheses": [
-        {
-          "id": "h_30000000-0000-4000-8000-000000000601",
-          "text": "May later host auth on Azure",
-          "provenance": "hypothesis",
-          "confidence": 0.41,
-          "display_text": "Maybe: may later host auth on Azure",
-          "evidence": [
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000005",
-              "why": "Microsoft identity platform docs, opened once"
-            }
-          ]
-        }
-      ],
+      "hypotheses": [],
       "query_families": [
         {
           "id": "qf_50000000-0000-4000-8000-000000000001",
@@ -346,39 +185,34 @@
     },
     {
       "project_id": "p_10000000-0000-4000-8000-000000000002",
-      "name": "GirlHacks Prep",
+      "name": "girlhacks · mlh · hackathon",
       "is_existing_project_id": null,
       "goal": {
-        "id": "g_30000000-0000-4000-8000-000000000102",
-        "text": "Prepare a project for the GirlHacks 2026 hackathon",
-        "provenance": "inferred",
-        "confidence": 0.74,
-        "display_text": "Appears to be preparing a project for the GirlHacks 2026 hackathon",
+        "id": "g_80000000-0000-4000-8000-000000000102",
+        "text": "Tabs about girlhacks, mlh, hackathon",
+        "provenance": "hypothesis",
+        "confidence": 0.45,
+        "display_text": "Maybe: tabs about girlhacks, mlh, hackathon",
         "evidence": [
           {
             "ref_kind": "tab",
             "ref": "00000000-0000-4000-8000-000000000011",
-            "why": "GirlHacks 2026 Devpost page, pinned"
-          },
-          {
-            "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000012",
-            "why": "read the hackathon rules"
+            "why": "shares title terms with the group"
           },
           {
             "ref_kind": "tab",
             "ref": "00000000-0000-4000-8000-000000000013",
-            "why": "sponsor technology docs"
+            "why": "shares title terms with the group"
           }
         ]
       },
       "attention_min": 41,
       "days_since_active": 0,
       "canopy": "green",
-      "fogged": false,
+      "fogged": true,
       "branches": [
         {
-          "label": "Rules and submission",
+          "label": "All tabs",
           "status": "active",
           "leaves": [
             {
@@ -400,13 +234,7 @@
               "is_open": true,
               "importance": 0.52,
               "fallen": false
-            }
-          ]
-        },
-        {
-          "label": "Sponsor tech",
-          "status": "active",
-          "leaves": [
+            },
             {
               "tab_ref": "00000000-0000-4000-8000-000000000013",
               "title": "Hypertables | Tiger Data Docs",
@@ -452,37 +280,7 @@
       ],
       "direction": null,
       "stones": [],
-      "mushrooms": [
-        {
-          "id": "q_30000000-0000-4000-8000-000000000402",
-          "text": "Which sponsor tracks should we submit to?",
-          "provenance": "inferred",
-          "confidence": 0.7,
-          "display_text": "Likely resolved: which sponsor tracks should we submit to?",
-          "kind": "unresolved_comparison",
-          "status": "resolved",
-          "answer": "Best Use of Azure and MLH Best Use of Tiger Data",
-          "resolved_at": "2026-10-04T09:26:10Z",
-          "recurrence": 2,
-          "evidence": [
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000011",
-              "why": "Devpost page lists the sponsor tracks"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000013",
-              "why": "read Tiger Data docs after the track list"
-            },
-            {
-              "ref_kind": "tab",
-              "ref": "00000000-0000-4000-8000-000000000014",
-              "why": "opened Azure for Students from the Devpost page"
-            }
-          ]
-        }
-      ],
+      "mushrooms": [],
       "next_actions": [],
       "vines": [],
       "hypotheses": [],
@@ -498,35 +296,35 @@
     },
     {
       "project_id": "p_10000000-0000-4000-8000-000000000003",
-      "name": "Job Search",
+      "name": "engineer · software · tailspin",
       "is_existing_project_id": "p_10000000-0000-4000-8000-000000000003",
       "goal": {
-        "id": "g_30000000-0000-4000-8000-000000000103",
-        "text": "Apply for backend engineering roles",
-        "provenance": "inferred",
-        "confidence": 0.69,
-        "display_text": "Appears to be applying for backend engineering roles",
+        "id": "g_80000000-0000-4000-8000-000000000103",
+        "text": "Tabs about engineer, software, tailspin",
+        "provenance": "hypothesis",
+        "confidence": 0.45,
+        "display_text": "Maybe: tabs about engineer, software, tailspin",
         "evidence": [
           {
             "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000016",
-            "why": "backend engineer job posting"
+            "ref": "00000000-0000-4000-8000-000000000017",
+            "why": "shares title terms with the group"
           },
           {
             "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000017",
-            "why": "application form, 11 min"
+            "ref": "00000000-0000-4000-8000-000000000016",
+            "why": "shares title terms with the group"
           }
         ]
       },
       "attention_min": 52,
       "days_since_active": 4,
       "canopy": "amber",
-      "fogged": false,
+      "fogged": true,
       "branches": [
         {
-          "label": "Applications",
-          "status": "explored",
+          "label": "All tabs",
+          "status": "active",
           "leaves": [
             {
               "tab_ref": "00000000-0000-4000-8000-000000000017",
@@ -557,13 +355,7 @@
               "is_open": true,
               "importance": 0.22,
               "fallen": true
-            }
-          ]
-        },
-        {
-          "label": "Interview prep",
-          "status": "explored",
-          "leaves": [
+            },
             {
               "tab_ref": "00000000-0000-4000-8000-000000000019",
               "title": "LRU Cache - LeetCode",
@@ -602,39 +394,34 @@
     },
     {
       "project_id": "p_10000000-0000-4000-8000-000000000004",
-      "name": "Weeknight Dinner",
+      "name": "recipe · pan · lemon",
       "is_existing_project_id": null,
       "goal": {
-        "id": "g_30000000-0000-4000-8000-000000000104",
-        "text": "Plan a weeknight dinner",
-        "provenance": "inferred",
-        "confidence": 0.72,
-        "display_text": "Appears to be planning a weeknight dinner",
+        "id": "g_80000000-0000-4000-8000-000000000104",
+        "text": "Tabs about recipe, pan, lemon",
+        "provenance": "hypothesis",
+        "confidence": 0.45,
+        "display_text": "Maybe: tabs about recipe, pan, lemon",
         "evidence": [
           {
             "ref_kind": "tab",
             "ref": "00000000-0000-4000-8000-000000000021",
-            "why": "recipe"
+            "why": "shares title terms with the group"
           },
           {
             "ref_kind": "tab",
             "ref": "00000000-0000-4000-8000-000000000022",
-            "why": "recipe"
-          },
-          {
-            "ref_kind": "tab",
-            "ref": "00000000-0000-4000-8000-000000000023",
-            "why": "grocery cart opened after the recipes"
+            "why": "shares title terms with the group"
           }
         ]
       },
       "attention_min": 9,
       "days_since_active": 0,
       "canopy": "green",
-      "fogged": false,
+      "fogged": true,
       "branches": [
         {
-          "label": "Recipes",
+          "label": "All tabs",
           "status": "active",
           "leaves": [
             {
@@ -656,13 +443,7 @@
               "is_open": true,
               "importance": 0.47,
               "fallen": false
-            }
-          ]
-        },
-        {
-          "label": "Groceries",
-          "status": "active",
-          "leaves": [
+            },
             {
               "tab_ref": "00000000-0000-4000-8000-000000000023",
               "title": "Instacart | Grocery delivery: cart",
@@ -709,16 +490,5 @@
       "reason": "low affinity to any goal"
     }
   ],
-  "fireflies": [
-    {
-      "id": "ff_70000000-0000-4000-8000-000000000001",
-      "project_id": "p_10000000-0000-4000-8000-000000000001",
-      "past_project_id": "p_10000000-0000-4000-8000-000000000099",
-      "past_project_name": "Backend Scaling",
-      "past_date": "2026-03-12",
-      "similarity": 0.84,
-      "saved_context_id": "s_60000000-0000-4000-8000-000000000003",
-      "display_text": "You researched this on March 12."
-    }
-  ]
+  "fireflies": []
 }

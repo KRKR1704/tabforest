@@ -1,61 +1,378 @@
 {
-  "analyze_request": {
-    "project_name": "Cloud Migration",
-    "items": [
+  "examples": [
+    {
+      "name": "analyze captured pages and a pasted transcript excerpt",
+      "request": {
+        "method": "POST",
+        "path": "/api/work-context/analyze",
+        "content_type": "application/json",
+        "body": {
+          "items": [
+            {
+              "kind": "page",
+              "title": "CAM-142 · Customer Authentication Migration",
+              "domain": "tabforest-api.azurewebsites.net",
+              "text": "SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.\n\n# CAM-142 · Customer Authentication Migration\n\nContoso Ltd. · Jira Software · Project **CAM** (Customer Accounts & Membership) / CAM-142\n\n| Field | Value |\n|---|---|\n| Type | Story |\n| Status | **IN PROGRESS** |\n| Priority | High |\n| Assignee | Priya Shah |\n| Reporter | Marcus Lee |\n| Sprint | CAM Sprint 14 (Sep 14 – Sep 25) |\n| Story points | 13 |\n| Labels | `auth` `azure` `fabrikam` `q4-commit` |\n| Components | identity, customer-portal |\n| Epic link | CAM-100 Platform modernization FY27 |\n| Fix version | 2026.11 |\n| Watchers | 6 |\n| Created | 2026-09-02 · Updated 2026-09-23 |\n\n## Description\n\n**Goal:** Migrate customer authentication to Azure before the Fabrikam go-live, without forcing existing customers to reset their passwords.\n\nToday every customer portal login goes through the on-prem identity box (`idp01`). It is out of vendor support in March, it does not scale for the 8–9 a.m. login peak, and Fabrikam's security questionnaire flagged it twice. The plan is a small token service on Azure, the portal moved to an OAuth 2.0 authorization code flow with PKCE, and `idp01` retired after a two-week dual-run.\n\nHosting for the token service is not decided yet (Functions vs App Service), see arch sync on 9/22. Plan doc: *Customer Auth Migration Plan* (Confluence, CAM space).\n\nOut of scope: employee SSO, the partner API keys, MFA changes (CAM-160).\n\n~~Use the legacy cookie domain for the callback~~ (dropped, see Sam's comment)\n\n## Acceptance criteria\n\n- [x] App registration created in the Contoso tenant (staging + prod redirect URIs)\n- [ ] Token service deployed to Azure in staging and prod\n- [ ] OAuth callback (`/auth/callback`) tested end to end against the Fabrikam test tenant\n- [ ] Existing customers can sign in after cutover without a password reset\n- [ ] Refresh tokens survive the cutover, OR users are asked to sign in again at most once\n- [ ] Rollback rehearsed in staging (migration plan §4)\n- [ ] Runbook + on-call notes updated\n- [ ] App Insights dashboard for login success rate and p95 latency\n\n## Sub-tasks\n\n| Key | Summary | Assignee | Status |\n|---|---|---|---|\n| CAM-143 | Token service skeleton | Priya Shah | IN REVIEW (PR #418) |\n| CAM-144 | App registration + redirect URIs | Sam Rivera | DONE |\n| CAM-145 | OAuth callback handler `/auth/callback` | You | IN PROGRESS |\n| CAM-146 | Session storage design | Unassigned | TO DO |\n| CAM-147 | Cutover runbook | Marcus Lee | TO DO |\n\nLinked issues: *blocks* CAM-150 (Fabrikam onboarding) · *relates to* CAM-160 (MFA) · *is cloned by* CAM-151 (do not use, created by mistake)\n\n## Activity\n\n**Marcus Lee** · 2026-09-02 09:14\nCreated from the Q4 architecture review. Priya to own the overall story, sub-tasks below.\n\n**Jira Automation** · 2026-09-02 09:14\nAdded to board *CAM Kanban*. Story points estimate missing.\n\n**Dana Ortiz** · 2026-09-05 16:40\nFabrikam is targeting go-live on Nov 3 and they keep asking if SSO comes \"for free\" with this. It does not, but I'd like a one-liner I can send them. Linking my account note in the CAM space.\n\n**Marcus Lee** · 2026-09-09 11:02\nAssigning the OAuth callback work to You (CAM-145), since you set up the portal redirect URIs last time. Priya stays on the token service itself.\n\n**You** · 2026-09-09 11:20\n👍 Will pick it up after the CAM-139 hotfix ships.\n\n**Sam Rivera** · 2026-09-12 15:31\nApp registration done. Redirect URIs are in for staging and prod. The prod one is a placeholder hostname until hosting is decided. Also: please don't use the legacy cookie domain for the callback, it breaks SameSite in Safari.\n\n**Priya Shah** · 2026-09-17 18:05\nDraft PR #418 is up. Token issue + validate work locally. End-to-end is blocked until Fabrikam sends test credentials.\n\n**Jira Automation** · 2026-09-21 08:00\nSprint *CAM Sprint 14* ends in 4 days. 3 sub-tasks are not done.\n\n**Dana Ortiz** · 2026-09-22 10:12\nUnrelated, but does anyone know if the Fabrikam renewal includes the support add-on? Asking here because their procurement person cc'd this thread.\n\n**You** · 2026-09-23 17:48\nCallback route works against the staging app registration with the mock IdP. Still need the real Fabrikam tenant before I can call it tested.\n\n**Marcus Lee** · 2026-09-23 18:02\nThanks. Moving to Sprint 15 if it slips, no drama.\n\n---\nWorklog: Priya Shah 14h · You 6h · Sam Rivera 3h · Time remaining: 2d 4h\n"
+            },
+            {
+              "kind": "page",
+              "title": "Token service on Azure Functions (WIP) #418",
+              "domain": "tabforest-api.azurewebsites.net",
+              "text": "SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.\n\n# Token service on Azure Functions (WIP) #418\n\n**Draft** · Priya Shah (@pshah) wants to merge 9 commits into `main` from `ps/cam-143-token-service`\n\nContoso Ltd. / `customer-portal` · Labels: `cam-142` `auth` `do-not-merge` · Reviewers: Marcus Lee, Sam Rivera, You · Linked: CAM-142, CAM-143\nChecks: ❌ 1 failing, ✅ 4 passing · +612 −48 · 14 files changed\n\n## Description\n\nAdds the customer token service under `src/token-service/` as an Azure Function app.\n\nWhat's in here:\n- `POST /token` (authorization code + PKCE → access token + refresh token)\n- `POST /token/validate` for the portal middleware\n- Signing key read from Key Vault via app setting reference (cached for 5 min)\n- App Insights request telemetry, no token values logged\n\nNot yet:\n- `POST /token/refresh` is stubbed (returns 501)\n- Session handling is still the in-memory dict in `session.py` (temporary!)\n- No end-to-end test against the Fabrikam tenant (see below)\n\nHow to test locally:\n```\ncd src/token-service\nfunc start\ncurl -X POST localhost:7071/api/token -d @samples/code_exchange.json\n```\n\n## Timeline\n\n- **Priya Shah** opened this as a draft · 2026-09-17\n- **github-actions** ❌ CI / unit-tests failed: `test_refresh_rotation` timed out after 30 s (1 failed, 214 passed)\n- **Priya Shah** commented · 2026-09-17\n  > CI failure is the flaky refresh test again, it's stubbed in this PR anyway. Re-running.\n- **github-actions** ❌ CI / unit-tests failed: `test_refresh_rotation` timed out after 30 s (1 failed, 214 passed)\n\n### Review: Sam Rivera commented on `src/token-service/issue_token.py` · 2026-09-18\n\n```python\n40    def issue(code: str, verifier: str) -> dict:\n41        claims = _exchange(code, verifier)\n42 +      tkn = _sign(claims, ttl=TOKEN_TTL_SECS)\n43 +      return {\"access_token\": tkn, \"token_type\": \"Bearer\"}\n```\n> nit: `tkn` → `token`, we're not paying per character 🙂\n\n**Priya Shah** replied\n> fair, will rename\n\n### Review: Marcus Lee commented on `src/token-service/config.py` · 2026-09-18\n\n> `TOKEN_TTL_SECS` vs `TOKEN_TTL_SECONDS` in the portal config. Can we pick one? I don't care which, just the same in both repos.\n\n**Priya Shah** replied\n> going with `TOKEN_TTL_SECONDS`, will fix in the next push\n\n### Review: Sam Rivera commented on `src/token-service/session.py` · 2026-09-18\n\n```python\n 8 +  _SESSIONS: dict[str, Session] = {}\n```\n> Where should session state live once this runs on Functions? This dict won't survive scale-out or a restart, and the portal assumes sessions stick around for 12 h. Redis? Cosmos? Something else?\n\n- **Renovate** bumped `azure-functions` 1.20.0 → 1.21.3 on `main` · 2026-09-19\n- **Marcus Lee** commented · 2026-09-19\n  > Mind rebasing on main? The functions bump touches `host.json`.\n- **Priya Shah** pushed 3 commits · 2026-09-19\n- **github-actions** ✅ CI / unit-tests passed (215 passed)\n- **github-actions** ✅ CI / lint passed\n\n**Priya Shah** commented · 2026-09-21\n> Heads up: the customer test credentials have not arrived, so I can't run the end-to-end flow against the Fabrikam tenant yet. I'll follow up with the customer tomorrow and cc Dana so it doesn't get lost again.\n\n**You** commented · 2026-09-21\n> Rebased my callback branch on this. `/auth/callback` is stubbed on the portal side and will exchange the code against `POST /token` once this merges. Nothing to review from me yet.\n\n- **Priya Shah** changed the title ~~Token service skeleton (hosting TBD)~~ **Token service on Azure Functions (WIP)** · 2026-09-22\n- **Priya Shah** pushed 2 commits · 2026-09-22\n  - `host.json`: Premium plan settings, one always-ready instance\n  - rename `tkn` → `token`, `TOKEN_TTL_SECS` → `TOKEN_TTL_SECONDS`\n- **github-actions** ❌ CI / unit-tests failed: `test_refresh_rotation` timed out after 30 s (1 failed, 216 passed)\n\n**Sam Rivera** commented · 2026-09-22\n> The flaky test is tracked in CAM-139, not this PR. Someone please quarantine it, I'm tired of seeing red.\n\n**Marcus Lee** commented · 2026-09-23\n> Not approving yet since it's a draft. Ping me when the e2e run passes. Also please add the App Insights dashboard link to the description.\n\n**Dana Ortiz** was mentioned · 2026-09-23\n\n---\nThis pull request is still a work in progress. Merging is blocked: 1 failing check, 0 approvals, draft.\n"
+            },
+            {
+              "kind": "page",
+              "title": "Account note: Fabrikam",
+              "domain": "tabforest-api.azurewebsites.net",
+              "text": "SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.\n\n# Account note: Fabrikam\n\nContoso Ltd. · CRM account note · Author: Dana Ortiz (Account Manager) · 2026-09-11\nAccount: **Fabrikam, Inc.** (fictional) · Segment: Enterprise · Stage: Onboarding\n\n**Contact:** Jordan Blake, IT lead at Fabrikam (prefers email, slow on Teams). Backup contact is their service desk queue, which never answers.\n\nCall with Jordan today, 30 min, mostly about the go-live.\n\n- **Timeline pressure.** Fabrikam wants customer logins live by **Nov 3**. Their CFO is demoing the portal to their board the week after, so Nov 3 is \"not really movable\" (Jordan's words). I told them the auth migration (CAM-142) is on track but I'd confirm after our arch sync.\n- **Test credentials.** Jordan promised test tenant credentials for our engineers by **Tuesday 9/15**: two test users plus a client secret for their staging identity provider. They come from their security team, not from Jordan directly, so they may slip. I'll chase if Priya doesn't have them by Wednesday.\n- They asked whether SSO for their employees comes \"for free\" with the migration. Said no, out of scope, can quote separately.\n- Security questionnaire: they're happy now that the on-prem box is going away. Want a one-page summary of where tokens are stored. (Ask Marcus.)\n\nNoise / other stuff from the call:\n\n- Renewal question: does the renewal in January include the premium support add-on, or was that a one-year promo? Need to check with Finance before I answer. Not related to the migration.\n- They're moving offices in December; new billing address to follow.\n- Jordan mentioned they had a bad experience with a previous vendor's \"big bang\" cutover, so a gradual rollout will land well.\n- Lunch at their office next visit: no seafood (allergy on their team).\n\nNext steps:\n1. Confirm go-live readiness with Marcus after 9/22.\n2. Chase test credentials with Jordan if not received by 9/16.\n3. Finance: renewal + support add-on.\n"
+            },
+            {
+              "kind": "paste",
+              "title": "Teams transcript excerpt: CAM arch sync 2026-09-22",
+              "text": "00:07:58.800 --> 00:08:10.050\n<v Priya Shah>The other thing, and this is the annoying one, we still don't have test credentials from Fabrikam. I can't run the end-to-end flow against their tenant without them.\n\n00:08:10.400 --> 00:08:15.000\n<v Marcus Lee>Still? Dana said they were coming last Tuesday.\n\n00:08:15.300 --> 00:08:21.700\n<v Priya Shah>Still. I'll ping their IT contact again today and loop Dana in.\n\n00:09:30.200 --> 00:09:41.900\n<v Sam Rivera>Can I ask a dumb question? If the token service is stateless on Functions, where does session state actually get stored? Redis, Cosmos, something else?\n\n00:09:42.300 --> 00:09:47.800\n<v Marcus Lee>Not dumb. Let's park it for a sec, I want to land hosting first.\n\n00:09:48.000 --> 00:09:49.200\n<v Sam Rivera>Sure.\n\n00:11:05.600 --> 00:11:16.400\n<v You>For what it's worth, the Functions version of the PR is already half there. Priya's branch has the token endpoint working locally.\n\n00:11:16.700 --> 00:11:24.900\n<v Priya Shah>Half there is generous. The refresh endpoint is stubbed and CI is red because of a flaky test that has nothing to do with me.\n\n00:11:25.100 --> 00:11:27.300\n<v Sam Rivera>It's always the flaky test.\n\n00:12:30.000 --> 00:12:43.800\n<v Marcus Lee>Okay. Deployment-wise both are fine. Monitoring-wise both go to the same App Insights. So it really comes down to cost and the spiky traffic.\n\n00:13:20.500 --> 00:13:31.200\n<v Priya Shah>And with App Service we'd size for the 8 a.m. peak all day. With Functions we don't.\n\n00:13:31.500 --> 00:13:38.000\n<v Sam Rivera>I'm fine either way honestly, I just don't want two hosting models for one login flow.\n\n00:13:58.000 --> 00:14:05.400\n<v You>The portal stays on App Service regardless, right? We're only talking about the token service.\n\n00:14:05.700 --> 00:14:09.800\n<v Marcus Lee>Only the token service. Portal doesn't move.\n\n00:14:32.000 --> 00:14:41.600\n<v Marcus Lee>Okay, decision then. For the token service we'll go with Functions, Premium plan, one always-ready instance. App Service stays for the portal.\n\n00:14:42.000 --> 00:14:46.300\n<v Priya Shah>Great. I'll update the PR title and the doc.\n\n00:14:46.500 --> 00:14:49.900\n<v Sam Rivera>Works for me.\n\n00:15:40.300 --> 00:15:53.700\n<v Marcus Lee>Next, cutover. Everyone please read section 4 of the migration doc, cutover and rollback, before Thursday. That's the part I'm least confident in.\n\n00:15:54.000 --> 00:16:03.100\n<v You>Is the rollback still just flip the flag back? Because refresh tokens issued by the new service won't be valid on the old box.\n\n00:16:03.400 --> 00:16:11.800\n<v Marcus Lee>That's exactly why I want eyes on section 4. Leave comments in the doc.\n\n00:17:10.900 --> 00:17:19.400\n<v Priya Shah>Unrelated, but whoever booked the big room on Friday, it's double booked with the design review.\n\n00:17:19.600 --> 00:17:22.300\n<v Sam Rivera>That's me, I'll move it.\n\n00:18:25.000 --> 00:18:37.200\n<v You>On my side, I'm on the OAuth callback. I'll test it against the staging app registration this week, but the real test needs the Fabrikam tenant.\n\n00:18:37.500 --> 00:18:41.900\n<v Priya Shah>Which needs the credentials. Yeah. I'm on it.\n\n00:19:52.300 --> 00:20:04.800\n<v You>Going back to Sam's thing from earlier. We never said where session state should be stored, did we? The doc still says TBD.\n\n00:20:05.100 --> 00:20:12.600\n<v Marcus Lee>Hmm. Let's take that one offline, I don't want to guess on the call. Sam, can you add it to the open items?"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "run_id": "r_20000000-0000-4000-8000-000000000083",
+          "project": "Customer Authentication Migration",
+          "documents": [
+            {
+              "id": "d_90000000-0000-4000-8000-000000000001",
+              "kind": "page",
+              "title": "CAM-142 · Customer Authentication Migration",
+              "source_type": "ticket"
+            },
+            {
+              "id": "d_90000000-0000-4000-8000-000000000002",
+              "kind": "page",
+              "title": "Token service on Azure Functions (WIP) #418",
+              "source_type": "pull_request"
+            },
+            {
+              "id": "d_90000000-0000-4000-8000-000000000003",
+              "kind": "page",
+              "title": "Account note: Fabrikam",
+              "source_type": "account_note"
+            },
+            {
+              "id": "d_90000000-0000-4000-8000-000000000004",
+              "kind": "paste",
+              "title": "Teams transcript excerpt: CAM arch sync 2026-09-22",
+              "source_type": "transcript"
+            }
+          ],
+          "goal": {
+            "id": "g_90000000-0000-4000-8000-000000000101",
+            "text": "Migrate customer authentication to Azure",
+            "provenance": "sourced",
+            "confidence": 0.85,
+            "display_text": "Migrate customer authentication to Azure",
+            "quote": "Migrate customer authentication to Azure before the Fabrikam go-live",
+            "source": "CAM-142 · Customer Authentication Migration",
+            "timestamp": null,
+            "evidence": [
+              {
+                "ref_kind": "doc",
+                "ref": "d_90000000-0000-4000-8000-000000000001",
+                "why": "goal stated in the ticket description"
+              },
+              {
+                "ref_kind": "doc",
+                "ref": "d_90000000-0000-4000-8000-000000000003",
+                "why": "account note ties the go-live to CAM-142"
+              }
+            ]
+          },
+          "decisions": [
+            {
+              "id": "dec_90000000-0000-4000-8000-000000000201",
+              "text": "Azure Functions selected for the token service",
+              "provenance": "sourced",
+              "confidence": 0.85,
+              "display_text": "Azure Functions selected for the token service",
+              "speaker": "Marcus Lee",
+              "quote": "For the token service we'll go with Functions, Premium plan, one always-ready instance.",
+              "source": "Teams transcript excerpt: CAM arch sync 2026-09-22",
+              "timestamp": "00:14:32",
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:14:32 Marcus Lee states the decision"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000002",
+                  "why": "PR retitled to Token service on Azure Functions (WIP)"
+                }
+              ]
+            }
+          ],
+          "blockers": [
+            {
+              "id": "b_90000000-0000-4000-8000-000000000301",
+              "text": "Customer test credentials have not arrived",
+              "provenance": "sourced",
+              "confidence": 0.9,
+              "display_text": "Customer test credentials have not arrived",
+              "quote": "Heads up: the customer test credentials have not arrived, so I can't run the end-to-end flow against the Fabrikam tenant yet.",
+              "source": "Token service on Azure Functions (WIP) #418",
+              "timestamp": null,
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000002",
+                  "why": "Priya Shah's PR comment"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:07:58 Priya Shah repeats it in the meeting"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000003",
+                  "why": "credentials were promised for 9/15"
+                }
+              ]
+            }
+          ],
+          "owners": [
+            {
+              "id": "o_90000000-0000-4000-8000-000000000401",
+              "text": "Priya Shah owns the credentials follow-up",
+              "provenance": "sourced",
+              "confidence": 0.8,
+              "display_text": "Priya Shah owns the credentials follow-up",
+              "person": "Priya Shah",
+              "task": "Follow up with the customer on test credentials",
+              "quote": "I'll follow up with the customer tomorrow and cc Dana",
+              "source": "Token service on Azure Functions (WIP) #418",
+              "timestamp": null,
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000002",
+                  "why": "commits to follow up in the PR"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:08:15 says she will ping their IT contact"
+                }
+              ]
+            },
+            {
+              "id": "o_90000000-0000-4000-8000-000000000402",
+              "text": "You own the OAuth callback (CAM-145)",
+              "provenance": "sourced",
+              "confidence": 0.8,
+              "display_text": "You own the OAuth callback (CAM-145)",
+              "person": "You",
+              "task": "OAuth callback (CAM-145)",
+              "quote": "Assigning the OAuth callback work to You (CAM-145)",
+              "source": "CAM-142 · Customer Authentication Migration",
+              "timestamp": null,
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000001",
+                  "why": "Marcus Lee assigns CAM-145 in a comment"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:18:25 You say you are on the OAuth callback"
+                }
+              ]
+            }
+          ],
+          "open_questions": [
+            {
+              "id": "q_90000000-0000-4000-8000-000000000501",
+              "text": "Where should session state be stored?",
+              "provenance": "inferred",
+              "confidence": 0.74,
+              "display_text": "Likely still open: where should session state be stored?",
+              "status": "open",
+              "answer": null,
+              "resolved_at": null,
+              "recurrence": 2,
+              "quote": null,
+              "source": null,
+              "timestamp": null,
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:09:30 Sam Rivera asks; parked"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:19:52 You ask again; taken offline"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000002",
+                  "why": "same question in review, no reply"
+                }
+              ]
+            }
+          ],
+          "next_actions": [
+            {
+              "id": "a_90000000-0000-4000-8000-000000000601",
+              "text": "Test the OAuth callback",
+              "provenance": "sourced",
+              "confidence": 0.8,
+              "display_text": "Test the OAuth callback",
+              "rank": 1,
+              "unblocks": null,
+              "quote": "OAuth callback (`/auth/callback`) tested end to end against the Fabrikam test tenant",
+              "source": "CAM-142 · Customer Authentication Migration",
+              "timestamp": null,
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000001",
+                  "why": "open acceptance criterion"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:18:25 You plan to test it this week"
+                }
+              ]
+            },
+            {
+              "id": "a_90000000-0000-4000-8000-000000000602",
+              "text": "Review migration doc §4 (Cutover and rollback)",
+              "provenance": "sourced",
+              "confidence": 0.8,
+              "display_text": "Review migration doc §4 (Cutover and rollback)",
+              "rank": 2,
+              "unblocks": null,
+              "quote": "Everyone please read section 4 of the migration doc, cutover and rollback, before Thursday.",
+              "source": "Teams transcript excerpt: CAM arch sync 2026-09-22",
+              "timestamp": "00:15:40",
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:15:40 Marcus Lee asks everyone to review it"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000001",
+                  "why": "acceptance criterion: rollback rehearsed (migration plan §4)"
+                }
+              ]
+            },
+            {
+              "id": "a_90000000-0000-4000-8000-000000000603",
+              "text": "Follow up on the customer test credentials",
+              "provenance": "sourced",
+              "confidence": 0.8,
+              "display_text": "Follow up on the customer test credentials",
+              "rank": 3,
+              "unblocks": "b_90000000-0000-4000-8000-000000000301",
+              "quote": "I'll follow up with the customer tomorrow",
+              "source": "Token service on Azure Functions (WIP) #418",
+              "timestamp": null,
+              "evidence": [
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000002",
+                  "why": "Priya Shah commits to follow up"
+                },
+                {
+                  "ref_kind": "doc",
+                  "ref": "d_90000000-0000-4000-8000-000000000004",
+                  "why": "00:08:15 she will ping their IT contact today"
+                }
+              ]
+            }
+          ],
+          "handoff_brief": "Customer Authentication Migration (CAM-142)\nGoal: Migrate customer authentication to Azure.\nDecided: Azure Functions for the token service (Marcus Lee, arch sync 00:14:32).\nBlocked: customer test credentials have not arrived. Priya Shah is following up with Fabrikam.\nOpen: where should session state be stored? Raised twice, never answered.\nOwners: Priya Shah, credentials follow-up. You, OAuth callback (CAM-145).\nNext: 1. Test the OAuth callback. 2. Review migration doc §4 (Cutover and rollback). 3. Follow up on the customer test credentials."
+        }
+      },
+      "introduces": [
+        "r_20000000-0000-4000-8000-000000000083",
+        "d_90000000-0000-4000-8000-000000000001",
+        "d_90000000-0000-4000-8000-000000000002",
+        "d_90000000-0000-4000-8000-000000000003",
+        "d_90000000-0000-4000-8000-000000000004",
+        "dec_90000000-0000-4000-8000-000000000201",
+        "b_90000000-0000-4000-8000-000000000301",
+        "o_90000000-0000-4000-8000-000000000401",
+        "o_90000000-0000-4000-8000-000000000402",
+        "q_90000000-0000-4000-8000-000000000501",
+        "a_90000000-0000-4000-8000-000000000601",
+        "a_90000000-0000-4000-8000-000000000602",
+        "a_90000000-0000-4000-8000-000000000603",
+        "g_90000000-0000-4000-8000-000000000101"
+      ]
+    },
+    {
+      "name": "error: upload over 5 MB → 413",
+      "request": {
+        "method": "POST",
+        "path": "/api/work-context/upload",
+        "content_type": "multipart/form-data",
+        "body": null
+      },
+      "response": {
+        "status": 413,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Payload Too Large",
+          "status": 413,
+          "detail": "customer-deck.pdf is 7.4 MB; the limit is 5 MB per file",
+          "instance": "/api/work-context/upload"
+        }
+      },
+      "introduces": []
+    }
+  ],
+  "upload": {
+    "method": "POST",
+    "path": "/api/work-context/upload",
+    "content_type": "multipart/form-data",
+    "fields": [
       {
-        "id": "item-1",
-        "title": "Teams Transcript - Architecture Sync",
-        "source_type": "paste",
-        "text": "[00:14:32] Lead Architect: We decided to deploy the ingestion workers on Azure Functions Consumption tier for v1, while keeping the primary API on Linux App Service."
+        "name": "files[]",
+        "type": "file",
+        "required": false,
+        "repeatable": true,
+        "accepted_extensions": [
+          ".pdf",
+          ".txt",
+          ".md",
+          ".vtt"
+        ],
+        "max_bytes_per_file": 5242880,
+        "max_pdf_pages": 30,
+        "example_files": [
+          "migration-doc.md",
+          "teams-transcript.vtt"
+        ]
       },
       {
-        "id": "item-2",
-        "title": "Jira CAM-142 Migration Blocker",
-        "source_type": "selection",
-        "text": "Status: Blocked. Production service principal credentials have not been approved by Infosec."
-      }
-    ]
-  },
-  "response": {
-    "project": "Cloud Migration",
-    "goal": "Migrate data ingestion pipeline to Azure serverless architecture",
-    "decisions": [
-      {
-        "text": "Deploy ingestion workers on Azure Functions Consumption tier",
-        "provenance": "sourced",
-        "quote": "We decided to deploy the ingestion workers on Azure Functions Consumption tier for v1",
-        "source_title": "Teams Transcript - Architecture Sync",
-        "timestamp": "00:14:32",
-        "confidence": 0.95
+        "name": "items_json",
+        "type": "string",
+        "required": false,
+        "description": "JSON string holding the same items array as the analyze request",
+        "example": "[{\"kind\": \"page\", \"title\": \"CAM-142 · Customer Authentication Migration\", \"domain\": \"tabforest-api.azurewebsites.net\", \"text\": \"SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.\\n\\n# CAM-142 · Customer Authentication Migration\\n\\nContoso Ltd. · Jira Software · Project **CAM** (Customer Accounts & Membership) / CAM-142\\n\\n| Field | Value |\\n|---|---|\\n| Type | Story |\\n| Status | **IN PROGRESS** |\\n| Priority | High |\\n| Assignee | Priya Shah |\\n| Reporter | Marcus Lee |\\n| Sprint | CAM Sprint 14 (Sep 14 – Sep 25) |\\n| Story points | 13 |\\n| Labels | `auth` `azure` `fabrikam` `q4-commit` |\\n| Components | identity, customer-portal |\\n| Epic link | CAM-100 Platform modernization FY27 |\\n| Fix version | 2026.11 |\\n| Watchers | 6 |\\n| Created | 2026-09-02 · Updated 2026-09-23 |\\n\\n## Description\\n\\n**Goal:** Migrate customer authentication to Azure before the Fabrikam go-live, without forcing existing customers to reset their passwords.\\n\\nToday every customer portal login goes through the on-prem identity box (`idp01`). It is out of vendor support in March, it does not scale for the 8–9 a.m. login peak, and Fabrikam's security questionnaire flagged it twice. The plan is a small token service on Azure, the portal moved to an OAuth 2.0 authorization code flow with PKCE, and `idp01` retired after a two-week dual-run.\\n\\nHosting for the token service is not decided yet (Functions vs App Service), see arch sync on 9/22. Plan doc: *Customer Auth Migration Plan* (Confluence, CAM space).\\n\\nOut of scope: employee SSO, the partner API keys, MFA changes (CAM-160).\\n\\n~~Use the legacy cookie domain for the callback~~ (dropped, see Sam's comment)\\n\\n## Acceptance criteria\\n\\n- [x] App registration created in the Contoso tenant (staging + prod redirect URIs)\\n- [ ] Token service deployed to Azure in staging and prod\\n- [ ] OAuth callback (`/auth/callback`) tested end to end against the Fabrikam test tenant\\n- [ ] Existing customers can sign in after cutover without a password reset\\n- [ ] Refresh tokens survive the cutover, OR users are asked to sign in again at most once\\n- [ ] Rollback rehearsed in staging (migration plan §4)\\n- [ ] Runbook + on-call notes updated\\n- [ ] App Insights dashboard for login success rate and p95 latency\\n\\n## Sub-tasks\\n\\n| Key | Summary | Assignee | Status |\\n|---|---|---|---|\\n| CAM-143 | Token service skeleton | Priya Shah | IN REVIEW (PR #418) |\\n| CAM-144 | App registration + redirect URIs | Sam Rivera | DONE |\\n| CAM-145 | OAuth callback handler `/auth/callback` | You | IN PROGRESS |\\n| CAM-146 | Session storage design | Unassigned | TO DO |\\n| CAM-147 | Cutover runbook | Marcus Lee | TO DO |\\n\\nLinked issues: *blocks* CAM-150 (Fabrikam onboarding) · *relates to* CAM-160 (MFA) · *is cloned by* CAM-151 (do not use, created by mistake)\\n\\n## Activity\\n\\n**Marcus Lee** · 2026-09-02 09:14\\nCreated from the Q4 architecture review. Priya to own the overall story, sub-tasks below.\\n\\n**Jira Automation** · 2026-09-02 09:14\\nAdded to board *CAM Kanban*. Story points estimate missing.\\n\\n**Dana Ortiz** · 2026-09-05 16:40\\nFabrikam is targeting go-live on Nov 3 and they keep asking if SSO comes \\\"for free\\\" with this. It does not, but I'd like a one-liner I can send them. Linking my account note in the CAM space.\\n\\n**Marcus Lee** · 2026-09-09 11:02\\nAssigning the OAuth callback work to You (CAM-145), since you set up the portal redirect URIs last time. Priya stays on the token service itself.\\n\\n**You** · 2026-09-09 11:20\\n👍 Will pick it up after the CAM-139 hotfix ships.\\n\\n**Sam Rivera** · 2026-09-12 15:31\\nApp registration done. Redirect URIs are in for staging and prod. The prod one is a placeholder hostname until hosting is decided. Also: please don't use the legacy cookie domain for the callback, it breaks SameSite in Safari.\\n\\n**Priya Shah** · 2026-09-17 18:05\\nDraft PR #418 is up. Token issue + validate work locally. End-to-end is blocked until Fabrikam sends test credentials.\\n\\n**Jira Automation** · 2026-09-21 08:00\\nSprint *CAM Sprint 14* ends in 4 days. 3 sub-tasks are not done.\\n\\n**Dana Ortiz** · 2026-09-22 10:12\\nUnrelated, but does anyone know if the Fabrikam renewal includes the support add-on? Asking here because their procurement person cc'd this thread.\\n\\n**You** · 2026-09-23 17:48\\nCallback route works against the staging app registration with the mock IdP. Still need the real Fabrikam tenant before I can call it tested.\\n\\n**Marcus Lee** · 2026-09-23 18:02\\nThanks. Moving to Sprint 15 if it slips, no drama.\\n\\n---\\nWorklog: Priya Shah 14h · You 6h · Sam Rivera 3h · Time remaining: 2d 4h\\n\"}, {\"kind\": \"page\", \"title\": \"Token service on Azure Functions (WIP) #418\", \"domain\": \"tabforest-api.azurewebsites.net\", \"text\": \"SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.\\n\\n# Token service on Azure Functions (WIP) #418\\n\\n**Draft** · Priya Shah (@pshah) wants to merge 9 commits into `main` from `ps/cam-143-token-service`\\n\\nContoso Ltd. / `customer-portal` · Labels: `cam-142` `auth` `do-not-merge` · Reviewers: Marcus Lee, Sam Rivera, You · Linked: CAM-142, CAM-143\\nChecks: ❌ 1 failing, ✅ 4 passing · +612 −48 · 14 files changed\\n\\n## Description\\n\\nAdds the customer token service under `src/token-service/` as an Azure Function app.\\n\\nWhat's in here:\\n- `POST /token` (authorization code + PKCE → access token + refresh token)\\n- `POST /token/validate` for the portal middleware\\n- Signing key read from Key Vault via app setting reference (cached for 5 min)\\n- App Insights request telemetry, no token values logged\\n\\nNot yet:\\n- `POST /token/refresh` is stubbed (returns 501)\\n- Session handling is still the in-memory dict in `session.py` (temporary!)\\n- No end-to-end test against the Fabrikam tenant (see below)\\n\\nHow to test locally:\\n```\\ncd src/token-service\\nfunc start\\ncurl -X POST localhost:7071/api/token -d @samples/code_exchange.json\\n```\\n\\n## Timeline\\n\\n- **Priya Shah** opened this as a draft · 2026-09-17\\n- **github-actions** ❌ CI / unit-tests failed: `test_refresh_rotation` timed out after 30 s (1 failed, 214 passed)\\n- **Priya Shah** commented · 2026-09-17\\n  > CI failure is the flaky refresh test again, it's stubbed in this PR anyway. Re-running.\\n- **github-actions** ❌ CI / unit-tests failed: `test_refresh_rotation` timed out after 30 s (1 failed, 214 passed)\\n\\n### Review: Sam Rivera commented on `src/token-service/issue_token.py` · 2026-09-18\\n\\n```python\\n40    def issue(code: str, verifier: str) -> dict:\\n41        claims = _exchange(code, verifier)\\n42 +      tkn = _sign(claims, ttl=TOKEN_TTL_SECS)\\n43 +      return {\\\"access_token\\\": tkn, \\\"token_type\\\": \\\"Bearer\\\"}\\n```\\n> nit: `tkn` → `token`, we're not paying per character 🙂\\n\\n**Priya Shah** replied\\n> fair, will rename\\n\\n### Review: Marcus Lee commented on `src/token-service/config.py` · 2026-09-18\\n\\n> `TOKEN_TTL_SECS` vs `TOKEN_TTL_SECONDS` in the portal config. Can we pick one? I don't care which, just the same in both repos.\\n\\n**Priya Shah** replied\\n> going with `TOKEN_TTL_SECONDS`, will fix in the next push\\n\\n### Review: Sam Rivera commented on `src/token-service/session.py` · 2026-09-18\\n\\n```python\\n 8 +  _SESSIONS: dict[str, Session] = {}\\n```\\n> Where should session state live once this runs on Functions? This dict won't survive scale-out or a restart, and the portal assumes sessions stick around for 12 h. Redis? Cosmos? Something else?\\n\\n- **Renovate** bumped `azure-functions` 1.20.0 → 1.21.3 on `main` · 2026-09-19\\n- **Marcus Lee** commented · 2026-09-19\\n  > Mind rebasing on main? The functions bump touches `host.json`.\\n- **Priya Shah** pushed 3 commits · 2026-09-19\\n- **github-actions** ✅ CI / unit-tests passed (215 passed)\\n- **github-actions** ✅ CI / lint passed\\n\\n**Priya Shah** commented · 2026-09-21\\n> Heads up: the customer test credentials have not arrived, so I can't run the end-to-end flow against the Fabrikam tenant yet. I'll follow up with the customer tomorrow and cc Dana so it doesn't get lost again.\\n\\n**You** commented · 2026-09-21\\n> Rebased my callback branch on this. `/auth/callback` is stubbed on the portal side and will exchange the code against `POST /token` once this merges. Nothing to review from me yet.\\n\\n- **Priya Shah** changed the title ~~Token service skeleton (hosting TBD)~~ **Token service on Azure Functions (WIP)** · 2026-09-22\\n- **Priya Shah** pushed 2 commits · 2026-09-22\\n  - `host.json`: Premium plan settings, one always-ready instance\\n  - rename `tkn` → `token`, `TOKEN_TTL_SECS` → `TOKEN_TTL_SECONDS`\\n- **github-actions** ❌ CI / unit-tests failed: `test_refresh_rotation` timed out after 30 s (1 failed, 216 passed)\\n\\n**Sam Rivera** commented · 2026-09-22\\n> The flaky test is tracked in CAM-139, not this PR. Someone please quarantine it, I'm tired of seeing red.\\n\\n**Marcus Lee** commented · 2026-09-23\\n> Not approving yet since it's a draft. Ping me when the e2e run passes. Also please add the App Insights dashboard link to the description.\\n\\n**Dana Ortiz** was mentioned · 2026-09-23\\n\\n---\\nThis pull request is still a work in progress. Merging is blocked: 1 failing check, 0 approvals, draft.\\n\"}, {\"kind\": \"page\", \"title\": \"Account note: Fabrikam\", \"domain\": \"tabforest-api.azurewebsites.net\", \"text\": \"SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.\\n\\n# Account note: Fabrikam\\n\\nContoso Ltd. · CRM account note · Author: Dana Ortiz (Account Manager) · 2026-09-11\\nAccount: **Fabrikam, Inc.** (fictional) · Segment: Enterprise · Stage: Onboarding\\n\\n**Contact:** Jordan Blake, IT lead at Fabrikam (prefers email, slow on Teams). Backup contact is their service desk queue, which never answers.\\n\\nCall with Jordan today, 30 min, mostly about the go-live.\\n\\n- **Timeline pressure.** Fabrikam wants customer logins live by **Nov 3**. Their CFO is demoing the portal to their board the week after, so Nov 3 is \\\"not really movable\\\" (Jordan's words). I told them the auth migration (CAM-142) is on track but I'd confirm after our arch sync.\\n- **Test credentials.** Jordan promised test tenant credentials for our engineers by **Tuesday 9/15**: two test users plus a client secret for their staging identity provider. They come from their security team, not from Jordan directly, so they may slip. I'll chase if Priya doesn't have them by Wednesday.\\n- They asked whether SSO for their employees comes \\\"for free\\\" with the migration. Said no, out of scope, can quote separately.\\n- Security questionnaire: they're happy now that the on-prem box is going away. Want a one-page summary of where tokens are stored. (Ask Marcus.)\\n\\nNoise / other stuff from the call:\\n\\n- Renewal question: does the renewal in January include the premium support add-on, or was that a one-year promo? Need to check with Finance before I answer. Not related to the migration.\\n- They're moving offices in December; new billing address to follow.\\n- Jordan mentioned they had a bad experience with a previous vendor's \\\"big bang\\\" cutover, so a gradual rollout will land well.\\n- Lunch at their office next visit: no seafood (allergy on their team).\\n\\nNext steps:\\n1. Confirm go-live readiness with Marcus after 9/22.\\n2. Chase test credentials with Jordan if not received by 9/16.\\n3. Finance: renewal + support add-on.\\n\"}, {\"kind\": \"paste\", \"title\": \"Teams transcript excerpt: CAM arch sync 2026-09-22\", \"text\": \"00:07:58.800 --> 00:08:10.050\\n<v Priya Shah>The other thing, and this is the annoying one, we still don't have test credentials from Fabrikam. I can't run the end-to-end flow against their tenant without them.\\n\\n00:08:10.400 --> 00:08:15.000\\n<v Marcus Lee>Still? Dana said they were coming last Tuesday.\\n\\n00:08:15.300 --> 00:08:21.700\\n<v Priya Shah>Still. I'll ping their IT contact again today and loop Dana in.\\n\\n00:09:30.200 --> 00:09:41.900\\n<v Sam Rivera>Can I ask a dumb question? If the token service is stateless on Functions, where does session state actually get stored? Redis, Cosmos, something else?\\n\\n00:09:42.300 --> 00:09:47.800\\n<v Marcus Lee>Not dumb. Let's park it for a sec, I want to land hosting first.\\n\\n00:09:48.000 --> 00:09:49.200\\n<v Sam Rivera>Sure.\\n\\n00:11:05.600 --> 00:11:16.400\\n<v You>For what it's worth, the Functions version of the PR is already half there. Priya's branch has the token endpoint working locally.\\n\\n00:11:16.700 --> 00:11:24.900\\n<v Priya Shah>Half there is generous. The refresh endpoint is stubbed and CI is red because of a flaky test that has nothing to do with me.\\n\\n00:11:25.100 --> 00:11:27.300\\n<v Sam Rivera>It's always the flaky test.\\n\\n00:12:30.000 --> 00:12:43.800\\n<v Marcus Lee>Okay. Deployment-wise both are fine. Monitoring-wise both go to the same App Insights. So it really comes down to cost and the spiky traffic.\\n\\n00:13:20.500 --> 00:13:31.200\\n<v Priya Shah>And with App Service we'd size for the 8 a.m. peak all day. With Functions we don't.\\n\\n00:13:31.500 --> 00:13:38.000\\n<v Sam Rivera>I'm fine either way honestly, I just don't want two hosting models for one login flow.\\n\\n00:13:58.000 --> 00:14:05.400\\n<v You>The portal stays on App Service regardless, right? We're only talking about the token service.\\n\\n00:14:05.700 --> 00:14:09.800\\n<v Marcus Lee>Only the token service. Portal doesn't move.\\n\\n00:14:32.000 --> 00:14:41.600\\n<v Marcus Lee>Okay, decision then. For the token service we'll go with Functions, Premium plan, one always-ready instance. App Service stays for the portal.\\n\\n00:14:42.000 --> 00:14:46.300\\n<v Priya Shah>Great. I'll update the PR title and the doc.\\n\\n00:14:46.500 --> 00:14:49.900\\n<v Sam Rivera>Works for me.\\n\\n00:15:40.300 --> 00:15:53.700\\n<v Marcus Lee>Next, cutover. Everyone please read section 4 of the migration doc, cutover and rollback, before Thursday. That's the part I'm least confident in.\\n\\n00:15:54.000 --> 00:16:03.100\\n<v You>Is the rollback still just flip the flag back? Because refresh tokens issued by the new service won't be valid on the old box.\\n\\n00:16:03.400 --> 00:16:11.800\\n<v Marcus Lee>That's exactly why I want eyes on section 4. Leave comments in the doc.\\n\\n00:17:10.900 --> 00:17:19.400\\n<v Priya Shah>Unrelated, but whoever booked the big room on Friday, it's double booked with the design review.\\n\\n00:17:19.600 --> 00:17:22.300\\n<v Sam Rivera>That's me, I'll move it.\\n\\n00:18:25.000 --> 00:18:37.200\\n<v You>On my side, I'm on the OAuth callback. I'll test it against the staging app registration this week, but the real test needs the Fabrikam tenant.\\n\\n00:18:37.500 --> 00:18:41.900\\n<v Priya Shah>Which needs the credentials. Yeah. I'm on it.\\n\\n00:19:52.300 --> 00:20:04.800\\n<v You>Going back to Sam's thing from earlier. We never said where session state should be stored, did we? The doc still says TBD.\\n\\n00:20:05.100 --> 00:20:12.600\\n<v Marcus Lee>Hmm. Let's take that one offline, I don't want to guess on the call. Sam, can you add it to the open items?\"}]"
       }
     ],
-    "blockers": [
-      {
-        "text": "Production service principal credentials awaiting Infosec signoff",
-        "provenance": "sourced",
-        "quote": "Production service principal credentials have not been approved by Infosec",
-        "source_title": "Jira CAM-142 Migration Blocker",
-        "severity": "high"
-      }
-    ],
-    "owners": [
-      { "name": "Infosec Team", "role": "Credential Approver" },
-      { "name": "Backend Team", "role": "Function Deployment" }
-    ],
-    "open_questions": [
-      {
-        "question": "What is the expected cold-start latency budget on Consumption plan?",
-        "kind": "unresolved_comparison",
-        "confidence": 0.8
-      }
-    ],
-    "next_actions": [
-      {
-        "action": "Escalate ticket CAM-142 for service principal credentials",
-        "priority": 1,
-        "owner": "Backend Lead"
-      }
-    ],
-    "handoff_brief_markdown": "# Cloud Migration — Handoff Brief\n\n**Goal**: Migrate data ingestion pipeline to Azure serverless architecture.\n\n### Key Decisions\n- Deploy ingestion workers on Azure Functions Consumption tier (Teams Transcript 00:14:32).\n\n### Critical Blockers\n- Production service principal credentials awaiting Infosec signoff (Jira CAM-142).\n\n### Immediate Next Step\n- Escalate ticket CAM-142 for service principal credentials."
+    "notes": "Text is extracted in memory and never stored; each item and file is capped at 12,000 characters. The response has the same shape as analyze.",
+    "response": "same as the analyze response"
   }
 }

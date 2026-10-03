@@ -1,0 +1,158 @@
+WEBVTT
+
+NOTE
+SAMPLE — fictional data for the TabForest demo. Contoso Ltd. is a fictional company.
+Microsoft Teams transcript export. Meeting: CAM arch sync, token service hosting. Recorded 2026-09-22.
+
+00:00:04.120 --> 00:00:09.880
+<v Marcus Lee>Hey all, give it a minute, Sam said he's running a couple minutes late.
+
+00:00:10.400 --> 00:00:16.020
+<v Priya Shah>No worries. Did anyone else get the fire drill email for Thursday? Third one this month.
+
+00:00:16.500 --> 00:00:21.300
+<v You>Yeah, I think facilities is testing the new alarms. I'll be remote anyway.
+
+00:00:22.010 --> 00:00:27.640
+<v Marcus Lee>Lucky. How was the long weekend, Priya? You were going hiking, right?
+
+00:00:28.100 --> 00:00:36.900
+<v Priya Shah>We tried. It rained the whole Saturday so mostly we ate pancakes and played board games. Not complaining.
+
+00:00:37.200 --> 00:00:40.050
+<v Sam Rivera>Hey, sorry, sorry. The other call ran over.
+
+00:00:40.300 --> 00:00:46.880
+<v Marcus Lee>All good. Agenda: hosting for the token service, the PR, and the cutover plan if we have time.
+
+00:00:47.400 --> 00:00:55.100
+<v Marcus Lee>Context for the recording: this is CAM-142, moving customer authentication off the on-prem identity box and onto Azure.
+
+00:01:02.300 --> 00:01:11.900
+<v Sam Rivera>Can someone share? I've got the doc open but I think I'm on the old version. Is the one with the yellow header the latest?
+
+00:01:12.200 --> 00:01:16.050
+<v Priya Shah>Sharing now. Can everyone see my screen?
+
+00:01:16.300 --> 00:01:17.400
+<v You>Yep.
+
+00:01:17.300 --> 00:01:18.900
+<v Sam Rivera>Yes, yes.
+
+00:02:05.700 --> 00:02:18.400
+<v Priya Shah>So option A is App Service. We already run the customer portal there, we know the pipeline, slots work, nothing surprising.
+
+00:02:19.000 --> 00:02:31.250
+<v Priya Shah>Option B is Azure Functions. The token endpoints are tiny, traffic is spiky around the morning logins, and we only pay for what we use. Cold start is the worry.
+
+00:03:40.100 --> 00:03:52.600
+<v Sam Rivera>On cold start, if we go Premium plan with one always-ready instance it basically goes away. I tested it last week, p95 was under 300 milliseconds.
+
+00:03:53.000 --> 00:03:58.400
+<v Marcus Lee>Under 300 including the Key Vault call?
+
+00:03:58.700 --> 00:04:05.200
+<v Sam Rivera>Including Key Vault, with the reference cached. Without caching it was more like 700.
+
+00:05:12.500 --> 00:05:24.000
+<v You>The callback is the part I'm worried about. The OAuth callback has to hit the host the redirect URI is registered for, so if we split hosts we update the app registration.
+
+00:05:24.300 --> 00:05:29.100
+<v Priya Shah>That's a config change though, not a blocker.
+
+00:05:29.000 --> 00:05:31.200
+<v You>Right, right, just flagging it.
+
+00:06:40.000 --> 00:06:52.300
+<v Marcus Lee>Cost-wise, Dana's sheet says App Service is a flat P1v3 we'd mostly leave idle at night. Functions Premium is in the same ballpark but scales out on its own.
+
+00:07:58.800 --> 00:08:10.050
+<v Priya Shah>The other thing, and this is the annoying one, we still don't have test credentials from Fabrikam. I can't run the end-to-end flow against their tenant without them.
+
+00:08:10.400 --> 00:08:15.000
+<v Marcus Lee>Still? Dana said they were coming last Tuesday.
+
+00:08:15.300 --> 00:08:21.700
+<v Priya Shah>Still. I'll ping their IT contact again today and loop Dana in.
+
+00:09:30.200 --> 00:09:41.900
+<v Sam Rivera>Can I ask a dumb question? If the token service is stateless on Functions, where does session state actually get stored? Redis, Cosmos, something else?
+
+00:09:42.300 --> 00:09:47.800
+<v Marcus Lee>Not dumb. Let's park it for a sec, I want to land hosting first.
+
+00:09:48.000 --> 00:09:49.200
+<v Sam Rivera>Sure.
+
+00:11:05.600 --> 00:11:16.400
+<v You>For what it's worth, the Functions version of the PR is already half there. Priya's branch has the token endpoint working locally.
+
+00:11:16.700 --> 00:11:24.900
+<v Priya Shah>Half there is generous. The refresh endpoint is stubbed and CI is red because of a flaky test that has nothing to do with me.
+
+00:11:25.100 --> 00:11:27.300
+<v Sam Rivera>It's always the flaky test.
+
+00:12:30.000 --> 00:12:43.800
+<v Marcus Lee>Okay. Deployment-wise both are fine. Monitoring-wise both go to the same App Insights. So it really comes down to cost and the spiky traffic.
+
+00:13:20.500 --> 00:13:31.200
+<v Priya Shah>And with App Service we'd size for the 8 a.m. peak all day. With Functions we don't.
+
+00:13:31.500 --> 00:13:38.000
+<v Sam Rivera>I'm fine either way honestly, I just don't want two hosting models for one login flow.
+
+00:13:58.000 --> 00:14:05.400
+<v You>The portal stays on App Service regardless, right? We're only talking about the token service.
+
+00:14:05.700 --> 00:14:09.800
+<v Marcus Lee>Only the token service. Portal doesn't move.
+
+00:14:32.000 --> 00:14:41.600
+<v Marcus Lee>Okay, decision then. For the token service we'll go with Functions, Premium plan, one always-ready instance. App Service stays for the portal.
+
+00:14:42.000 --> 00:14:46.300
+<v Priya Shah>Great. I'll update the PR title and the doc.
+
+00:14:46.500 --> 00:14:49.900
+<v Sam Rivera>Works for me.
+
+00:15:40.300 --> 00:15:53.700
+<v Marcus Lee>Next, cutover. Everyone please read section 4 of the migration doc, cutover and rollback, before Thursday. That's the part I'm least confident in.
+
+00:15:54.000 --> 00:16:03.100
+<v You>Is the rollback still just flip the flag back? Because refresh tokens issued by the new service won't be valid on the old box.
+
+00:16:03.400 --> 00:16:11.800
+<v Marcus Lee>That's exactly why I want eyes on section 4. Leave comments in the doc.
+
+00:17:10.900 --> 00:17:19.400
+<v Priya Shah>Unrelated, but whoever booked the big room on Friday, it's double booked with the design review.
+
+00:17:19.600 --> 00:17:22.300
+<v Sam Rivera>That's me, I'll move it.
+
+00:18:25.000 --> 00:18:37.200
+<v You>On my side, I'm on the OAuth callback. I'll test it against the staging app registration this week, but the real test needs the Fabrikam tenant.
+
+00:18:37.500 --> 00:18:41.900
+<v Priya Shah>Which needs the credentials. Yeah. I'm on it.
+
+00:19:52.300 --> 00:20:04.800
+<v You>Going back to Sam's thing from earlier. We never said where session state should be stored, did we? The doc still says TBD.
+
+00:20:05.100 --> 00:20:12.600
+<v Marcus Lee>Hmm. Let's take that one offline, I don't want to guess on the call. Sam, can you add it to the open items?
+
+00:20:12.900 --> 00:20:15.000
+<v Sam Rivera>Will do.
+
+00:21:30.000 --> 00:21:41.200
+<v Marcus Lee>Okay, anything else? Dana sends her apologies, she's with the Fabrikam renewal folks today.
+
+00:21:41.500 --> 00:21:47.000
+<v Priya Shah>Nothing from me. I'll send notes.
+
+00:22:58.400 --> 00:23:04.900
+<v Marcus Lee>Thanks all. Stopping the recording.
