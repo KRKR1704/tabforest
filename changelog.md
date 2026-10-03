@@ -6,6 +6,29 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — D-1 extension scaffold (D)
+
+### Added
+
+- Standalone `apps/extension/` pnpm package with Vite, CRXJS, strict TypeScript, Vitest and a pinned dependency lockfile. No root workspace or UI libraries.
+- SPEC §5.1 manifest with fixed public key, exact permissions, incognito disabled and strict CSP; no host permissions or content scripts. Toolbar listener opens the built `grove.html` placeholder showing the runtime extension ID.
+- Dependency-free mock API on loopback port 8001 using the events contract: health, 202 batch acceptance, in-memory event ID deduplication, 500-event cap, user_id rejection and configured-origin CORS.
+- Manifest and mock-API tests plus setup/manual Chrome instructions in the extension README.
+
+### Verification
+
+- Node `v20.20.2` via the explicit Node 20 PATH prefix; branch `feat/d-1-extension-scaffold` unchanged.
+- Sandbox `pnpm install` failed with ENOTFOUND. Deep completed installation with pnpm 10.34.6 and reported 81 packages added. Existing esbuild ignored-script warning required no approval or package upgrade: build worked as installed.
+- `pnpm test`: 2 files, 8 tests passed with local socket access. Initial sandbox attempt hit listen EPERM; test startup now reports listen failures promptly and skips teardown when not listening.
+- `pnpm typecheck` and `pnpm build`: exit 0. Printed and checked the built manifest: fixed key/derived ID, exact permissions/CSP, no host permissions/content scripts; grove and worker output files exist.
+- Started `pnpm mock`; curl returned health 200, fixture batch 202 with accepted 3/duplicates 0, and resend 202 with accepted 0/duplicates 3. Stopped the server.
+- `git diff --check` passed; `EXTENSION_KEY.md` and `preflight/` unchanged.
+
+### Notes
+
+- Commands from `apps/extension/`, each prefixed with `PATH="/opt/homebrew/opt/node@20/bin:$PATH"`: `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm dev`, `pnpm mock`. Dev server not run; production build verified.
+- Chrome could not be run. Deep must load `apps/extension/dist`, verify ID `nldemblgfgcaolkpkajdbefjfnileeoi`, and click the toolbar action to check the placeholder and runtime ID. No capture, queue, Hollow or sign-in implementation. No commit or push.
+
 ## [2026-10-03] — PRE-C1 draft: R's remaining contracts + cross-contract check (R)
 
 ### Added
