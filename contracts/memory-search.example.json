@@ -1,22 +1,75 @@
 {
-  "query": "session storage",
-  "results": [
+  "examples": [
     {
-      "id": "mem-1",
-      "project_id": "proj-march12",
-      "project_name": "Backend Scaling - March 12",
-      "date": "2026-03-12",
-      "similarity": 0.86,
-      "summary": "Researched session cookies vs token storage; chose Redis backplane with 2h expiration.",
-      "decisions": ["Store session state in Redis rather than JWT for instant revocation"],
-      "attention_minutes": 54.0,
-      "sessions_count": 2
+      "name": "found: session storage",
+      "request": {
+        "method": "GET",
+        "path": "/api/memory/search?q=session%20storage",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "found": true,
+          "query": "session storage",
+          "message": null,
+          "matches": [
+            {
+              "project_id": "p_10000000-0000-4000-8000-000000000099",
+              "project": "Backend Scaling",
+              "date": "2026-03-12",
+              "similarity": 0.84,
+              "attention_min": 100,
+              "compared": [
+                "Redis",
+                "Postgres sessions"
+              ],
+              "conclusion": {
+                "id": "dec_30000000-0000-4000-8000-000000000901",
+                "text": "Redis not needed at expected scale",
+                "provenance": "stated",
+                "confidence": 1.0,
+                "display_text": "Redis not needed at expected scale",
+                "user_note_id": "n_40000000-0000-4000-8000-000000000003",
+                "evidence": [
+                  {
+                    "ref_kind": "note",
+                    "ref": "n_40000000-0000-4000-8000-000000000003",
+                    "why": "user note, March 12"
+                  }
+                ]
+              },
+              "saved_context_id": "s_60000000-0000-4000-8000-000000000003"
+            }
+          ]
+        }
+      },
+      "introduces": [
+        "n_40000000-0000-4000-8000-000000000003",
+        "dec_30000000-0000-4000-8000-000000000901"
+      ]
+    },
+    {
+      "name": "not found: recipe",
+      "request": {
+        "method": "GET",
+        "path": "/api/memory/search?q=recipe",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "found": false,
+          "query": "recipe",
+          "message": "No related research found",
+          "matches": []
+        }
+      },
+      "introduces": []
     }
-  ],
-  "not_found_query": "grandma cookie recipe",
-  "not_found_response": {
-    "query": "grandma cookie recipe",
-    "results": [],
-    "message": "No related research found in your forest history"
-  }
+  ]
 }
