@@ -1,71 +1,314 @@
 {
-  "project_id": "p-backend-auth",
-  "project_name": "Backend Authentication",
-  "range": "24h",
-  "buckets": [
+  "contract": "C7",
+  "title": "GET /api/projects/{project_id}/timeline: attention lanes per branch",
+  "drafted_by": "P",
+  "sources": [
+    "SPEC.md §8.3, §8.5, §9.2 (Timeline), §10.1",
+    "BUILD_TASKS.md §4.6, P-8, S-7"
+  ],
+  "notes": [
+    "Scenario: R's shared demo set. Tab IDs come from apps/api/app/engine/fixtures/demo_tabs.json (the 28 tabs in snapshot.example.json); project, claim, note and saved-context IDs come from grove.example.json and memory-search.example.json. IDs these examples create are listed in `introduces`; IDs that belong to another user are listed in `unknown_ids`.",
+    "Every request carries Authorization: Bearer <token> unless the example lists request.headers explicitly. user_id never appears in a request body; the server takes it from the token.",
+    "Durations are integer milliseconds (active_ms) so every sum is exact; the UI converts to minutes. Times are UTC and follow R's story clock (snapshot at 2026-10-04T11:40:00Z).",
+    "Errors are RFC 7807 problem JSON with `instance` = the request path, as in R's files.",
+    "Only range=24h is accepted in P0; anything else returns 422.",
+    "Buckets are 30 minutes ('30m') starting on :00 and :30 UTC. SPEC §8.5 shows 20-minute buckets, but re-bucketing the 15-minute aggregate into 20 minutes gives uneven buckets (30, 15 and 15 minutes of data each hour); 30 minutes is exactly two 15-minute buckets.",
+    "Attention lands in the bucket of the BLUR event that carries it (tab_attention_15m sums active_ms by event time).",
+    "One lane per branch of the project's current tree, in R's branch order, keyed by branch label (R's grove has no branch IDs). Project tabs with no branch would go in a lane with branch null, so no attention is dropped. Each point lists its tabs with the latest redacted title, for the hover.",
+    "switches counts, per bucket, focus changes that enter or leave this project's tabs: tab_switches all of them; intent_switches those where the other tab is in a cluster but shares none with this project; unassigned_switches those where the other tab has no cluster yet (never guessed from domains).",
+    "Markers: a question is placed at the earliest opened_at among its evidence tabs; a decision at its note's created_at (stated) or confirmed_at (confirmed). Inferred, unconfirmed decisions have no marker. Markers read R's tables through C12; until those exist P serves fixture rows.",
+    "Per-tab totals here equal each leaf's dwell_min in grove.example.json, and the lanes add up to the project's attention for today. The 10:30 and 11:00 buckets match events.example.json exactly.",
+    "A project the caller does not own returns 404."
+  ],
+  "examples": [
     {
-      "time": "2026-10-04T09:00:00Z",
-      "branch_ref": "b1",
-      "branch_label": "JWT",
-      "minutes": 15.0,
-      "tab_switches": 4,
-      "intent_switches": 0,
-      "tabs": [
-        { "tab_ref": "t1", "domain": "fastapi.tiangolo.com", "minutes": 9.5 },
-        { "tab_ref": "t2", "domain": "github.com", "minutes": 5.5 }
-      ],
-      "markers": [
-        {
-          "type": "question",
-          "id": "q-1",
-          "label": "Where should refresh tokens be stored securely?",
-          "ts": "2026-10-04T09:12:00Z"
+      "name": "story_24h",
+      "description": "Backend Authentication over the last 24 hours: 09:41 to 11:32, two sessions.",
+      "request": {
+        "method": "GET",
+        "path": "/api/projects/p_10000000-0000-4000-8000-000000000001/timeline?range=24h",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "project_id": "p_10000000-0000-4000-8000-000000000001",
+          "name": "Backend Authentication",
+          "range": "24h",
+          "bucket": "30m",
+          "from": "2026-10-03T11:40:00Z",
+          "to": "2026-10-04T11:40:00Z",
+          "lanes": [
+            {
+              "branch": "JWT",
+              "status": "active",
+              "active_ms": 1980000,
+              "points": [
+                {
+                  "t": "2026-10-04T09:30:00Z",
+                  "active_ms": 570000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000001",
+                      "domain": "fastapi.tiangolo.com",
+                      "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+                      "active_ms": 570000
+                    }
+                  ]
+                },
+                {
+                  "t": "2026-10-04T10:00:00Z",
+                  "active_ms": 540000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000004",
+                      "domain": "github.com",
+                      "title": "fastapi-jwt-auth-example: login, refresh and protected routes",
+                      "active_ms": 540000
+                    }
+                  ]
+                },
+                {
+                  "t": "2026-10-04T10:30:00Z",
+                  "active_ms": 135000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000004",
+                      "domain": "github.com",
+                      "title": "fastapi-jwt-auth-example: login, refresh and protected routes",
+                      "active_ms": 113000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000006",
+                      "domain": "www.google.com",
+                      "title": "where to store refresh token - Google Search",
+                      "active_ms": 22000
+                    }
+                  ]
+                },
+                {
+                  "t": "2026-10-04T11:00:00Z",
+                  "active_ms": 695000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000009",
+                      "domain": "medium.com",
+                      "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+                      "active_ms": 348000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000004",
+                      "domain": "github.com",
+                      "title": "fastapi-jwt-auth-example: login, refresh and protected routes",
+                      "active_ms": 187000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000007",
+                      "domain": "www.google.com",
+                      "title": "refresh token httponly cookie vs localstorage - Google Search",
+                      "active_ms": 62000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000029",
+                      "domain": "www.google.com",
+                      "title": "refresh token storage best practices spa - Google Search",
+                      "active_ms": 30000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000006",
+                      "domain": "www.google.com",
+                      "title": "where to store refresh token - Google Search",
+                      "active_ms": 26000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000010",
+                      "domain": "dev.to",
+                      "title": "FastAPI JWT authentication explained - DEV Community",
+                      "active_ms": 24000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000002",
+                      "domain": "fastapi.tiangolo.com",
+                      "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+                      "active_ms": 18000
+                    }
+                  ]
+                },
+                {
+                  "t": "2026-10-04T11:30:00Z",
+                  "active_ms": 40000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000008",
+                      "domain": "www.google.com",
+                      "title": "is it safe to keep refresh token in the browser - Google Search",
+                      "active_ms": 36000
+                    },
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000007",
+                      "domain": "www.google.com",
+                      "title": "refresh token httponly cookie vs localstorage - Google Search",
+                      "active_ms": 4000
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "branch": "OAuth 2.0",
+              "status": "explored",
+              "active_ms": 246000,
+              "points": [
+                {
+                  "t": "2026-10-04T10:00:00Z",
+                  "active_ms": 246000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000005",
+                      "domain": "learn.microsoft.com",
+                      "title": "OAuth 2.0 authorization code flow - Microsoft identity platform | Microsoft Learn",
+                      "active_ms": 246000
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "branch": "Sessions",
+              "status": "explored",
+              "active_ms": 372000,
+              "points": [
+                {
+                  "t": "2026-10-04T09:30:00Z",
+                  "active_ms": 372000,
+                  "tabs": [
+                    {
+                      "tab_ref": "00000000-0000-4000-8000-000000000003",
+                      "domain": "stackoverflow.com",
+                      "title": "JWT vs session-based authentication for a REST API - Stack Overflow",
+                      "active_ms": 372000
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "switches": [
+            {
+              "t": "2026-10-04T09:30:00Z",
+              "tab_switches": 6,
+              "intent_switches": 0,
+              "unassigned_switches": 1
+            },
+            {
+              "t": "2026-10-04T10:00:00Z",
+              "tab_switches": 5,
+              "intent_switches": 1,
+              "unassigned_switches": 0
+            },
+            {
+              "t": "2026-10-04T10:30:00Z",
+              "tab_switches": 3,
+              "intent_switches": 0,
+              "unassigned_switches": 0
+            },
+            {
+              "t": "2026-10-04T11:00:00Z",
+              "tab_switches": 11,
+              "intent_switches": 0,
+              "unassigned_switches": 1
+            },
+            {
+              "t": "2026-10-04T11:30:00Z",
+              "tab_switches": 3,
+              "intent_switches": 0,
+              "unassigned_switches": 1
+            }
+          ],
+          "markers": [
+            {
+              "kind": "decision",
+              "t": "2026-10-04T10:12:20Z",
+              "id": "dec_30000000-0000-4000-8000-000000000301",
+              "text": "Not using OAuth providers for v1",
+              "provenance": "stated"
+            },
+            {
+              "kind": "question",
+              "t": "2026-10-04T10:58:02Z",
+              "id": "q_30000000-0000-4000-8000-000000000401",
+              "text": "Where should refresh tokens be stored securely?",
+              "status": "open"
+            }
+          ],
+          "totals": {
+            "active_ms": 2598000,
+            "tab_switches": 28,
+            "intent_switches": 1,
+            "unassigned_switches": 3
+          }
         }
+      },
+      "introduces": []
+    },
+    {
+      "name": "not_found_other_users_project",
+      "description": "A project that belongs to another user, or does not exist: 404, never 403.",
+      "request": {
+        "method": "GET",
+        "path": "/api/projects/p_e0000000-0000-4000-8000-000000000404/timeline?range=24h",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Not Found",
+          "status": 404,
+          "detail": "Project not found",
+          "instance": "/api/projects/p_e0000000-0000-4000-8000-000000000404/timeline"
+        }
+      },
+      "introduces": [],
+      "unknown_ids": [
+        "p_e0000000-0000-4000-8000-000000000404"
       ]
     },
     {
-      "time": "2026-10-04T09:20:00Z",
-      "branch_ref": "b2",
-      "branch_label": "OAuth 2.0",
-      "minutes": 8.0,
-      "tab_switches": 2,
-      "intent_switches": 1,
-      "tabs": [
-        { "tab_ref": "t4", "domain": "auth0.com", "minutes": 8.0 }
-      ],
-      "markers": []
-    },
-    {
-      "time": "2026-10-04T09:40:00Z",
-      "branch_ref": "b3",
-      "branch_label": "Sessions",
-      "minutes": 12.0,
-      "tab_switches": 3,
-      "intent_switches": 1,
-      "tabs": [
-        { "tab_ref": "t6", "domain": "redis.io", "minutes": 12.0 }
-      ],
-      "markers": []
-    },
-    {
-      "time": "2026-10-04T10:00:00Z",
-      "branch_ref": "b1",
-      "branch_label": "JWT",
-      "minutes": 22.0,
-      "tab_switches": 5,
-      "intent_switches": 1,
-      "tabs": [
-        { "tab_ref": "t3", "domain": "jwt.io", "minutes": 14.0 },
-        { "tab_ref": "t5", "domain": "stackoverflow.com", "minutes": 8.0 }
-      ],
-      "markers": [
-        {
-          "type": "decision",
-          "id": "dec-1",
-          "label": "Not using OAuth providers for v1",
-          "ts": "2026-10-04T10:14:32Z"
+      "name": "reject_unknown_range",
+      "description": "Only 24h is supported in P0.",
+      "request": {
+        "method": "GET",
+        "path": "/api/projects/p_10000000-0000-4000-8000-000000000001/timeline?range=90d",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "range must be 24h",
+          "instance": "/api/projects/p_10000000-0000-4000-8000-000000000001/timeline",
+          "errors": [
+            {
+              "loc": [
+                "query",
+                "range"
+              ],
+              "msg": "Input should be '24h'",
+              "type": "literal_error"
+            }
+          ]
         }
-      ]
+      },
+      "introduces": []
     }
   ]
 }

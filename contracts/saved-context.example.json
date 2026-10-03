@@ -1,60 +1,798 @@
 {
-  "save_request": {
-    "project_id": "p-backend-auth",
-    "title": "Backend Auth Research Context",
-    "kind": "resume",
-    "snapshot": {
-      "goal": "Choose an authentication architecture for the application",
-      "direction": "JWT appears to be the preferred approach",
-      "important_tabs": [
-        { "tab_ref": "t1", "domain": "fastapi.tiangolo.com", "title": "Security - FastAPI", "importance": 0.92, "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/" },
-        { "tab_ref": "t3", "domain": "jwt.io", "title": "JWT.IO - Introduction", "importance": 0.88, "fallback_url": "https://jwt.io/introduction" }
-      ],
-      "all_tab_refs": ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"],
-      "fallback_urls": [
-        "https://fastapi.tiangolo.com/tutorial/security/",
-        "https://github.com/tiangolo/fastapi",
-        "https://jwt.io/introduction",
-        "https://auth0.com/overview"
-      ],
-      "open_questions": ["Where should refresh tokens be stored securely?"]
-    }
-  },
-  "list_response": [
-    {
-      "id": "ctx-1",
-      "project_id": "p-backend-auth",
-      "project_name": "Backend Authentication",
-      "title": "Backend Auth Research Context",
-      "kind": "resume",
-      "saved_at": "2026-10-04T14:40:00Z",
-      "last_resumed_at": null,
-      "time_invested_minutes": 42.5,
-      "session_count": 3,
-      "open_question_count": 1,
-      "goal_summary": "Choose an authentication architecture for the application",
-      "important_tab_count": 4,
-      "total_tab_count": 8
-    }
+  "contract": "C7",
+  "title": "Saved contexts: save, list and resume",
+  "drafted_by": "P",
+  "sources": [
+    "SPEC.md §3.5 (Resume context, Pruning), §6.1, §8.1 (saved_contexts), §9.2 (Saved Groves), §10",
+    "BUILD_TASKS.md §4.3 (GET_URLS, RESTORE), §4.5, P-9, S-8, S-11"
   ],
-  "resume_card": {
-    "context_id": "ctx-1",
-    "project_name": "Backend Authentication",
-    "goal": "Choose an authentication architecture for the application",
-    "direction": "JWT appears to be the preferred approach",
-    "last_active": "2026-10-04T14:28:00Z",
-    "time_invested_text": "2 h 14 m across 3 sessions",
-    "open_questions": ["Where should refresh tokens be stored securely?"],
-    "next_action": "Prototype a refresh-token flow using HttpOnly, SameSite=strict cookies",
-    "important_tabs": [
-      { "tab_ref": "t1", "title": "Security - FastAPI", "domain": "fastapi.tiangolo.com", "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/" },
-      { "tab_ref": "t3", "title": "JWT.IO - Introduction", "domain": "jwt.io", "fallback_url": "https://jwt.io/introduction" }
-    ],
-    "all_tabs": [
-      { "tab_ref": "t1", "title": "Security - FastAPI", "domain": "fastapi.tiangolo.com", "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/" },
-      { "tab_ref": "t2", "title": "tiangolo/fastapi: JWT example", "domain": "github.com", "fallback_url": "https://github.com/tiangolo/fastapi" },
-      { "tab_ref": "t3", "title": "JWT.IO - Introduction", "domain": "jwt.io", "fallback_url": "https://jwt.io/introduction" },
-      { "tab_ref": "t4", "title": "OAuth 2.0 Overview", "domain": "auth0.com", "fallback_url": "https://auth0.com/overview" }
-    ]
-  }
+  "notes": [
+    "Scenario: R's shared demo set. Tab IDs come from apps/api/app/engine/fixtures/demo_tabs.json (the 28 tabs in snapshot.example.json); project, claim, note and saved-context IDs come from grove.example.json and memory-search.example.json. IDs these examples create are listed in `introduces`; IDs that belong to another user are listed in `unknown_ids`.",
+    "Every request carries Authorization: Bearer <token> unless the example lists request.headers explicitly. user_id never appears in a request body; the server takes it from the token.",
+    "Durations are integer milliseconds (active_ms) so every sum is exact; the UI converts to minutes. Times are UTC and follow R's story clock (snapshot at 2026-10-04T11:40:00Z).",
+    "Errors are RFC 7807 problem JSON with `instance` = the request path, as in R's files.",
+    "Save: POST /api/projects/{project_id}/save-context. kind is 'resume' (card required) or 'references' (card null; the prune dialog's save_as_references action, before the tabs are closed).",
+    "The grove page builds the card from the grove it shows: goal, direction, decisions (stones), unresolved_questions (open mushrooms) and next_action are R's claim objects copied unchanged from grove.example.json; explored_branches lists branches with status 'explored'. The server stores card and tabs as sent and never re-derives a claim.",
+    "tabs[].fallback_url is the stripped URL from the bridge's GET_URLS (no query string, no fragment; one with ? or # returns 422). These are the only URLs that reach the server (SPEC §6.1) and become RESTORE fallback_urls after a browser restart.",
+    "tabs[].important follows the tree's important_tab_refs. tabs[].excluded_reason is exact_duplicate, semantic_redundant or stale (R's prune kinds) or null; such tabs are never important and are left out of the default restore.",
+    "Resume: POST /api/contexts/{context_id}/resume (no body) sets last_resumed_at and returns the card plus live totals across all of the project's sessions: 8,040,000 ms = 134 min, R's attention_min, across 3 sessions (Oct 2, and the two in sessions.example.json).",
+    "important_tabs are ordered by live cluster_tabs.importance (R's leaf importance); if the cluster is gone, importance is null and the saved order is kept. totals_as_of is null when totals are live; for contexts whose events aged out of retention it is the save time, and the totals are those recorded then (the March 12 context).",
+    "List rows carry counts for the Saved Groves cards; time formatting such as '2 h 14 m' is left to the UI.",
+    "A project or context the caller does not own returns 404."
+  ],
+  "examples": [
+    {
+      "name": "save_resume",
+      "description": "Save Backend Authentication at 11:42 with its 10 open tabs.",
+      "request": {
+        "method": "POST",
+        "path": "/api/projects/p_10000000-0000-4000-8000-000000000001/save-context",
+        "content_type": "application/json",
+        "body": {
+          "kind": "resume",
+          "title": "Backend Authentication",
+          "card": {
+            "goal": {
+              "id": "g_30000000-0000-4000-8000-000000000101",
+              "text": "Choose an authentication architecture for the application",
+              "provenance": "inferred",
+              "confidence": 0.82,
+              "display_text": "Appears to be choosing an authentication architecture for the application",
+              "evidence": [
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000001",
+                  "why": "official FastAPI security docs, 9.5 min"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000003",
+                  "why": "compared JWT and sessions"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000005",
+                  "why": "read the OAuth 2.0 authorization code flow"
+                }
+              ]
+            },
+            "direction": {
+              "id": "dir_30000000-0000-4000-8000-000000000201",
+              "text": "JWT appears to be the preferred approach",
+              "provenance": "inferred",
+              "confidence": 0.71,
+              "display_text": "JWT appears to be the preferred approach",
+              "evidence": [
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000004",
+                  "why": "14 min dwell, 3 revisits"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000003",
+                  "why": "opened the JWT example from this answer"
+                }
+              ]
+            },
+            "decisions": [
+              {
+                "id": "dec_30000000-0000-4000-8000-000000000301",
+                "text": "Not using OAuth providers for v1",
+                "provenance": "stated",
+                "confidence": 1.0,
+                "display_text": "Not using OAuth providers for v1",
+                "kind": "carved",
+                "user_note_id": "n_40000000-0000-4000-8000-000000000007",
+                "quote": null,
+                "evidence": [
+                  {
+                    "ref_kind": "note",
+                    "ref": "n_40000000-0000-4000-8000-000000000007",
+                    "why": "user note"
+                  }
+                ]
+              },
+              {
+                "id": "dec_30000000-0000-4000-8000-000000000302",
+                "text": "Using FastAPI's built-in OAuth2PasswordBearer instead of a third-party auth library",
+                "provenance": "inferred",
+                "confidence": 0.68,
+                "display_text": "Appears to be using FastAPI's built-in OAuth2PasswordBearer instead of a third-party auth library",
+                "kind": "mossy",
+                "user_note_id": null,
+                "quote": null,
+                "evidence": [
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000001",
+                    "why": "9.5 min on the OAuth2PasswordBearer section"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000004",
+                    "why": "the example kept open uses OAuth2PasswordBearer"
+                  }
+                ]
+              }
+            ],
+            "explored_branches": [
+              {
+                "label": "OAuth 2.0",
+                "status": "explored"
+              },
+              {
+                "label": "Sessions",
+                "status": "explored"
+              }
+            ],
+            "unresolved_questions": [
+              {
+                "id": "q_30000000-0000-4000-8000-000000000401",
+                "text": "Where should refresh tokens be stored securely?",
+                "provenance": "inferred",
+                "confidence": 0.78,
+                "display_text": "Likely still open: where should refresh tokens be stored securely?",
+                "kind": "repeated_search",
+                "status": "open",
+                "answer": null,
+                "resolved_at": null,
+                "recurrence": 4,
+                "evidence": [
+                  {
+                    "ref_kind": "query",
+                    "ref": "qf_50000000-0000-4000-8000-000000000001",
+                    "why": "4 rephrasings in 33 min, no long read after"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000006",
+                    "why": "search: where to store refresh token"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000007",
+                    "why": "search: refresh token httponly cookie vs localstorage"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000008",
+                    "why": "search: is it safe to keep refresh token in the browser"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000010",
+                    "why": "short visit (24 s) from a search result"
+                  }
+                ]
+              }
+            ],
+            "next_action": {
+              "id": "a_30000000-0000-4000-8000-000000000501",
+              "text": "Prototype a refresh-token flow with HttpOnly, SameSite cookies",
+              "provenance": "inferred",
+              "confidence": 0.66,
+              "display_text": "Likely next: prototype a refresh-token flow with HttpOnly, SameSite cookies",
+              "unblocks": "q_30000000-0000-4000-8000-000000000401",
+              "reason": "Most-searched open question",
+              "evidence": [
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000007",
+                  "why": "searched HttpOnly cookie vs localStorage"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000004",
+                  "why": "the example has a refresh route to adapt"
+                }
+              ]
+            }
+          },
+          "tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000001",
+              "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "important": true,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "fallback_url": "https://github.com/devsamples/fastapi-jwt-auth-example",
+              "domain": "github.com",
+              "title": "fastapi-jwt-auth-example: login, refresh and protected routes",
+              "important": true,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "fallback_url": "https://medium.com/@backendnotes/securing-fastapi-with-jwt-a-step-by-step-guide-3f9c2a",
+              "domain": "medium.com",
+              "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+              "important": false,
+              "excluded_reason": "semantic_redundant"
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "fallback_url": "https://www.google.com/search",
+              "domain": "www.google.com",
+              "title": "refresh token httponly cookie vs localstorage - Google Search",
+              "important": false,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "fallback_url": "https://www.google.com/search",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "important": false,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000008",
+              "fallback_url": "https://www.google.com/search",
+              "domain": "www.google.com",
+              "title": "is it safe to keep refresh token in the browser - Google Search",
+              "important": false,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "fallback_url": "https://dev.to/pyweekly/fastapi-jwt-authentication-explained-4k2m",
+              "domain": "dev.to",
+              "title": "FastAPI JWT authentication explained - DEV Community",
+              "important": false,
+              "excluded_reason": "semantic_redundant"
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "important": false,
+              "excluded_reason": "exact_duplicate"
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000005",
+              "fallback_url": "https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow",
+              "domain": "learn.microsoft.com",
+              "title": "OAuth 2.0 authorization code flow - Microsoft identity platform | Microsoft Learn",
+              "important": true,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000003",
+              "fallback_url": "https://stackoverflow.com/questions/43452896/jwt-vs-session-based-authentication-for-a-rest-api",
+              "domain": "stackoverflow.com",
+              "title": "JWT vs session-based authentication for a REST API - Stack Overflow",
+              "important": true,
+              "excluded_reason": null
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "content_type": "application/json",
+        "body": {
+          "id": "s_60000000-0000-4000-8000-000000000001",
+          "project_id": "p_10000000-0000-4000-8000-000000000001",
+          "kind": "resume",
+          "title": "Backend Authentication",
+          "saved_at": "2026-10-04T11:42:00Z",
+          "important_tab_count": 4,
+          "total_tab_count": 10
+        }
+      },
+      "introduces": [
+        "s_60000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "name": "save_references",
+      "description": "The prune dialog's 'Save as references' for the two semantic duplicates (R's prune suggestion pr_b...002).",
+      "request": {
+        "method": "POST",
+        "path": "/api/projects/p_10000000-0000-4000-8000-000000000001/save-context",
+        "content_type": "application/json",
+        "body": {
+          "kind": "references",
+          "title": "Backend Authentication: references",
+          "card": null,
+          "tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "fallback_url": "https://medium.com/@backendnotes/securing-fastapi-with-jwt-a-step-by-step-guide-3f9c2a",
+              "domain": "medium.com",
+              "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+              "important": false,
+              "excluded_reason": "semantic_redundant"
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "fallback_url": "https://dev.to/pyweekly/fastapi-jwt-authentication-explained-4k2m",
+              "domain": "dev.to",
+              "title": "FastAPI JWT authentication explained - DEV Community",
+              "important": false,
+              "excluded_reason": "semantic_redundant"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 201,
+        "content_type": "application/json",
+        "body": {
+          "id": "s_60000000-0000-4000-8000-000000000002",
+          "project_id": "p_10000000-0000-4000-8000-000000000001",
+          "kind": "references",
+          "title": "Backend Authentication: references",
+          "saved_at": "2026-10-04T11:43:00Z",
+          "important_tab_count": 0,
+          "total_tab_count": 2
+        }
+      },
+      "introduces": [
+        "s_60000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "name": "list_contexts",
+      "description": "Saved Groves: the two contexts saved today and the March 12 context behind the firefly.",
+      "request": {
+        "method": "GET",
+        "path": "/api/contexts",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "contexts": [
+            {
+              "id": "s_60000000-0000-4000-8000-000000000002",
+              "project_id": "p_10000000-0000-4000-8000-000000000001",
+              "project_name": "Backend Authentication",
+              "kind": "references",
+              "title": "Backend Authentication: references",
+              "saved_at": "2026-10-04T11:43:00Z",
+              "last_resumed_at": null,
+              "last_active_at": "2026-10-04T11:31:50Z",
+              "active_ms": 8040000,
+              "session_count": 3,
+              "totals_as_of": null,
+              "open_question_count": 1,
+              "important_tab_count": 0,
+              "total_tab_count": 2,
+              "goal_summary": null,
+              "next_action": null
+            },
+            {
+              "id": "s_60000000-0000-4000-8000-000000000001",
+              "project_id": "p_10000000-0000-4000-8000-000000000001",
+              "project_name": "Backend Authentication",
+              "kind": "resume",
+              "title": "Backend Authentication",
+              "saved_at": "2026-10-04T11:42:00Z",
+              "last_resumed_at": null,
+              "last_active_at": "2026-10-04T11:31:50Z",
+              "active_ms": 8040000,
+              "session_count": 3,
+              "totals_as_of": null,
+              "open_question_count": 1,
+              "important_tab_count": 4,
+              "total_tab_count": 10,
+              "goal_summary": "Choose an authentication architecture for the application",
+              "next_action": "Prototype a refresh-token flow with HttpOnly, SameSite cookies"
+            },
+            {
+              "id": "s_60000000-0000-4000-8000-000000000003",
+              "project_id": "p_10000000-0000-4000-8000-000000000099",
+              "project_name": "Backend Scaling",
+              "kind": "resume",
+              "title": "Backend Scaling",
+              "saved_at": "2026-03-12T21:40:00Z",
+              "last_resumed_at": null,
+              "last_active_at": "2026-03-12T21:35:00Z",
+              "active_ms": 6000000,
+              "session_count": 2,
+              "totals_as_of": "2026-03-12T21:40:00Z",
+              "open_question_count": 0,
+              "important_tab_count": 3,
+              "total_tab_count": 6,
+              "goal_summary": "Decide whether the backend needs Redis for sessions",
+              "next_action": null
+            }
+          ]
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "resume_next_morning",
+      "description": "The next morning, after Chrome was quit and reopened.",
+      "request": {
+        "method": "POST",
+        "path": "/api/contexts/s_60000000-0000-4000-8000-000000000001/resume",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "id": "s_60000000-0000-4000-8000-000000000001",
+          "project_id": "p_10000000-0000-4000-8000-000000000001",
+          "project_name": "Backend Authentication",
+          "kind": "resume",
+          "title": "Backend Authentication",
+          "saved_at": "2026-10-04T11:42:00Z",
+          "last_resumed_at": "2026-10-05T09:05:00Z",
+          "last_active_at": "2026-10-04T11:31:50Z",
+          "active_ms": 8040000,
+          "session_count": 3,
+          "totals_as_of": null,
+          "card": {
+            "goal": {
+              "id": "g_30000000-0000-4000-8000-000000000101",
+              "text": "Choose an authentication architecture for the application",
+              "provenance": "inferred",
+              "confidence": 0.82,
+              "display_text": "Appears to be choosing an authentication architecture for the application",
+              "evidence": [
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000001",
+                  "why": "official FastAPI security docs, 9.5 min"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000003",
+                  "why": "compared JWT and sessions"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000005",
+                  "why": "read the OAuth 2.0 authorization code flow"
+                }
+              ]
+            },
+            "direction": {
+              "id": "dir_30000000-0000-4000-8000-000000000201",
+              "text": "JWT appears to be the preferred approach",
+              "provenance": "inferred",
+              "confidence": 0.71,
+              "display_text": "JWT appears to be the preferred approach",
+              "evidence": [
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000004",
+                  "why": "14 min dwell, 3 revisits"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000003",
+                  "why": "opened the JWT example from this answer"
+                }
+              ]
+            },
+            "decisions": [
+              {
+                "id": "dec_30000000-0000-4000-8000-000000000301",
+                "text": "Not using OAuth providers for v1",
+                "provenance": "stated",
+                "confidence": 1.0,
+                "display_text": "Not using OAuth providers for v1",
+                "kind": "carved",
+                "user_note_id": "n_40000000-0000-4000-8000-000000000007",
+                "quote": null,
+                "evidence": [
+                  {
+                    "ref_kind": "note",
+                    "ref": "n_40000000-0000-4000-8000-000000000007",
+                    "why": "user note"
+                  }
+                ]
+              },
+              {
+                "id": "dec_30000000-0000-4000-8000-000000000302",
+                "text": "Using FastAPI's built-in OAuth2PasswordBearer instead of a third-party auth library",
+                "provenance": "inferred",
+                "confidence": 0.68,
+                "display_text": "Appears to be using FastAPI's built-in OAuth2PasswordBearer instead of a third-party auth library",
+                "kind": "mossy",
+                "user_note_id": null,
+                "quote": null,
+                "evidence": [
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000001",
+                    "why": "9.5 min on the OAuth2PasswordBearer section"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000004",
+                    "why": "the example kept open uses OAuth2PasswordBearer"
+                  }
+                ]
+              }
+            ],
+            "explored_branches": [
+              {
+                "label": "OAuth 2.0",
+                "status": "explored"
+              },
+              {
+                "label": "Sessions",
+                "status": "explored"
+              }
+            ],
+            "unresolved_questions": [
+              {
+                "id": "q_30000000-0000-4000-8000-000000000401",
+                "text": "Where should refresh tokens be stored securely?",
+                "provenance": "inferred",
+                "confidence": 0.78,
+                "display_text": "Likely still open: where should refresh tokens be stored securely?",
+                "kind": "repeated_search",
+                "status": "open",
+                "answer": null,
+                "resolved_at": null,
+                "recurrence": 4,
+                "evidence": [
+                  {
+                    "ref_kind": "query",
+                    "ref": "qf_50000000-0000-4000-8000-000000000001",
+                    "why": "4 rephrasings in 33 min, no long read after"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000006",
+                    "why": "search: where to store refresh token"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000007",
+                    "why": "search: refresh token httponly cookie vs localstorage"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000008",
+                    "why": "search: is it safe to keep refresh token in the browser"
+                  },
+                  {
+                    "ref_kind": "tab",
+                    "ref": "00000000-0000-4000-8000-000000000010",
+                    "why": "short visit (24 s) from a search result"
+                  }
+                ]
+              }
+            ],
+            "next_action": {
+              "id": "a_30000000-0000-4000-8000-000000000501",
+              "text": "Prototype a refresh-token flow with HttpOnly, SameSite cookies",
+              "provenance": "inferred",
+              "confidence": 0.66,
+              "display_text": "Likely next: prototype a refresh-token flow with HttpOnly, SameSite cookies",
+              "unblocks": "q_30000000-0000-4000-8000-000000000401",
+              "reason": "Most-searched open question",
+              "evidence": [
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000007",
+                  "why": "searched HttpOnly cookie vs localStorage"
+                },
+                {
+                  "ref_kind": "tab",
+                  "ref": "00000000-0000-4000-8000-000000000004",
+                  "why": "the example has a refresh route to adapt"
+                }
+              ]
+            }
+          },
+          "important_tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000001",
+              "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "importance": 0.91
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "fallback_url": "https://github.com/devsamples/fastapi-jwt-auth-example",
+              "domain": "github.com",
+              "title": "fastapi-jwt-auth-example: login, refresh and protected routes",
+              "importance": 0.86
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000003",
+              "fallback_url": "https://stackoverflow.com/questions/43452896/jwt-vs-session-based-authentication-for-a-rest-api",
+              "domain": "stackoverflow.com",
+              "title": "JWT vs session-based authentication for a REST API - Stack Overflow",
+              "importance": 0.74
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000005",
+              "fallback_url": "https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow",
+              "domain": "learn.microsoft.com",
+              "title": "OAuth 2.0 authorization code flow - Microsoft identity platform | Microsoft Learn",
+              "importance": 0.62
+            }
+          ],
+          "other_tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "fallback_url": "https://medium.com/@backendnotes/securing-fastapi-with-jwt-a-step-by-step-guide-3f9c2a",
+              "domain": "medium.com",
+              "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+              "importance": 0.41,
+              "excluded_reason": "semantic_redundant"
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "fallback_url": "https://www.google.com/search",
+              "domain": "www.google.com",
+              "title": "refresh token httponly cookie vs localstorage - Google Search",
+              "importance": 0.33,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "fallback_url": "https://www.google.com/search",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "importance": 0.29,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000008",
+              "fallback_url": "https://www.google.com/search",
+              "domain": "www.google.com",
+              "title": "is it safe to keep refresh token in the browser - Google Search",
+              "importance": 0.27,
+              "excluded_reason": null
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "fallback_url": "https://dev.to/pyweekly/fastapi-jwt-authentication-explained-4k2m",
+              "domain": "dev.to",
+              "title": "FastAPI JWT authentication explained - DEV Community",
+              "importance": 0.12,
+              "excluded_reason": "semantic_redundant"
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "importance": 0.08,
+              "excluded_reason": "exact_duplicate"
+            }
+          ],
+          "restore_options": [
+            "important",
+            "all",
+            "summary"
+          ]
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "reject_url_with_query_string",
+      "description": "URLs must arrive stripped; a query string never reaches the database.",
+      "request": {
+        "method": "POST",
+        "path": "/api/projects/p_10000000-0000-4000-8000-000000000001/save-context",
+        "content_type": "application/json",
+        "body": {
+          "kind": "references",
+          "title": "Search tabs",
+          "card": null,
+          "tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "fallback_url": "https://www.google.com/search?q=where+to+store+refresh+token",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "important": false,
+              "excluded_reason": null
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "tabs[0].fallback_url must not contain a query string or fragment",
+          "instance": "/api/projects/p_10000000-0000-4000-8000-000000000001/save-context",
+          "errors": [
+            {
+              "loc": [
+                "body",
+                "tabs",
+                0,
+                "fallback_url"
+              ],
+              "msg": "URL must not contain a query string or fragment",
+              "type": "value_error"
+            }
+          ]
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "not_found_other_users_project",
+      "description": "Saving into a project the caller does not own.",
+      "request": {
+        "method": "POST",
+        "path": "/api/projects/p_e0000000-0000-4000-8000-000000000404/save-context",
+        "content_type": "application/json",
+        "body": {
+          "kind": "references",
+          "title": "Not mine",
+          "card": null,
+          "tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000001",
+              "fallback_url": "https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "important": true,
+              "excluded_reason": null
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 404,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Not Found",
+          "status": 404,
+          "detail": "Project not found",
+          "instance": "/api/projects/p_e0000000-0000-4000-8000-000000000404/save-context"
+        }
+      },
+      "introduces": [],
+      "unknown_ids": [
+        "p_e0000000-0000-4000-8000-000000000404"
+      ]
+    },
+    {
+      "name": "not_found_other_users_context",
+      "description": "Resuming a context the caller does not own.",
+      "request": {
+        "method": "POST",
+        "path": "/api/contexts/s_e0000000-0000-4000-8000-000000000404/resume",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Not Found",
+          "status": 404,
+          "detail": "Saved context not found",
+          "instance": "/api/contexts/s_e0000000-0000-4000-8000-000000000404/resume"
+        }
+      },
+      "introduces": [],
+      "unknown_ids": [
+        "s_e0000000-0000-4000-8000-000000000404"
+      ]
+    }
+  ]
 }

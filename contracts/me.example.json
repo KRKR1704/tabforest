@@ -1,18 +1,223 @@
 {
-  "id": "usr-5d0a-9b1e-3f4a",
-  "display_name": "Maya Lin",
-  "email": "maya@tabforest.local",
-  "created_at": "2026-10-01T08:00:00Z",
-  "privacy": {
-    "excluded_domains": ["chase.com", "bankofamerica.com", "fidelity.com"],
-    "paused_until": null,
-    "retention_days": 30,
-    "cloud_ai_enabled": true
+  "contract": "C2, C7",
+  "title": "GET /api/me (just-in-time provisioning) and DELETE /api/me",
+  "drafted_by": "P",
+  "sources": [
+    "SPEC.md §8.1 (users, privacy_settings), §10, §11.1, §11.2, §11.3",
+    "BUILD_TASKS.md §4.1, P-4, P-11, S-10, S-13"
+  ],
+  "fixture": {
+    "entra_tid": "9188040d-6c67-4c5b-b112-36a304b66dad",
+    "entra_oid": "d6eae202-6f29-4e95-be4c-632a7395de64",
+    "user_id": "452b6018-022d-5e0b-bd7c-101d3c412b79",
+    "derivation": "uuid5(NAMESPACE_URL, 'tabforest:' + tid + ':' + oid)"
   },
-  "stats": {
-    "total_forests": 3,
-    "active_goals": 2,
-    "total_attention_hours": 14.8,
-    "total_resolved_questions": 12
-  }
+  "notes": [
+    "Scenario: R's shared demo set. Tab IDs come from apps/api/app/engine/fixtures/demo_tabs.json (the 28 tabs in snapshot.example.json); project, claim, note and saved-context IDs come from grove.example.json and memory-search.example.json. IDs these examples create are listed in `introduces`; IDs that belong to another user are listed in `unknown_ids`.",
+    "Every request carries Authorization: Bearer <token> unless the example lists request.headers explicitly. user_id never appears in a request body; the server takes it from the token.",
+    "Durations are integer milliseconds (active_ms) so every sum is exact; the UI converts to minutes. Times are UTC and follow R's story clock (snapshot at 2026-10-04T11:40:00Z).",
+    "Errors are RFC 7807 problem JSON with `instance` = the request path, as in R's files.",
+    "user.id is derived from the token, never looked up: uuid5(NAMESPACE_URL, 'tabforest:' + tid + ':' + oid); with the fallback login it is the JWT's sub. The fixture above is the user every P example belongs to.",
+    "The first GET /api/me creates the users row and a privacy_settings row with defaults (no exclusions, not paused, 90-day retention, cloud AI on) and returns first_sign_in=true, for the first-run onboarding. Later calls return false.",
+    "display_name and email come from the token's name and preferred_username claims (the extension requests the profile scope).",
+    "stats: total_forests = projects the user has (including past ones); active_goals = projects active in the last 3 days; total_attention_ms = attention summed over projects (a shared tab counts for each project); total_resolved_questions = questions with status resolved. Values agree with grove.example.json and memory-search.example.json.",
+    "privacy has the same shape as GET /api/privacy.",
+    "A missing, invalid or expired token returns 401 with WWW-Authenticate: Bearer. X-Dev-User is accepted only when AUTH_MODE=dev; on the deployed API a request carrying only X-Dev-User gets 401.",
+    "DELETE /api/me removes every row the user owns in every SPEC §8.1 table in one transaction, refreshes the aggregates over the affected range, and returns counts per table and a total. The extension then sends WIPE_LOCAL; the next GET /api/me provisions a fresh account."
+  ],
+  "examples": [
+    {
+      "name": "first_call_provisions",
+      "description": "First sign-in: rows are created, first_sign_in is true, nothing is tracked yet.",
+      "request": {
+        "method": "GET",
+        "path": "/api/me",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "user": {
+            "id": "452b6018-022d-5e0b-bd7c-101d3c412b79",
+            "display_name": "Demo User",
+            "email": "demo.user@example.com",
+            "created_at": "2026-09-29T19:11:30Z"
+          },
+          "first_sign_in": true,
+          "stats": {
+            "total_forests": 0,
+            "active_goals": 0,
+            "total_attention_ms": 0,
+            "total_resolved_questions": 0
+          },
+          "privacy": {
+            "excluded_domains": [],
+            "paused_until": null,
+            "retention_days": 90,
+            "cloud_ai_enabled": true,
+            "updated_at": "2026-09-29T19:11:30Z"
+          }
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "later_call",
+      "description": "At 11:45 on Oct 4, after the grove grew.",
+      "request": {
+        "method": "GET",
+        "path": "/api/me",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "user": {
+            "id": "452b6018-022d-5e0b-bd7c-101d3c412b79",
+            "display_name": "Demo User",
+            "email": "demo.user@example.com",
+            "created_at": "2026-09-29T19:11:30Z"
+          },
+          "first_sign_in": false,
+          "stats": {
+            "total_forests": 5,
+            "active_goals": 3,
+            "total_attention_ms": 20160000,
+            "total_resolved_questions": 1
+          },
+          "privacy": {
+            "excluded_domains": [],
+            "paused_until": null,
+            "retention_days": 90,
+            "cloud_ai_enabled": true,
+            "updated_at": "2026-09-29T19:11:30Z"
+          }
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "missing_token",
+      "description": "No Authorization header.",
+      "request": {
+        "method": "GET",
+        "path": "/api/me",
+        "content_type": null,
+        "body": null,
+        "headers": {}
+      },
+      "response": {
+        "status": 401,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unauthorized",
+          "status": 401,
+          "detail": "Missing bearer token",
+          "instance": "/api/me"
+        },
+        "headers": {
+          "WWW-Authenticate": "Bearer"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "dev_header_rejected_in_prod",
+      "description": "On the deployed API (AUTH_MODE=prod) the dev header alone is not a credential; P-13's check.",
+      "request": {
+        "method": "GET",
+        "path": "/api/me",
+        "content_type": null,
+        "body": null,
+        "headers": {
+          "X-Dev-User": "452b6018-022d-5e0b-bd7c-101d3c412b79"
+        }
+      },
+      "response": {
+        "status": 401,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unauthorized",
+          "status": 401,
+          "detail": "Missing bearer token",
+          "instance": "/api/me"
+        },
+        "headers": {
+          "WWW-Authenticate": "Bearer"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "invalid_or_expired_token",
+      "description": "Bad signature, wrong audience or issuer, missing tid/oid, or expired beyond 60 s of skew.",
+      "request": {
+        "method": "GET",
+        "path": "/api/me",
+        "content_type": null,
+        "body": null,
+        "headers": {
+          "Authorization": "Bearer <expired-token>"
+        }
+      },
+      "response": {
+        "status": 401,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unauthorized",
+          "status": 401,
+          "detail": "Invalid or expired token",
+          "instance": "/api/me"
+        },
+        "headers": {
+          "WWW-Authenticate": "Bearer"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "delete_account",
+      "description": "Delete all memory: every row for this user, in one transaction.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/me",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "deleted": {
+            "users": 1,
+            "privacy_settings": 1,
+            "browser_sessions": 8,
+            "browser_events": 651,
+            "tabs": 41,
+            "saved_contexts": 3,
+            "projects": 5,
+            "intent_clusters": 9,
+            "intent_branches": 11,
+            "cluster_tabs": 36,
+            "research_insights": 2,
+            "decisions": 3,
+            "unresolved_questions": 2,
+            "suggested_actions": 1,
+            "user_notes": 2,
+            "memory_embeddings": 50,
+            "analysis_runs": 4
+          },
+          "total": 830
+        }
+      },
+      "introduces": []
+    }
+  ]
 }

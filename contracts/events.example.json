@@ -1,38 +1,1324 @@
 {
+  "contract": "C1",
+  "title": "POST /api/events: browser event batch ingest",
+  "drafted_by": "P",
+  "sources": [
+    "SPEC.md §5.3, §8.2, §10, §10.1, §12, §13",
+    "BUILD_TASKS.md §4.2, §4.6, §4.10, §4.11"
+  ],
+  "notes": [
+    "Scenario: R's shared demo set. Tab IDs come from apps/api/app/engine/fixtures/demo_tabs.json (the 28 tabs in snapshot.example.json); project, claim, note and saved-context IDs come from grove.example.json and memory-search.example.json. IDs these examples create are listed in `introduces`; IDs that belong to another user are listed in `unknown_ids`.",
+    "Every request carries Authorization: Bearer <token> unless the example lists request.headers explicitly. user_id never appears in a request body; the server takes it from the token.",
+    "Durations are integer milliseconds (active_ms) so every sum is exact; the UI converts to minutes. Times are UTC and follow R's story clock (snapshot at 2026-10-04T11:40:00Z).",
+    "Errors are RFC 7807 problem JSON with `instance` = the request path, as in R's files.",
+    "batch_request and batch_response at the top level are the first_send example, kept for D's mock API test (apps/extension/tests/mock-api.test.mjs).",
+    "A batch holds 1 to 500 events; an empty list or more than 500 returns 422. type is OPEN, FOCUS, BLUR, UPDATE, CLOSE, IDLE or ACTIVE (stored as browser_events.event_type).",
+    "Fields by type. Every event: event_id, ts, type, tab_ref. OPEN adds domain, title, opener_tab_ref, dup_key, search_query. UPDATE adds domain, title, dup_key, search_query. FOCUS adds previous_tab_ref. BLUR adds active_ms. CLOSE, IDLE and ACTIVE add nothing. A listed field may be null; unknown fields return 422.",
+    "IDLE and ACTIVE carry the tab_ref of the focused tab, because browser_events.tab_ref is NOT NULL. active_ms on BLUR is focused time since the tab's FOCUS minus idle time.",
+    "event_id is minted on the device once, when the event is created; a retry resends the same event_id and ts. Inserts use ON CONFLICT (user_id, ts, event_id) DO NOTHING, so accepted + duplicates always equals the number of events sent.",
+    "title is at most 300 characters and redacted on the device. There is no URL field. dup_key is opaque to the server: 64 lowercase hex characters (SHA-256 of the normalized URL, computed on the device).",
+    "The server builds sessions from ts with the 30-minute gap rule, so late or out-of-order batches land in the right session. session_hint (SPEC §10.1) is optional and ignored.",
+    "is_tab_switch is set by the server: true when a FOCUS event has a previous_tab_ref different from its tab_ref.",
+    "This batch is the start of the late session (10:57:40 to 11:24:49): the refresh-token searches, the Medium and dev.to articles, the duplicate FastAPI tab and the two Rust sprout tabs. Tab 29 is a fourth search (query family qf_...001) that was closed at 11:11:22.",
+    "429 and 503 carry Retry-After in seconds. The extension keeps a batch in its queue until it gets a 202."
+  ],
   "batch_request": {
-    "session_hint": "sess-1",
     "events": [
       {
-        "event_id": "5d0a9b1e-3f4a-4b2c-8d1e-0a1b2c3d4e5f",
-        "ts": "2026-10-04T14:02:31Z",
+        "event_id": "90000000-0000-4000-8000-000000000001",
+        "ts": "2026-10-04T10:57:40Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000002",
+        "ts": "2026-10-04T10:58:02Z",
         "type": "OPEN",
-        "tab_ref": "t1",
-        "domain": "fastapi.tiangolo.com",
-        "title": "Security - FastAPI",
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "domain": "www.google.com",
+        "title": "where to store refresh token - Google Search",
         "opener_tab_ref": null,
-        "dup_key": "9a7f3e1b4c6d",
+        "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+        "search_query": "where to store refresh token"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000003",
+        "ts": "2026-10-04T10:58:02Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "active_ms": 22000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000004",
+        "ts": "2026-10-04T10:58:02Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000005",
+        "ts": "2026-10-04T10:58:24Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "active_ms": 22000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000006",
+        "ts": "2026-10-04T10:58:24Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000007",
+        "ts": "2026-10-04T10:59:55Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "active_ms": 91000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000008",
+        "ts": "2026-10-04T10:59:55Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000009",
+        "ts": "2026-10-04T11:00:15Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000009",
+        "domain": "medium.com",
+        "title": "Medium",
+        "opener_tab_ref": "00000000-0000-4000-8000-000000000006",
+        "dup_key": "46eab533b257ded359e9072fbf1b9355bf289d84da762f8bf23177c40d73fd1b",
         "search_query": null
       },
       {
-        "event_id": "7e42a0b1-2c3d-4e5f-9a0b-1c2d3e4f5a6b",
-        "ts": "2026-10-04T14:08:42Z",
+        "event_id": "90000000-0000-4000-8000-000000000010",
+        "ts": "2026-10-04T11:00:15Z",
         "type": "BLUR",
-        "tab_ref": "t1",
-        "active_ms": 371000
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "active_ms": 20000
       },
       {
-        "event_id": "c9b1d2e3-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
-        "ts": "2026-10-04T14:08:44Z",
+        "event_id": "90000000-0000-4000-8000-000000000011",
+        "ts": "2026-10-04T11:00:15Z",
         "type": "FOCUS",
-        "tab_ref": "t3",
-        "previous_tab_ref": "t1",
-        "domain": "jwt.io",
-        "title": "JWT.IO - Introduction"
+        "tab_ref": "00000000-0000-4000-8000-000000000009",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000012",
+        "ts": "2026-10-04T11:00:17Z",
+        "type": "UPDATE",
+        "tab_ref": "00000000-0000-4000-8000-000000000009",
+        "domain": "medium.com",
+        "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+        "dup_key": "46eab533b257ded359e9072fbf1b9355bf289d84da762f8bf23177c40d73fd1b",
+        "search_query": null
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000013",
+        "ts": "2026-10-04T11:02:00Z",
+        "type": "IDLE",
+        "tab_ref": "00000000-0000-4000-8000-000000000009"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000014",
+        "ts": "2026-10-04T11:02:40Z",
+        "type": "ACTIVE",
+        "tab_ref": "00000000-0000-4000-8000-000000000009"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000015",
+        "ts": "2026-10-04T11:03:40Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000002",
+        "domain": "fastapi.tiangolo.com",
+        "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+        "opener_tab_ref": "00000000-0000-4000-8000-000000000009",
+        "dup_key": "64611be6232fd471887903abe56aa18517a2c5b7758549cefe019458efff79a4",
+        "search_query": null
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000016",
+        "ts": "2026-10-04T11:03:40Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000009",
+        "active_ms": 165000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000017",
+        "ts": "2026-10-04T11:03:40Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000002",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000009"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000018",
+        "ts": "2026-10-04T11:03:58Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000002",
+        "active_ms": 18000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000019",
+        "ts": "2026-10-04T11:03:58Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000009",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000020",
+        "ts": "2026-10-04T11:07:01Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000009",
+        "active_ms": 183000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000021",
+        "ts": "2026-10-04T11:07:01Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000009"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000022",
+        "ts": "2026-10-04T11:09:20Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "active_ms": 139000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000023",
+        "ts": "2026-10-04T11:09:20Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000024",
+        "ts": "2026-10-04T11:09:26Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000007",
+        "domain": "www.google.com",
+        "title": "refresh token httponly cookie vs localstorage - Google Search",
+        "opener_tab_ref": "00000000-0000-4000-8000-000000000006",
+        "dup_key": "3ac1b708e5d0dba8f840f616b72824808fa9a60b32ac7e918dbd3872a7f8193e",
+        "search_query": "refresh token httponly cookie vs localstorage"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000025",
+        "ts": "2026-10-04T11:09:26Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000006",
+        "active_ms": 6000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000026",
+        "ts": "2026-10-04T11:09:26Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000007",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000027",
+        "ts": "2026-10-04T11:10:03Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000010",
+        "domain": "dev.to",
+        "title": "FastAPI JWT authentication explained - DEV Community",
+        "opener_tab_ref": "00000000-0000-4000-8000-000000000007",
+        "dup_key": "bafa1b65e493e58555ff4dd165fb822116c398d2b38f018efb4ca2b3c64fd701",
+        "search_query": null
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000028",
+        "ts": "2026-10-04T11:10:03Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000007",
+        "active_ms": 37000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000029",
+        "ts": "2026-10-04T11:10:03Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000010",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000007"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000030",
+        "ts": "2026-10-04T11:10:27Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000010",
+        "active_ms": 24000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000031",
+        "ts": "2026-10-04T11:10:27Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000007",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000010"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000032",
+        "ts": "2026-10-04T11:10:52Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000029",
+        "domain": "www.google.com",
+        "title": "refresh token storage best practices spa - Google Search",
+        "opener_tab_ref": "00000000-0000-4000-8000-000000000007",
+        "dup_key": "3c510550c40a1df332f4f47d9fbde7e2063b472d2f5d8e3cd4b03a32acb87885",
+        "search_query": "refresh token storage best practices spa"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000033",
+        "ts": "2026-10-04T11:10:52Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000007",
+        "active_ms": 25000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000034",
+        "ts": "2026-10-04T11:10:52Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000029",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000007"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000035",
+        "ts": "2026-10-04T11:11:22Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000029",
+        "active_ms": 30000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000036",
+        "ts": "2026-10-04T11:11:22Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000029"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000037",
+        "ts": "2026-10-04T11:11:22Z",
+        "type": "CLOSE",
+        "tab_ref": "00000000-0000-4000-8000-000000000029"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000038",
+        "ts": "2026-10-04T11:12:10Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000004",
+        "active_ms": 48000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000039",
+        "ts": "2026-10-04T11:18:22Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000024",
+        "domain": "doc.rust-lang.org",
+        "title": "What is Ownership? - The Rust Programming Language",
+        "opener_tab_ref": null,
+        "dup_key": "cdcc2d74e5a596f378a3f2c31585dec574df952ca6897d68fb430f9bb39e4179",
+        "search_query": null
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000040",
+        "ts": "2026-10-04T11:18:22Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000024",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000041",
+        "ts": "2026-10-04T11:22:22Z",
+        "type": "IDLE",
+        "tab_ref": "00000000-0000-4000-8000-000000000024"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000042",
+        "ts": "2026-10-04T11:24:49Z",
+        "type": "ACTIVE",
+        "tab_ref": "00000000-0000-4000-8000-000000000024"
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000043",
+        "ts": "2026-10-04T11:24:49Z",
+        "type": "OPEN",
+        "tab_ref": "00000000-0000-4000-8000-000000000025",
+        "domain": "www.reddit.com",
+        "title": "Rust vs Go for a small CLI tool? : r/rust",
+        "opener_tab_ref": "00000000-0000-4000-8000-000000000024",
+        "dup_key": "a872c714550e88c5366c40c993c51cf1ac159c68433f4e508b100f66b8972db2",
+        "search_query": null
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000044",
+        "ts": "2026-10-04T11:24:49Z",
+        "type": "BLUR",
+        "tab_ref": "00000000-0000-4000-8000-000000000024",
+        "active_ms": 240000
+      },
+      {
+        "event_id": "90000000-0000-4000-8000-000000000045",
+        "ts": "2026-10-04T11:24:49Z",
+        "type": "FOCUS",
+        "tab_ref": "00000000-0000-4000-8000-000000000025",
+        "previous_tab_ref": "00000000-0000-4000-8000-000000000024"
       }
     ]
   },
   "batch_response": {
-    "accepted": 3,
+    "accepted": 45,
     "duplicates": 0
-  }
+  },
+  "examples": [
+    {
+      "name": "first_send",
+      "description": "45 events from the late session, 10:57:40 to 11:24:49.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000001",
+              "ts": "2026-10-04T10:57:40Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000002",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "opener_tab_ref": null,
+              "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+              "search_query": "where to store refresh token"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000003",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 22000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000004",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000005",
+              "ts": "2026-10-04T10:58:24Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "active_ms": 22000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000006",
+              "ts": "2026-10-04T10:58:24Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000007",
+              "ts": "2026-10-04T10:59:55Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 91000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000008",
+              "ts": "2026-10-04T10:59:55Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000009",
+              "ts": "2026-10-04T11:00:15Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "domain": "medium.com",
+              "title": "Medium",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000006",
+              "dup_key": "46eab533b257ded359e9072fbf1b9355bf289d84da762f8bf23177c40d73fd1b",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000010",
+              "ts": "2026-10-04T11:00:15Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "active_ms": 20000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000011",
+              "ts": "2026-10-04T11:00:15Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000012",
+              "ts": "2026-10-04T11:00:17Z",
+              "type": "UPDATE",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "domain": "medium.com",
+              "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+              "dup_key": "46eab533b257ded359e9072fbf1b9355bf289d84da762f8bf23177c40d73fd1b",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000013",
+              "ts": "2026-10-04T11:02:00Z",
+              "type": "IDLE",
+              "tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000014",
+              "ts": "2026-10-04T11:02:40Z",
+              "type": "ACTIVE",
+              "tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000015",
+              "ts": "2026-10-04T11:03:40Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000009",
+              "dup_key": "64611be6232fd471887903abe56aa18517a2c5b7758549cefe019458efff79a4",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000016",
+              "ts": "2026-10-04T11:03:40Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "active_ms": 165000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000017",
+              "ts": "2026-10-04T11:03:40Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000018",
+              "ts": "2026-10-04T11:03:58Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "active_ms": 18000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000019",
+              "ts": "2026-10-04T11:03:58Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000002"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000020",
+              "ts": "2026-10-04T11:07:01Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "active_ms": 183000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000021",
+              "ts": "2026-10-04T11:07:01Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000022",
+              "ts": "2026-10-04T11:09:20Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 139000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000023",
+              "ts": "2026-10-04T11:09:20Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000024",
+              "ts": "2026-10-04T11:09:26Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "domain": "www.google.com",
+              "title": "refresh token httponly cookie vs localstorage - Google Search",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000006",
+              "dup_key": "3ac1b708e5d0dba8f840f616b72824808fa9a60b32ac7e918dbd3872a7f8193e",
+              "search_query": "refresh token httponly cookie vs localstorage"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000025",
+              "ts": "2026-10-04T11:09:26Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "active_ms": 6000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000026",
+              "ts": "2026-10-04T11:09:26Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000027",
+              "ts": "2026-10-04T11:10:03Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "domain": "dev.to",
+              "title": "FastAPI JWT authentication explained - DEV Community",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000007",
+              "dup_key": "bafa1b65e493e58555ff4dd165fb822116c398d2b38f018efb4ca2b3c64fd701",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000028",
+              "ts": "2026-10-04T11:10:03Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "active_ms": 37000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000029",
+              "ts": "2026-10-04T11:10:03Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000007"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000030",
+              "ts": "2026-10-04T11:10:27Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "active_ms": 24000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000031",
+              "ts": "2026-10-04T11:10:27Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000010"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000032",
+              "ts": "2026-10-04T11:10:52Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000029",
+              "domain": "www.google.com",
+              "title": "refresh token storage best practices spa - Google Search",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000007",
+              "dup_key": "3c510550c40a1df332f4f47d9fbde7e2063b472d2f5d8e3cd4b03a32acb87885",
+              "search_query": "refresh token storage best practices spa"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000033",
+              "ts": "2026-10-04T11:10:52Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "active_ms": 25000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000034",
+              "ts": "2026-10-04T11:10:52Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000029",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000007"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000035",
+              "ts": "2026-10-04T11:11:22Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000029",
+              "active_ms": 30000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000036",
+              "ts": "2026-10-04T11:11:22Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000029"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000037",
+              "ts": "2026-10-04T11:11:22Z",
+              "type": "CLOSE",
+              "tab_ref": "00000000-0000-4000-8000-000000000029"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000038",
+              "ts": "2026-10-04T11:12:10Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 48000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000039",
+              "ts": "2026-10-04T11:18:22Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000024",
+              "domain": "doc.rust-lang.org",
+              "title": "What is Ownership? - The Rust Programming Language",
+              "opener_tab_ref": null,
+              "dup_key": "cdcc2d74e5a596f378a3f2c31585dec574df952ca6897d68fb430f9bb39e4179",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000040",
+              "ts": "2026-10-04T11:18:22Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000024",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000041",
+              "ts": "2026-10-04T11:22:22Z",
+              "type": "IDLE",
+              "tab_ref": "00000000-0000-4000-8000-000000000024"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000042",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "ACTIVE",
+              "tab_ref": "00000000-0000-4000-8000-000000000024"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000043",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000025",
+              "domain": "www.reddit.com",
+              "title": "Rust vs Go for a small CLI tool? : r/rust",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000024",
+              "dup_key": "a872c714550e88c5366c40c993c51cf1ac159c68433f4e508b100f66b8972db2",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000044",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000024",
+              "active_ms": 240000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000045",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000025",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000024"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 202,
+        "content_type": "application/json",
+        "body": {
+          "accepted": 45,
+          "duplicates": 0
+        }
+      },
+      "introduces": [
+        "00000000-0000-4000-8000-000000000029"
+      ]
+    },
+    {
+      "name": "identical_resend",
+      "description": "The same batch again after a lost response. Nothing new is stored; event counts and tab_attention_15m are unchanged.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000001",
+              "ts": "2026-10-04T10:57:40Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000002",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "opener_tab_ref": null,
+              "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+              "search_query": "where to store refresh token"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000003",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 22000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000004",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000005",
+              "ts": "2026-10-04T10:58:24Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "active_ms": 22000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000006",
+              "ts": "2026-10-04T10:58:24Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000007",
+              "ts": "2026-10-04T10:59:55Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 91000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000008",
+              "ts": "2026-10-04T10:59:55Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000009",
+              "ts": "2026-10-04T11:00:15Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "domain": "medium.com",
+              "title": "Medium",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000006",
+              "dup_key": "46eab533b257ded359e9072fbf1b9355bf289d84da762f8bf23177c40d73fd1b",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000010",
+              "ts": "2026-10-04T11:00:15Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "active_ms": 20000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000011",
+              "ts": "2026-10-04T11:00:15Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000012",
+              "ts": "2026-10-04T11:00:17Z",
+              "type": "UPDATE",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "domain": "medium.com",
+              "title": "Securing FastAPI with JWT: a step-by-step guide | Medium",
+              "dup_key": "46eab533b257ded359e9072fbf1b9355bf289d84da762f8bf23177c40d73fd1b",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000013",
+              "ts": "2026-10-04T11:02:00Z",
+              "type": "IDLE",
+              "tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000014",
+              "ts": "2026-10-04T11:02:40Z",
+              "type": "ACTIVE",
+              "tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000015",
+              "ts": "2026-10-04T11:03:40Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000009",
+              "dup_key": "64611be6232fd471887903abe56aa18517a2c5b7758549cefe019458efff79a4",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000016",
+              "ts": "2026-10-04T11:03:40Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "active_ms": 165000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000017",
+              "ts": "2026-10-04T11:03:40Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000018",
+              "ts": "2026-10-04T11:03:58Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000002",
+              "active_ms": 18000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000019",
+              "ts": "2026-10-04T11:03:58Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000002"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000020",
+              "ts": "2026-10-04T11:07:01Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000009",
+              "active_ms": 183000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000021",
+              "ts": "2026-10-04T11:07:01Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000022",
+              "ts": "2026-10-04T11:09:20Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 139000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000023",
+              "ts": "2026-10-04T11:09:20Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000024",
+              "ts": "2026-10-04T11:09:26Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "domain": "www.google.com",
+              "title": "refresh token httponly cookie vs localstorage - Google Search",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000006",
+              "dup_key": "3ac1b708e5d0dba8f840f616b72824808fa9a60b32ac7e918dbd3872a7f8193e",
+              "search_query": "refresh token httponly cookie vs localstorage"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000025",
+              "ts": "2026-10-04T11:09:26Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "active_ms": 6000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000026",
+              "ts": "2026-10-04T11:09:26Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000006"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000027",
+              "ts": "2026-10-04T11:10:03Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "domain": "dev.to",
+              "title": "FastAPI JWT authentication explained - DEV Community",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000007",
+              "dup_key": "bafa1b65e493e58555ff4dd165fb822116c398d2b38f018efb4ca2b3c64fd701",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000028",
+              "ts": "2026-10-04T11:10:03Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "active_ms": 37000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000029",
+              "ts": "2026-10-04T11:10:03Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000007"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000030",
+              "ts": "2026-10-04T11:10:27Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000010",
+              "active_ms": 24000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000031",
+              "ts": "2026-10-04T11:10:27Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000010"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000032",
+              "ts": "2026-10-04T11:10:52Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000029",
+              "domain": "www.google.com",
+              "title": "refresh token storage best practices spa - Google Search",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000007",
+              "dup_key": "3c510550c40a1df332f4f47d9fbde7e2063b472d2f5d8e3cd4b03a32acb87885",
+              "search_query": "refresh token storage best practices spa"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000033",
+              "ts": "2026-10-04T11:10:52Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000007",
+              "active_ms": 25000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000034",
+              "ts": "2026-10-04T11:10:52Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000029",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000007"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000035",
+              "ts": "2026-10-04T11:11:22Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000029",
+              "active_ms": 30000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000036",
+              "ts": "2026-10-04T11:11:22Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000029"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000037",
+              "ts": "2026-10-04T11:11:22Z",
+              "type": "CLOSE",
+              "tab_ref": "00000000-0000-4000-8000-000000000029"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000038",
+              "ts": "2026-10-04T11:12:10Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "active_ms": 48000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000039",
+              "ts": "2026-10-04T11:18:22Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000024",
+              "domain": "doc.rust-lang.org",
+              "title": "What is Ownership? - The Rust Programming Language",
+              "opener_tab_ref": null,
+              "dup_key": "cdcc2d74e5a596f378a3f2c31585dec574df952ca6897d68fb430f9bb39e4179",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000040",
+              "ts": "2026-10-04T11:18:22Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000024",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000041",
+              "ts": "2026-10-04T11:22:22Z",
+              "type": "IDLE",
+              "tab_ref": "00000000-0000-4000-8000-000000000024"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000042",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "ACTIVE",
+              "tab_ref": "00000000-0000-4000-8000-000000000024"
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000043",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000025",
+              "domain": "www.reddit.com",
+              "title": "Rust vs Go for a small CLI tool? : r/rust",
+              "opener_tab_ref": "00000000-0000-4000-8000-000000000024",
+              "dup_key": "a872c714550e88c5366c40c993c51cf1ac159c68433f4e508b100f66b8972db2",
+              "search_query": null
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000044",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "BLUR",
+              "tab_ref": "00000000-0000-4000-8000-000000000024",
+              "active_ms": 240000
+            },
+            {
+              "event_id": "90000000-0000-4000-8000-000000000045",
+              "ts": "2026-10-04T11:24:49Z",
+              "type": "FOCUS",
+              "tab_ref": "00000000-0000-4000-8000-000000000025",
+              "previous_tab_ref": "00000000-0000-4000-8000-000000000024"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 202,
+        "content_type": "application/json",
+        "body": {
+          "accepted": 0,
+          "duplicates": 45
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "reject_user_id_in_body",
+      "description": "A body that names a user is rejected; identity comes only from the token.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "user_id": "452b6018-022d-5e0b-bd7c-101d3c412b79",
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000002",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "opener_tab_ref": null,
+              "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+              "search_query": "where to store refresh token"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "Request body contains fields that are not allowed",
+          "instance": "/api/events",
+          "errors": [
+            {
+              "loc": [
+                "body",
+                "user_id"
+              ],
+              "msg": "Extra inputs are not permitted",
+              "type": "extra_forbidden"
+            }
+          ]
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "reject_unknown_event_type",
+      "description": "A type outside the enum; the whole batch is refused and nothing is stored.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000999",
+              "ts": "2026-10-04T11:25:00Z",
+              "type": "SCROLL",
+              "tab_ref": "00000000-0000-4000-8000-000000000025"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "events[0].type must be one of OPEN, FOCUS, BLUR, UPDATE, CLOSE, IDLE, ACTIVE",
+          "instance": "/api/events",
+          "errors": [
+            {
+              "loc": [
+                "body",
+                "events",
+                0,
+                "type"
+              ],
+              "msg": "Input should be 'OPEN', 'FOCUS', 'BLUR', 'UPDATE', 'CLOSE', 'IDLE' or 'ACTIVE'",
+              "type": "enum"
+            }
+          ]
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "missing_token",
+      "description": "No Authorization header.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000002",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "opener_tab_ref": null,
+              "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+              "search_query": "where to store refresh token"
+            }
+          ]
+        },
+        "headers": {}
+      },
+      "response": {
+        "status": 401,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unauthorized",
+          "status": 401,
+          "detail": "Missing bearer token",
+          "instance": "/api/events"
+        },
+        "headers": {
+          "WWW-Authenticate": "Bearer"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "rate_limited",
+      "description": "The 61st request inside one minute for the same user.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000002",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "opener_tab_ref": null,
+              "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+              "search_query": "where to store refresh token"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Too Many Requests",
+          "status": 429,
+          "detail": "Event ingest is limited to 60 requests per minute",
+          "instance": "/api/events"
+        },
+        "headers": {
+          "Retry-After": "30"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "database_unavailable",
+      "description": "Tiger Data is down; the extension keeps the batch and retries after Retry-After.",
+      "request": {
+        "method": "POST",
+        "path": "/api/events",
+        "content_type": "application/json",
+        "body": {
+          "events": [
+            {
+              "event_id": "90000000-0000-4000-8000-000000000002",
+              "ts": "2026-10-04T10:58:02Z",
+              "type": "OPEN",
+              "tab_ref": "00000000-0000-4000-8000-000000000006",
+              "domain": "www.google.com",
+              "title": "where to store refresh token - Google Search",
+              "opener_tab_ref": null,
+              "dup_key": "cdb219e3deb3b7677de20437633aa772d5a870e1ba89462d1217a1acec8c166b",
+              "search_query": "where to store refresh token"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 503,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Service Unavailable",
+          "status": 503,
+          "detail": "Event storage is temporarily unavailable",
+          "instance": "/api/events"
+        },
+        "headers": {
+          "Retry-After": "30"
+        }
+      },
+      "introduces": []
+    }
+  ]
 }

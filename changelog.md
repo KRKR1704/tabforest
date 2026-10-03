@@ -6,6 +6,25 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — PRE-C1 draft: P's contracts on the shared demo scenario (P)
+
+### Changed
+
+- `contracts/events.example.json`, `timeline.example.json`, `sessions.example.json`, `saved-context.example.json`, `privacy.example.json` and `me.example.json`: replaced the initial placeholders with P's drafts for C1, C2, C7 and C10. They follow R's conventions (`examples[]` of `{name, request, response, introduces}`, `unknown_ids` for other users' IDs, R's claim objects, RFC 7807 with `instance`) and R's IDs: tabs from `demo_tabs.json`; projects, claims, notes and saved contexts from `grove.example.json` and `memory-search.example.json`.
+- `events.example.json` keeps top-level `batch_request` / `batch_response` for D's mock API test. The batch is now the 45-event start of the late session and shows all seven event types.
+
+### Verification
+
+- Totals agree with R's files: each Backend Authentication tab's timeline total equals its leaf `dwell_min`; Backend Authentication is 134 min across 3 sessions (resume); GirlHacks Prep is 41 min and Weeknight Dinner 9 min (sessions); the March 12 context matches the firefly and memory search; "Save as references" covers R's semantic-redundant prune pair.
+- D's `apps/extension/tests/mock-api.test.mjs` against the new file: 7 passed (vitest 3.2.7). The fixture batch now has 45 events, so a manual resend shows `accepted 45` / `duplicates 45` instead of 3.
+- P's cross-file checks (58 passed) and a mutation check (20 of 20 deliberate breakages caught) run locally and are not committed.
+
+### Notes
+
+- Shapes that differ from the placeholders, for S's adapters before S-14: integer `active_ms` instead of minutes; timeline lanes per branch in 30-minute buckets (SPEC §8.5 re-buckets 15-minute data into uneven 20-minute buckets); saved tabs carry `fallback_url` and `excluded_reason` (R's prune kinds); `/api/me` adds `email` and `stats`; `hollow_categories` is not in the privacy API because the Hollow lives in the extension.
+- Assumption for R: note `n_…007` ("Not using OAuth providers for v1") was written at 10:12:20; the timeline's decision marker uses that time.
+- Closed tabs introduced: `…029` (a fourth refresh-token search, closed at 11:11:22) and `…030` (a GirlHacks registration page).
+
 ## [2026-10-03] — D-1 extension scaffold (D)
 
 ### Added
