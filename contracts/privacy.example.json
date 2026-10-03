@@ -1,22 +1,299 @@
 {
-  "privacy_settings": {
-    "user_id": "usr-5d0a-9b1e-3f4a",
-    "excluded_domains": ["chase.com", "bankofamerica.com", "fidelity.com"],
-    "paused_until": null,
-    "retention_days": 30,
-    "cloud_ai_enabled": true,
-    "hollow_categories": [
-      "banking_payments",
-      "health_portals",
-      "personal_email",
-      "password_managers",
-      "auth_identity_providers"
-    ]
-  },
-  "patch_request": {
-    "excluded_domains": ["chase.com", "bankofamerica.com", "fidelity.com", "mybank.com"],
-    "paused_until": "2026-10-04T18:00:00Z",
-    "retention_days": 30,
-    "cloud_ai_enabled": true
-  }
+  "contract": "C7, C10",
+  "title": "GET and PATCH /api/privacy, DELETE /api/projects/{project_id}",
+  "drafted_by": "P",
+  "sources": [
+    "SPEC.md §6.3, §6.4, §8.1 (privacy_settings), §10, §10.1, §11.3",
+    "BUILD_TASKS.md §4.3 (PAUSE, EXCLUDE_DOMAIN), P-10, P-11, D-10, S-10"
+  ],
+  "notes": [
+    "Scenario: R's shared demo set. Tab IDs come from apps/api/app/engine/fixtures/demo_tabs.json (the 28 tabs in snapshot.example.json); project, claim, note and saved-context IDs come from grove.example.json and memory-search.example.json. IDs these examples create are listed in `introduces`; IDs that belong to another user are listed in `unknown_ids`.",
+    "Every request carries Authorization: Bearer <token> unless the example lists request.headers explicitly. user_id never appears in a request body; the server takes it from the token.",
+    "Durations are integer milliseconds (active_ms) so every sum is exact; the UI converts to minutes. Times are UTC and follow R's story clock (snapshot at 2026-10-04T11:40:00Z).",
+    "Errors are RFC 7807 problem JSON with `instance` = the request path, as in R's files.",
+    "GET /api/privacy returns the full settings; PATCH /api/privacy changes only the fields it sends and returns the full settings. The examples run in order from the provisioned defaults.",
+    "excluded_domains_add / excluded_domains_remove take lowercase domains with no scheme or path; the extension suffix-matches them (mybank.com also covers www.mybank.com). Adding a present domain or removing an absent one does nothing; the same domain in both lists returns 422.",
+    "paused_until: null means not paused; a timestamp means paused until then; 9999-12-31T23:59:59Z means paused until resumed. Sending null resumes.",
+    "retention_days is 7, 30 or 90 (default 90). cloud_ai_enabled is stored for the P2 Local Grove mode; P0 does not act on it.",
+    "Hollow categories are not part of this API: the Hollow runs in the extension, so the grove page reads and changes them through the bridge.",
+    "Writers: the extension writes excluded_domains and paused_until (D-10 sync from the EXCLUDE_DOMAIN and PAUSE bridge messages) and reads them after sign-in; the grove page writes retention_days and cloud_ai_enabled.",
+    "DELETE /api/projects/{project_id} ('Delete forest') deletes the project and everything derived from it in one transaction (R's intent tables for that project, its saved contexts and their embeddings) and returns counts per table. Raw browser_events and tabs stay, because a tab can belong to several projects; they go through retention or DELETE /api/me. This example is independent of the others."
+  ],
+  "examples": [
+    {
+      "name": "get_defaults",
+      "description": "Settings as provisioned on first sign-in.",
+      "request": {
+        "method": "GET",
+        "path": "/api/privacy",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains": [],
+          "paused_until": null,
+          "retention_days": 90,
+          "cloud_ai_enabled": true,
+          "updated_at": "2026-09-29T19:11:30Z"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "patch_exclude_and_retention",
+      "description": "The SPEC §10.1 request; the response is the full settings object.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains_add": [
+            "mybank.com"
+          ],
+          "retention_days": 30,
+          "paused_until": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains": [
+            "mybank.com"
+          ],
+          "paused_until": null,
+          "retention_days": 30,
+          "cloud_ai_enabled": true,
+          "updated_at": "2026-10-04T11:50:00Z"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "patch_pause_one_hour",
+      "description": "Pause for 1 hour.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "paused_until": "2026-10-04T12:51:00Z"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains": [
+            "mybank.com"
+          ],
+          "paused_until": "2026-10-04T12:51:00Z",
+          "retention_days": 30,
+          "cloud_ai_enabled": true,
+          "updated_at": "2026-10-04T11:51:00Z"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "patch_pause_until_resumed",
+      "description": "Pause with no end time.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "paused_until": "9999-12-31T23:59:59Z"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains": [
+            "mybank.com"
+          ],
+          "paused_until": "9999-12-31T23:59:59Z",
+          "retention_days": 30,
+          "cloud_ai_enabled": true,
+          "updated_at": "2026-10-04T11:52:00Z"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "patch_resume",
+      "description": "Resume capture.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "paused_until": null
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains": [
+            "mybank.com"
+          ],
+          "paused_until": null,
+          "retention_days": 30,
+          "cloud_ai_enabled": true,
+          "updated_at": "2026-10-04T11:53:00Z"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "patch_remove_exclusion",
+      "description": "Remove a domain from the exclusion list.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains_remove": [
+            "mybank.com"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains": [],
+          "paused_until": null,
+          "retention_days": 30,
+          "cloud_ai_enabled": true,
+          "updated_at": "2026-10-04T11:54:00Z"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "reject_retention_value",
+      "description": "retention_days outside 7, 30, 90.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "retention_days": 45
+        }
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "retention_days must be 7, 30 or 90",
+          "instance": "/api/privacy",
+          "errors": [
+            {
+              "loc": [
+                "body",
+                "retention_days"
+              ],
+              "msg": "Input should be 7, 30 or 90",
+              "type": "literal_error"
+            }
+          ]
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "reject_domain_in_both_lists",
+      "description": "Adding and removing the same domain in one request.",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/privacy",
+        "content_type": "application/json",
+        "body": {
+          "excluded_domains_add": [
+            "mybank.com"
+          ],
+          "excluded_domains_remove": [
+            "mybank.com"
+          ]
+        }
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "mybank.com is in both excluded_domains_add and excluded_domains_remove",
+          "instance": "/api/privacy"
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "delete_forest",
+      "description": "Delete Backend Authentication and everything derived from it.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/projects/p_10000000-0000-4000-8000-000000000001",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "project_id": "p_10000000-0000-4000-8000-000000000001",
+          "deleted": {
+            "projects": 1,
+            "intent_clusters": 3,
+            "intent_branches": 3,
+            "cluster_tabs": 14,
+            "decisions": 2,
+            "unresolved_questions": 1,
+            "suggested_actions": 1,
+            "user_notes": 1,
+            "saved_contexts": 2,
+            "memory_embeddings": 2
+          },
+          "total": 30
+        }
+      },
+      "introduces": []
+    },
+    {
+      "name": "delete_forest_not_found",
+      "description": "Deleting a project the caller does not own.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/projects/p_e0000000-0000-4000-8000-000000000404",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Not Found",
+          "status": 404,
+          "detail": "Project not found",
+          "instance": "/api/projects/p_e0000000-0000-4000-8000-000000000404"
+        }
+      },
+      "introduces": [],
+      "unknown_ids": [
+        "p_e0000000-0000-4000-8000-000000000404"
+      ]
+    }
+  ]
 }

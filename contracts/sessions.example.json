@@ -1,26 +1,330 @@
 {
-  "sessions": [
+  "contract": "C7",
+  "title": "GET /api/sessions and GET /api/sessions/{session_id}: browsing sessions with attention summaries",
+  "drafted_by": "P",
+  "sources": [
+    "SPEC.md §8.1 (browser_sessions), §8.5, §10",
+    "BUILD_TASKS.md §4.6, §4.11, P-7"
+  ],
+  "notes": [
+    "Scenario: R's shared demo set. Tab IDs come from apps/api/app/engine/fixtures/demo_tabs.json (the 28 tabs in snapshot.example.json); project, claim, note and saved-context IDs come from grove.example.json and memory-search.example.json. IDs these examples create are listed in `introduces`; IDs that belong to another user are listed in `unknown_ids`.",
+    "Every request carries Authorization: Bearer <token> unless the example lists request.headers explicitly. user_id never appears in a request body; the server takes it from the token.",
+    "Durations are integer milliseconds (active_ms) so every sum is exact; the UI converts to minutes. Times are UTC and follow R's story clock (snapshot at 2026-10-04T11:40:00Z).",
+    "Errors are RFC 7807 problem JSON with `instance` = the request path, as in R's files.",
+    "GET /api/sessions?range=24h lists sessions that started in the range, newest first; range is 24h or 7d (default 24h).",
+    "The server is the only owner of sessions: a session closes after a 30-minute gap between events (by event ts); ended_at is null while it is open.",
+    "active_ms is the sum of active_ms on the session's BLUR events. projects[] splits it by project and unassigned_ms is time on tabs with no project yet. A tab in two projects counts for both (tab 05 here is shared by Backend Authentication and GirlHacks Prep), so projects can add up to more than active_ms.",
+    "Switch counts: tab_switches counts FOCUS events that moved to a different tab; intent_switches those whose two tabs share no cluster; unassigned_switches those where either tab has no cluster yet. Two tabs of the same project are a tab switch only.",
+    "GET /api/sessions/{session_id} adds tabs[]: every tab focused in the session with its active_ms and project_ids; tabs[].active_ms adds up to active_ms. Tab 30 is a GirlHacks page that was closed later.",
+    "Totals agree with R's grove: Backend Authentication today = morning + late session = the timeline total; GirlHacks Prep (41 min) and Weeknight Dinner (9 min) happen entirely in these sessions. A third Backend Authentication session on Oct 2 is outside this 24h range; with it the project reaches 134 min (saved-context resume).",
+    "A session the caller does not own returns 404."
+  ],
+  "examples": [
     {
-      "id": "sess-1",
-      "started_at": "2026-10-04T13:30:00Z",
-      "ended_at": "2026-10-04T14:30:00Z",
-      "duration_minutes": 60,
-      "event_count": 142,
-      "tab_switches": 24,
-      "intent_switches": 4,
-      "dominant_project": "Backend Authentication",
-      "unassigned_switches": 1
+      "name": "list_24h",
+      "description": "Sessions that started in the last 24 hours.",
+      "request": {
+        "method": "GET",
+        "path": "/api/sessions?range=24h",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "range": "24h",
+          "sessions": [
+            {
+              "id": "ses_80000000-0000-4000-8000-000000000008",
+              "started_at": "2026-10-04T10:57:40Z",
+              "ended_at": null,
+              "event_count": 52,
+              "active_ms": 1242000,
+              "tab_switches": 18,
+              "intent_switches": 0,
+              "unassigned_switches": 3,
+              "projects": [
+                {
+                  "project_id": "p_10000000-0000-4000-8000-000000000001",
+                  "name": "Backend Authentication",
+                  "active_ms": 870000
+                }
+              ],
+              "unassigned_ms": 372000
+            },
+            {
+              "id": "ses_80000000-0000-4000-8000-000000000007",
+              "started_at": "2026-10-04T08:52:40Z",
+              "ended_at": "2026-10-04T10:22:30Z",
+              "event_count": 214,
+              "active_ms": 3972000,
+              "tab_switches": 24,
+              "intent_switches": 3,
+              "unassigned_switches": 2,
+              "projects": [
+                {
+                  "project_id": "p_10000000-0000-4000-8000-000000000002",
+                  "name": "GirlHacks Prep",
+                  "active_ms": 2460000
+                },
+                {
+                  "project_id": "p_10000000-0000-4000-8000-000000000001",
+                  "name": "Backend Authentication",
+                  "active_ms": 1728000
+                }
+              ],
+              "unassigned_ms": 30000
+            },
+            {
+              "id": "ses_80000000-0000-4000-8000-000000000006",
+              "started_at": "2026-10-04T07:58:40Z",
+              "ended_at": "2026-10-04T08:00:04Z",
+              "event_count": 3,
+              "active_ms": 84000,
+              "tab_switches": 1,
+              "intent_switches": 0,
+              "unassigned_switches": 1,
+              "projects": [],
+              "unassigned_ms": 84000
+            },
+            {
+              "id": "ses_80000000-0000-4000-8000-000000000005",
+              "started_at": "2026-10-03T21:48:10Z",
+              "ended_at": "2026-10-03T22:05:00Z",
+              "event_count": 41,
+              "active_ms": 540000,
+              "tab_switches": 6,
+              "intent_switches": 0,
+              "unassigned_switches": 1,
+              "projects": [
+                {
+                  "project_id": "p_10000000-0000-4000-8000-000000000004",
+                  "name": "Weeknight Dinner",
+                  "active_ms": 540000
+                }
+              ],
+              "unassigned_ms": 0
+            },
+            {
+              "id": "ses_80000000-0000-4000-8000-000000000004",
+              "started_at": "2026-10-03T18:20:11Z",
+              "ended_at": "2026-10-03T18:20:20Z",
+              "event_count": 3,
+              "active_ms": 9000,
+              "tab_switches": 1,
+              "intent_switches": 0,
+              "unassigned_switches": 1,
+              "projects": [],
+              "unassigned_ms": 9000
+            }
+          ]
+        }
+      },
+      "introduces": [
+        "ses_80000000-0000-4000-8000-000000000008",
+        "ses_80000000-0000-4000-8000-000000000007",
+        "ses_80000000-0000-4000-8000-000000000006",
+        "ses_80000000-0000-4000-8000-000000000005",
+        "ses_80000000-0000-4000-8000-000000000004"
+      ]
     },
     {
-      "id": "sess-2",
-      "started_at": "2026-10-04T09:00:00Z",
-      "ended_at": "2026-10-04T10:45:00Z",
-      "duration_minutes": 105,
-      "event_count": 218,
-      "tab_switches": 38,
-      "intent_switches": 6,
-      "dominant_project": "GirlHacks 2026 Submission",
-      "unassigned_switches": 2
+      "name": "detail_morning_session",
+      "description": "The 08:52 to 10:22 session: GirlHacks prep, then the first Backend Authentication reading.",
+      "request": {
+        "method": "GET",
+        "path": "/api/sessions/ses_80000000-0000-4000-8000-000000000007",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": {
+          "id": "ses_80000000-0000-4000-8000-000000000007",
+          "started_at": "2026-10-04T08:52:40Z",
+          "ended_at": "2026-10-04T10:22:30Z",
+          "event_count": 214,
+          "active_ms": 3972000,
+          "tab_switches": 24,
+          "intent_switches": 3,
+          "unassigned_switches": 2,
+          "projects": [
+            {
+              "project_id": "p_10000000-0000-4000-8000-000000000002",
+              "name": "GirlHacks Prep",
+              "active_ms": 2460000
+            },
+            {
+              "project_id": "p_10000000-0000-4000-8000-000000000001",
+              "name": "Backend Authentication",
+              "active_ms": 1728000
+            }
+          ],
+          "unassigned_ms": 30000,
+          "tabs": [
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000030",
+              "domain": "girlhacks-2026.devpost.com",
+              "title": "Register for GirlHacks 2026 - Devpost",
+              "active_ms": 768000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000001",
+              "domain": "fastapi.tiangolo.com",
+              "title": "OAuth2 with Password (and hashing), Bearer with JWT tokens - FastAPI",
+              "active_ms": 570000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000001"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000004",
+              "domain": "github.com",
+              "title": "fastapi-jwt-auth-example: login, refresh and protected routes",
+              "active_ms": 540000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000001"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000011",
+              "domain": "girlhacks-2026.devpost.com",
+              "title": "GirlHacks 2026 - Devpost",
+              "active_ms": 444000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000013",
+              "domain": "docs.tigerdata.com",
+              "title": "Hypertables | Tiger Data Docs",
+              "active_ms": 414000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000003",
+              "domain": "stackoverflow.com",
+              "title": "JWT vs session-based authentication for a REST API - Stack Overflow",
+              "active_ms": 372000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000001"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000015",
+              "domain": "d3js.org",
+              "title": "d3-hierarchy | D3 by Observable",
+              "active_ms": 276000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000005",
+              "domain": "learn.microsoft.com",
+              "title": "OAuth 2.0 authorization code flow - Microsoft identity platform | Microsoft Learn",
+              "active_ms": 246000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000001",
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000012",
+              "domain": "mlh.io",
+              "title": "MLH Official Hackathon Rules - Major League Hacking",
+              "active_ms": 192000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000014",
+              "domain": "azure.microsoft.com",
+              "title": "Azure for Students – Free Account Credit | Microsoft Azure",
+              "active_ms": 120000,
+              "project_ids": [
+                "p_10000000-0000-4000-8000-000000000002"
+              ]
+            },
+            {
+              "tab_ref": "00000000-0000-4000-8000-000000000028",
+              "domain": "pomofocus.io",
+              "title": "Pomofocus - Pomodoro timer online",
+              "active_ms": 30000,
+              "project_ids": []
+            }
+          ]
+        }
+      },
+      "introduces": [
+        "00000000-0000-4000-8000-000000000030"
+      ]
+    },
+    {
+      "name": "not_found_other_users_session",
+      "description": "A session that belongs to another user, or does not exist.",
+      "request": {
+        "method": "GET",
+        "path": "/api/sessions/ses_e0000000-0000-4000-8000-000000000404",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Not Found",
+          "status": 404,
+          "detail": "Session not found",
+          "instance": "/api/sessions/ses_e0000000-0000-4000-8000-000000000404"
+        }
+      },
+      "introduces": [],
+      "unknown_ids": [
+        "ses_e0000000-0000-4000-8000-000000000404"
+      ]
+    },
+    {
+      "name": "reject_unknown_range",
+      "description": "range must be 24h or 7d.",
+      "request": {
+        "method": "GET",
+        "path": "/api/sessions?range=30d",
+        "content_type": null,
+        "body": null
+      },
+      "response": {
+        "status": 422,
+        "content_type": "application/problem+json",
+        "body": {
+          "type": "about:blank",
+          "title": "Unprocessable Entity",
+          "status": 422,
+          "detail": "range must be 24h or 7d",
+          "instance": "/api/sessions",
+          "errors": [
+            {
+              "loc": [
+                "query",
+                "range"
+              ],
+              "msg": "Input should be '24h' or '7d'",
+              "type": "literal_error"
+            }
+          ]
+        }
+      },
+      "introduces": []
     }
   ]
 }
