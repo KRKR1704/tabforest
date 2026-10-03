@@ -1,0 +1,18 @@
+{
+  "id": "usr-5d0a-9b1e-3f4a",
+  "display_name": "Maya Lin",
+  "email": "maya@tabforest.local",
+  "created_at": "2026-10-01T08:00:00Z",
+  "privacy": {
+    "excluded_domains": ["chase.com", "bankofamerica.com", "fidelity.com"],
+    "paused_until": null,
+    "retention_days": 30,
+    "cloud_ai_enabled": true
+  },
+  "stats": {
+    "total_forests": 3,
+    "active_goals": 2,
+    "total_attention_hours": 14.8,
+    "total_resolved_questions": 12
+  }
+}

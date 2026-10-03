@@ -1,0 +1,22 @@
+{
+  "privacy_settings": {
+    "user_id": "usr-5d0a-9b1e-3f4a",
+    "excluded_domains": ["chase.com", "bankofamerica.com", "fidelity.com"],
+    "paused_until": null,
+    "retention_days": 30,
+    "cloud_ai_enabled": true,
+    "hollow_categories": [
+      "banking_payments",
+      "health_portals",
+      "personal_email",
+      "password_managers",
+      "auth_identity_providers"
+    ]
+  },
+  "patch_request": {
+    "excluded_domains": ["chase.com", "bankofamerica.com", "fidelity.com", "mybank.com"],
+    "paused_until": "2026-10-04T18:00:00Z",
+    "retention_days": 30,
+    "cloud_ai_enabled": true
+  }
+}
