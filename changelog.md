@@ -6,6 +6,38 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane PRE-S1 Visual Design & Pitch Preparation
+
+### Added
+- `docs/moodboard.md`: Visual design specification detailing typography (Lora + Inter), HSL forest color palettes, and data-encoding rules for all 12 Living Grove elements (trees, branches, leaves, sprouts, mushrooms, carved/mossy stones, blooming flowers, redundant vines, fallen leaves, dynamic confidence fog, evidence roots, fireflies), plus accessibility and reduced-motion specifications.
+- `devpost/submission-draft.md`: Devpost submission draft aligned to Azure AI and Tiger Data TimescaleDB tracks, detailing problem inspiration (Maya persona), feature breakdown, architecture layer overview, accomplishments, challenges, and roadmap.
+- `docs/demo-script.md`: Comprehensive 28-tab live demo script and narrative timed to 2:45, including sequential tab definitions across 3 clusters, meadow, sprouts, and on-device Hollow sites, speaker cues, and judge Q&A cheat sheet.
+
+### Verification
+- Cross-checked 28 demo tabs sequence against `contracts/snapshot.example.json` and SPEC §4.2.
+- Verified visual language mappings directly correspond to Tailwind design tokens and D3 visualization requirements.
+
+## [2026-10-03] — Lane S-1 Grove Foundation & Contract Adapters
+
+### Added
+- `apps/grove/` standalone package initialized with React 18, TypeScript, Vite, Tailwind CSS, Zustand, and TanStack Query.
+- `contracts/` frozen contract payloads: `events.example.json`, `snapshot.example.json`, `grove.example.json`, `grove.stream.example.ndjson`, `claims.example.json`, `timeline.example.json`, `saved-context.example.json`, `work-context.example.json`, `memory-search.example.json`, `prune.example.json`, `privacy.example.json`, `me.example.json`, `sessions.example.json`, `bridge.types.ts`.
+- `apps/grove/src/types/` implementing exact data models matching SPEC §15 and contracts (grove, claims, memory, workContext, platform, bridge).
+- `apps/grove/src/adapters/` implementing C3–C8 consumer connections (`grove.ts`, `memory.ts`, `workContext.ts`, `platform.ts`, `bridge.ts`) with `VITE_MOCK=1` mode and robust mock fallback.
+- `apps/grove/src/store/` Zustand state stores (`useGroveStore.ts` for visualization/stream orchestration, `useBridgeStore.ts` for Chrome extension bridge state and authentication).
+- `apps/grove/src/App.tsx` foundational interface featuring contract inspection, live mock bridge state, and NDJSON streaming simulation.
+- `apps/grove/src/__tests__/` automated test suite with 25 unit tests across `contracts.test.ts`, `bridge.test.ts`, `adapters.test.ts`, and `store.test.ts`.
+
+### Tests
+- Contract schema validation tests for Grove, 28-tab snapshot, timeline buckets, resume card, work context, memory search, and sessions.
+- Bridge adapter tests covering 16 message types (`GET_SNAPSHOT`, `OPEN_TAB`, `CLOSE_TABS`, `RESTORE`, `GET_URLS`, `SIGN_IN`, `SIGN_OUT`, `GET_AUTH_STATE`, `GET_TOKEN`, `PAUSE`, `EXCLUDE_DOMAIN`, `GET_HOLLOW_COUNT`, `GET_SEND_PREVIEW`, `GET_WORK_ITEMS`, `CLEAR_WORK_ITEMS`, `WIPE_LOCAL`).
+- API adapter tests including live NDJSON stream line parsing (`clusters` → `tree` × n → `done`).
+- Zustand store action and state transition tests.
+
+### Verification
+- `npm test`: 4 test files, 25 tests passing.
+- `npm run build`: Static production bundle compiled into `dist/` with zero TypeScript errors.
+
 ## [2026-10-03] — Docs aligned with BUILD_TASKS.md plan v3
 
 ### Changed

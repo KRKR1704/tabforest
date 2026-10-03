@@ -1,0 +1,44 @@
+{
+  "suggestions": [
+    {
+      "id": "prune-1",
+      "kind": "exact_duplicate",
+      "branch_label": "JWT",
+      "tab_refs": ["t7", "t8"],
+      "keep_ref": "t1",
+      "title": "FastAPI Auth in 5 Minutes (Duplicate)",
+      "domain": "dev.to",
+      "reason": "Exact mirror of previously loaded medium.com article (dup_key match)"
+    },
+    {
+      "id": "prune-2",
+      "kind": "semantic_redundancy",
+      "branch_label": "JWT",
+      "tab_refs": ["t7"],
+      "keep_ref": "t1",
+      "title": "FastAPI Auth in 5 Minutes",
+      "domain": "medium.com",
+      "reason": "Restates FastAPI official documentation with lower dwell and no unique code examples"
+    },
+    {
+      "id": "prune-3",
+      "kind": "stale",
+      "branch_label": "Job Listings",
+      "tab_refs": ["t13"],
+      "keep_ref": null,
+      "title": "Software Engineer Intern Salaries & Roles",
+      "domain": "levels.fyi",
+      "reason": "No focus in 3+ days and not cited as evidence"
+    },
+    {
+      "id": "prune-4",
+      "kind": "distraction",
+      "branch_label": "Wildflower Meadow",
+      "tab_refs": ["t15"],
+      "keep_ref": null,
+      "title": "Newark, NJ Weather Forecast",
+      "domain": "weather.com",
+      "reason": "Single tab visit under 10 seconds total focus"
+    }
+  ]
+}

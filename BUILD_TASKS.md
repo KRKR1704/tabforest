@@ -178,7 +178,7 @@ P is the only owner of sessionization (`browser_sessions`, 30-minute gap rule, `
 | PRE-P3 | P | Entra app registration (personal + work/school accounts), scope `api://tabforest/user_impersonation`, redirect URI from PRE-D1. | §4 | Client ID and tenant in the password manager |
 | PRE-D1 | D | Fixed extension key so the extension ID is stable; store the ID for P. | §11 | ID stored |
 | PRE-D2 | D | **Networking preflight:** an unpacked extension with the final fixed ID fetches the deployed `https://…azurewebsites.net/health` from an extension page and from the service worker. Proves CORS, extension origin, CSP, HTTPS and that no host permission is needed. | §13, §26 | Screenshot of the 200 response in the extension's DevTools |
-| PRE-S1 | S | Moodboard (palette, Lora + Inter, tree/mushroom/stone/fog shapes), Devpost skeleton, first draft of `docs/demo-script.md` (which 28 tabs, in what order). | §17, §21 | Link shared |
+| PRE-S1 | S | [x] **Visual Design & Pitch Prep:** Moodboard (palette, Lora + Inter, tree/mushroom/stone/fog shapes), Devpost skeleton, first draft of `docs/demo-script.md` (which 28 tabs, in what order). | §17, §21 | Link shared |
 | PRE-ALL | All | Node 20, pnpm, Python 3.12, uv, Azure CLI; GitHub accounts added to the repo. | §11 | `pnpm -v && uv -V && az -v` |
 
 Only D-6 (sign-in) and P-1 (deploy) need these during the event, and both have fallbacks.
@@ -239,7 +239,7 @@ S builds `apps/grove/` as a standalone Vite web app with their own mock API, bui
 
 | ID | Hours | Task | § | Verify by |
 |---|---|---|---|---|
-| S-1 | 0:00–1:00 | React 18, TypeScript, Vite, Tailwind, Zustand, TanStack Query. Mock API and mock bridge serve the **`contracts/` examples** for every C3–C8 response (including the NDJSON stream) and implement `contracts/bridge.types.ts`. Adapters switch with `VITE_MOCK=1`. | §11 | Page shows contract example data |
+| S-1 | 0:00–1:00 | [x] **Grove Foundation:** React 18, TypeScript, Vite, Tailwind, Zustand, TanStack Query. Mock API and mock bridge serve the **`contracts/` examples** for every C3–C8 response (including the NDJSON stream) and implement `contracts/bridge.types.ts`. Adapters switch with `VITE_MOCK=1`. | §11 | Page shows contract example data |
 | S-2 | 1:00–2:00 | App shell: left rail (Current Grove, Timeline, Saved Groves, Work Context, Ask Memory, Privacy), top bar (Grow grove, open-question count, “Have I researched…?” box), design tokens, `ProvenancePill`, `EvidenceDrawer`. Model and page text is only ever rendered as text (no `innerHTML`). | §17, §26 | Screenshot |
 | S-3 | 2:00–5:00 | **D3 Living Grove:** `GroveCanvas` (React owns the panel, D3 owns the `<svg>`); d3-hierarchy layout; parameterized trees; trunk = attention minutes; amber canopy when dormant 3+ days; leaf size = dwell; zoom and pan; Wildflower Meadow; Unclear fog patch; sprouts at the edge. | §5, §17 | 4 trees, meadow, fog, sprouts; zoom works |
 | S-4 | 5:00–6:30 | Forest elements: mushrooms (size = recurrence), stones (carved = stated/sourced, mossy = inferred), vines (thicker for exact duplicates), fallen leaves, flowers, fireflies drifting to past groves, fog density = 1 − confidence, a faint vine for a tab shared by two trees. `<title>` on every element; icon plus label, never color alone. | §5 | Every element clickable with a tooltip |

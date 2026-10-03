@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg-primary: #07120a;
+    --color-bg-surface: #0f2015;
+    --color-bg-card: #1b3322;
+    --color-border-subtle: #2f5539;
+    --color-text-primary: #f2f8f4;
+    --color-text-muted: #9bc4a5;
+  }
+
+  body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Custom organic scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0f2015;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2f5539;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4c875b;
+  }
+}
+
+@layer components {
+  .forest-card {
+    @apply bg-forest-900/80 backdrop-blur-sm border border-forest-800 rounded-xl transition-all duration-200;
+  }
+
+  .forest-card-hover {
+    @apply hover:border-forest-600 hover:bg-forest-900 shadow-lg;
+  }
+
+  .forest-heading {
+    @apply font-serif text-forest-50 tracking-tight;
+  }
+
+  .pill-provenance {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium tracking-wide uppercase;
+  }
+}

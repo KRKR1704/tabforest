@@ -1,0 +1,61 @@
+{
+  "analyze_request": {
+    "project_name": "Cloud Migration",
+    "items": [
+      {
+        "id": "item-1",
+        "title": "Teams Transcript - Architecture Sync",
+        "source_type": "paste",
+        "text": "[00:14:32] Lead Architect: We decided to deploy the ingestion workers on Azure Functions Consumption tier for v1, while keeping the primary API on Linux App Service."
+      },
+      {
+        "id": "item-2",
+        "title": "Jira CAM-142 Migration Blocker",
+        "source_type": "selection",
+        "text": "Status: Blocked. Production service principal credentials have not been approved by Infosec."
+      }
+    ]
+  },
+  "response": {
+    "project": "Cloud Migration",
+    "goal": "Migrate data ingestion pipeline to Azure serverless architecture",
+    "decisions": [
+      {
+        "text": "Deploy ingestion workers on Azure Functions Consumption tier",
+        "provenance": "sourced",
+        "quote": "We decided to deploy the ingestion workers on Azure Functions Consumption tier for v1",
+        "source_title": "Teams Transcript - Architecture Sync",
+        "timestamp": "00:14:32",
+        "confidence": 0.95
+      }
+    ],
+    "blockers": [
+      {
+        "text": "Production service principal credentials awaiting Infosec signoff",
+        "provenance": "sourced",
+        "quote": "Production service principal credentials have not been approved by Infosec",
+        "source_title": "Jira CAM-142 Migration Blocker",
+        "severity": "high"
+      }
+    ],
+    "owners": [
+      { "name": "Infosec Team", "role": "Credential Approver" },
+      { "name": "Backend Team", "role": "Function Deployment" }
+    ],
+    "open_questions": [
+      {
+        "question": "What is the expected cold-start latency budget on Consumption plan?",
+        "kind": "unresolved_comparison",
+        "confidence": 0.8
+      }
+    ],
+    "next_actions": [
+      {
+        "action": "Escalate ticket CAM-142 for service principal credentials",
+        "priority": 1,
+        "owner": "Backend Lead"
+      }
+    ],
+    "handoff_brief_markdown": "# Cloud Migration — Handoff Brief\n\n**Goal**: Migrate data ingestion pipeline to Azure serverless architecture.\n\n### Key Decisions\n- Deploy ingestion workers on Azure Functions Consumption tier (Teams Transcript 00:14:32).\n\n### Critical Blockers\n- Production service principal credentials awaiting Infosec signoff (Jira CAM-142).\n\n### Immediate Next Step\n- Escalate ticket CAM-142 for service principal credentials."
+  }
+}

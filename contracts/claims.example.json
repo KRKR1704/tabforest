@@ -1,0 +1,36 @@
+{
+  "claim_update_request": {
+    "action": "confirm",
+    "updated_text": "Not using OAuth providers for v1",
+    "answer": null
+  },
+  "claim_update_response": {
+    "id": "dec-1",
+    "status": "confirmed",
+    "provenance": "stated",
+    "user_note_id": "n7",
+    "confirmed_at": "2026-10-04T14:35:00Z"
+  },
+  "assign_request": {
+    "target_cluster_id": "c1",
+    "target_branch_id": "b1"
+  },
+  "assign_response": {
+    "tab_ref": "t5",
+    "cluster_id": "c1",
+    "branch_id": "b1",
+    "assigned_by": "user",
+    "pinned": true
+  },
+  "note_request": {
+    "cluster_id": "c1",
+    "text": "Named goal: finalize auth library by tonight"
+  },
+  "note_response": {
+    "note_id": "n8",
+    "cluster_id": "c1",
+    "text": "Named goal: finalize auth library by tonight",
+    "created_at": "2026-10-04T14:36:00Z",
+    "cleared_fog": true
+  }
+}
