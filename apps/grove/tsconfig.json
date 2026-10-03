@@ -18,7 +18,7 @@
     "types": ["vite/client", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["./src/*"],
       "@contracts/*": ["../../contracts/*"]
     }
   },
