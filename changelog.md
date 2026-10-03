@@ -6,6 +6,33 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-2 App Shell
+
+### Added
+- `apps/grove/src/shell/`: `AppShell`, `LeftRail` (Current Grove, Timeline, Saved Groves, Work Context, Ask Memory, Privacy, plus the Hollow count from `GET_HOLLOW_COUNT`), `TopBar` (screen title, "Have I researched…?" box, open-question count, Grow grove button) and `navigation.ts`.
+- `apps/grove/src/components/ProvenancePill.tsx`: stated / sourced / inferred / hypothesis, each with an icon and a text label; confidence shown to two decimals for inferred and hypothesis only.
+- `apps/grove/src/components/EvidenceDrawer.tsx`: right-hand drawer with the claim, its pill, the verbatim quote for sourced claims, and its evidence list (tab refs named by title and domain; `q`/`n`/`d` refs labelled Search / Your note / Document). Closes on the button or Escape.
+- `apps/grove/src/theme/provenance.ts` (provenance design tokens), `src/components/icons.tsx` (mushroom glyph), `src/lib/grove.ts` (`countOpenQuestions`).
+- `apps/grove/src/screens/CurrentGrove.tsx`: plain text reading of each tree's goal, direction, decisions and open questions from the contract data, so the pill and drawer are usable until the D3 canvas (S-3) replaces it. `ScreenPlaceholder.tsx`: empty state for the five screens not built yet.
+
+### Changed
+- `apps/grove/src/App.tsx` is now the app shell. The S-1 contract inspector moved unchanged (imports only) to `src/dev/ContractInspector.tsx`; it opens at `#inspector` under `npm run dev` and is excluded from the production bundle.
+- `apps/grove/src/index.css`: `.pill-provenance` restyled (bordered, square corners; previously unused); added a global `:focus-visible` outline token.
+
+### Tests
+- `src/__tests__/shell.test.tsx` (19): rail order, active item, navigation, Hollow count wording, top-bar count / Grow / search submit, `countOpenQuestions`, App navigation, memory question shown as text, drawer open and close, empty grove.
+- `src/__tests__/components.test.tsx` (15): pill labels and confidence rules, drawer content, source labels, quote, empty evidence, close on button and Escape, hostile markup rendered as text, and a source scan asserting no `dangerouslySetInnerHTML` / `innerHTML` in `src/`.
+
+### Verification
+- `npm test`: 6 files, 59 tests passing (25 existing + 34 new).
+- `npm run build`: passes with zero TypeScript errors.
+- Manual: ran the dev server and checked Current Grove, the evidence drawer and screen switching in a browser; no console errors.
+
+### Notes
+- Grow grove is not wired: `onGrow` is connected in S-6 (grow orchestration). The button shows "Growing…" and is disabled while the store reports a stream in progress.
+- The memory box navigates to Ask Memory and shows the question; the search itself is S-11.
+- Claim wording ("appears to…", "Maybe:") is not applied here; that belongs to Tree Detail (S-5).
+- BUILD_TASKS.md: S-2 row ticked only.
 ## [2026-10-03] — D-1 extension scaffold (D)
 
 ### Added
