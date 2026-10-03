@@ -35,8 +35,7 @@ export interface TabSnapshotItem {
 }
 
 export interface SnapshotPayload {
-  tabs: TabSnapshotItem[];
-  captured_at: string;
+  open_tabs: TabSnapshotItem[];
 }
 
 export interface OpenTabPayload {
@@ -103,3 +102,50 @@ export interface WorkItem {
 export interface WorkItemsData {
   items: WorkItem[];
 }
+
+export type BridgeRequest =
+  | { type: 'GET_SNAPSHOT' }
+  | ({ type: 'OPEN_TAB' } & OpenTabPayload)
+  | ({ type: 'CLOSE_TABS' } & CloseTabsPayload)
+  | ({ type: 'RESTORE' } & RestorePayload)
+  | ({ type: 'GET_URLS' } & GetUrlsPayload)
+  | { type: 'SIGN_IN' }
+  | { type: 'SIGN_OUT' }
+  | { type: 'GET_AUTH_STATE' }
+  | { type: 'GET_TOKEN' }
+  | ({ type: 'PAUSE' } & PausePayload)
+  | ({ type: 'EXCLUDE_DOMAIN' } & ExcludeDomainPayload)
+  | { type: 'GET_HOLLOW_COUNT' }
+  | { type: 'GET_SEND_PREVIEW' }
+  | { type: 'GET_WORK_ITEMS' }
+  | { type: 'CLEAR_WORK_ITEMS' }
+  | { type: 'WIPE_LOCAL' };
+
+// Proposed: stripped URLs keyed by tab_ref; pending team review.
+export interface GetUrlsData {
+  urls: Record<string, string>;
+}
+
+// Proposed: acknowledgement-only messages return null data; pending team review.
+export type AcknowledgementData = null;
+
+export interface BridgeReplyMap {
+  GET_SNAPSHOT: SnapshotPayload;
+  OPEN_TAB: AcknowledgementData;
+  CLOSE_TABS: AcknowledgementData;
+  RESTORE: AcknowledgementData;
+  GET_URLS: GetUrlsData;
+  SIGN_IN: AcknowledgementData;
+  SIGN_OUT: AcknowledgementData;
+  GET_AUTH_STATE: AuthStateData;
+  GET_TOKEN: TokenData;
+  PAUSE: AcknowledgementData;
+  EXCLUDE_DOMAIN: AcknowledgementData;
+  GET_HOLLOW_COUNT: HollowCountData;
+  GET_SEND_PREVIEW: SendPreviewData;
+  GET_WORK_ITEMS: WorkItemsData;
+  CLEAR_WORK_ITEMS: AcknowledgementData;
+  WIPE_LOCAL: AcknowledgementData;
+}
+
+export type BridgeReply<T extends MessageType> = BridgeResponse<BridgeReplyMap[T]>;

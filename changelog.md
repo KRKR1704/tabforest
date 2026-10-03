@@ -6,6 +6,29 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — PRE-C1 task D: snapshot and bridge contracts
+
+### Changed
+
+- Copied only `open_tabs` from R's read-only `apps/api/app/engine/fixtures/demo_tabs.json` into `contracts/snapshot.example.json`: same 28 tabs, refs, order and values, without `_about` or `snapshot_at`.
+- Replaced `SnapshotPayload` with `{ open_tabs: TabSnapshotItem[] }` per Deep's decision; removed `captured_at`. All other existing exported names and fields remain unchanged.
+
+### Added
+
+- `BridgeRequest` discriminated union covering all 16 messages, `BridgeReplyMap`, and `BridgeReply<T>` helper.
+- Proposed `GetUrlsData` (`urls: Record<string, string>`) and `AcknowledgementData` (`null`), mapped to the nine acknowledgement-only messages approved by Deep.
+
+### Verification
+
+- Throwaway Python checks passed: exactly 28 tabs, unique refs, all opener refs valid, one equal-dup_key pair, all parsed fields and order identical (serialized UTF-8 bytes equal), and source fixture bytes unchanged.
+- Requested `npx -y typescript@5 tsc --noEmit --strict --target ES2020 contracts/bridge.types.ts` failed: sandbox DNS/cache access first, then npm could not determine the executable with network access. Equivalent `npx -y -p typescript@5 tsc --noEmit --strict --target ES2020 contracts/bridge.types.ts` passed.
+- Throwaway TypeScript check importing the actual JSON passed with `satisfies SnapshotPayload`; also verified all 16 request/reply keys and rejected invalid request/reply examples. Temporary check removed after validation.
+- Compared existing type declarations against HEAD: only the approved SnapshotPayload replacement changed. `git diff --check` passed.
+
+### Notes
+
+- Draft RESTORE fallback URLs, PAUSE null semantics, auth/token/count/preview/work-item shapes and string errors remain unchanged for team review. No API edits, other contract edits, commit or push.
+
 ## [2026-10-03] — PRE-D2 networking preflight extension
 
 ### Added
