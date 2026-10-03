@@ -6,6 +6,34 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — R-1: engine scaffold, adapters, fixtures and contract tests (R)
+
+### Added
+
+- `apps/api/app/engine/settings.py`: pydantic-settings over `apps/api/.env` for the five `AZURE_OPENAI_*` keys, optional `DATABASE_URL` and `AUTH_MODE`; other keys ignored; secrets are `SecretStr`.
+- `engine/aoai.py`: async Azure OpenAI wrapper. `chat_structured()` (strict `json_schema` via the SDK's `parse`, returns the Pydantic model), `embed()` (batches of 64, input order kept), `ContentFilteredError` carrying the fired filters (`jailbreak`, `indirect_attack`, `other`) for prompt or completion, one retry with backoff on timeout/connection/429/5xx and never on `content_filter`.
+- `engine/db.py`: optional asyncpg pool; `get_pool()` returns `None` without `DATABASE_URL`; the DSN is passed unchanged (`sslmode=require` kept).
+- `engine/adapters/auth.py`: `get_user_id` accepts only `X-Dev-User: <uuid>`; otherwise 401 RFC 7807 problem JSON (`engine/problems.py`). No JWT/JWKS code (BUILD_TASKS.md §4.1).
+- `engine/adapters/stats.py` (C11: events incl. `session_id`, `previous_tab_ref`; attention per tab_ref) and `engine/adapters/contexts.py` (C13: saved contexts), both on fixtures with a TODO(R-15) to switch to P's tables and fall back to fixtures.
+- `engine/schemas/`: API models for R's contracts: grove (normal and degraded share one model), stream lines (clusters / tree / done), claims requests and responses, Work Context request and response, memory search, prune. Every model has `extra="forbid"`.
+- `engine/routes.py` (`APIRouter(prefix="/api")`, dev-only `GET /api/_whoami`, 404 unless `AUTH_MODE=dev`; comment lists R's §4.4 endpoints) and `engine/standalone.py` (`GET /health` → `{"status":"ok","lane":"engine"}`, logs a dev-auth-only warning at startup).
+- Fixtures: `events_2h.json` (134 events, 8 sessions, from `scripts/gen_events.py`, seed 20261004), `user_notes.json` (the note cited by `grove.example.json`), and loaders in `engine/fixtures/__init__.py` for every fixture and `contracts/` file.
+
+### Tests
+
+- `apps/api/app/engine/tests/` (40 tests): every R contract round-trips through its model with no extra or missing fields, the stream file line by line, the 422 `user_id` example is rejected; auth (no header, bad UUID, valid UUID, hidden outside dev); `/health`; fixtures (all 28 tabs covered, ordered timestamps, unique event ids, `previous_tab_ref` on every FOCUS, notes match grove, attention equals leaf `dwell_min`, generator is deterministic); Azure client with a fake SDK (content filters, no retry on filter, one retry on 429/timeout, embed batching, secrets hidden in reprs); live Azure (`chat_structured` + `embed`, 1536-d) and live DB (`SELECT 1`, timescaledb/vector/vectorscale), each only when its setting is present.
+
+### Verification
+
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 40 passed; the live Azure (1.31 s) and DB (0.20 s) tests ran.
+- `uvicorn app.engine.standalone:app --port 8100`: `/health` 200; `/api/_whoami` without the header → 401 problem JSON; with `X-Dev-User` → 200 `{"user_id": ...}`.
+
+### Notes
+
+- `events_2h.json` reuses P's late-session batch from `contracts/events.example.json` verbatim (10:57:40–11:24:49) and adds the rest so each tab's `active_ms` total equals its leaf `dwell_min` and the 30-minute gap rule reproduces P's sessions `…004`–`…008` exactly. To give every open tab history it also holds older sessions (Job Search on 9/29 and 9/30, Weeknight Dinner on 10/3), so it spans more than two hours. It includes P's closed fourth search tab `…029`.
+- `apps/api/pyproject.toml` (P's) does not exist yet; dependencies were installed into `apps/api/.venv` with `uv pip install` and must be added by P.
+- Tests run with `python -m pytest` from `apps/api`; `app` is a namespace package until P adds `app/__init__.py`.
+
 ## [2026-10-03] — PRE-C1 draft: P's contracts on the shared demo scenario (P)
 
 ### Changed
