@@ -6,6 +6,25 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — PRE-D2 networking preflight extension
+
+### Added
+
+- `apps/extension/preflight/`: dependency-free MV3 probe using PRE-D1's fixed public key, strict CSP and no permissions or content scripts. Toolbar opens a page with the runtime ID, an API base input, and separate page/worker `/health` fetch buttons.
+- Text-only HTTP status/body or error results; worker logs and returns its result. HTTPS base validation rejects credentials, query strings and fragments.
+- README with unpacked loading, ID comparison, page and worker DevTools screenshot steps, and CORS troubleshooting.
+
+### Verification
+
+- `node --check` passed for `preflight.js` and `background.js`.
+- Inline Node assertions passed: manifest JSON and privacy invariants, public key and derived ID, toolbar target, displayed ID, async worker response, and mocked page/worker HTTP 200, HTTP 503, fetch failure and HTTPS rejection.
+- `git diff --check` passed. Tests used mocks only; no Chrome or live API requests executed.
+
+### Notes
+
+- Deep must verify the extension ID in Chrome and capture both HTTP 200 results against P's deployed API with the fixed origin allowed in CORS. PRE-D2 live verification remains pending.
+- Task 2 remains on hold; no contracts files edited. No commit or push.
+
 ## [2026-10-03] — Lane PRE-S1 Visual Design & Pitch Preparation
 
 ### Added
@@ -37,6 +56,23 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 ### Verification
 - `npm test`: 4 test files, 25 tests passing.
 - `npm run build`: Static production bundle compiled into `dist/` with zero TypeScript errors.
+
+## [2026-10-03] — PRE-D1 fixed extension key and stable ID
+
+### Added
+
+- `apps/extension/EXTENSION_KEY.md`: public DER key, derivation, extension ID `nldemblgfgcaolkpkajdbefjfnileeoi`, and extension origin. Generated the 2048-bit RSA private key outside the repo with mode 0600.
+- Root `.gitignore`: PEM, environment files (except `.env.example`), node_modules, dist, and virtual environments.
+
+### Verification
+
+- `openssl rsa -check -noout`: RSA key ok. Confirmed private key path is outside the repo and permissions are 0600.
+- Node assertions: documented public key matches the private key's public DER; modulus is 2048 bits; independently derived ID and origin match; `.gitignore` has the exact requested lines.
+- `git check-ignore --no-index`: requested sensitive/generated paths ignored, `.env.example` not ignored. `git diff --check` passed.
+
+### Notes
+
+- Chrome extension ID match is not yet verified; requires loading the Task 3 preflight extension. No commit or push.
 
 ## [2026-10-03] — Docs aligned with BUILD_TASKS.md plan v3
 
