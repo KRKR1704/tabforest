@@ -34,6 +34,38 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - `apps/api/pyproject.toml` (P's) does not exist yet; dependencies were installed into `apps/api/.venv` with `uv pip install` and must be added by P.
 - Tests run with `python -m pytest` from `apps/api`; `app` is a namespace package until P adds `app/__init__.py`.
 
+## [2026-10-03] — D-2 capture (D)
+
+### Added
+
+- Extension capture, pure injectable-clock focus tracker, URL normalization/hash/search helpers and a single console-only `emit(event)` sink. Toolbar behavior stays unchanged.
+- Contract-shaped OPEN, UPDATE, FOCUS, BLUR, CLOSE, IDLE and ACTIVE events with client UUIDs, UTC timestamps, stable in-memory tab refs and private local URLs. Install/startup snapshots emit OPEN for up to 60 HTTP(S) tabs ordered by last access.
+- Fake Chrome/fake-clock tests for strict keys against P's first_send example, tab/opener refs, unique event IDs, timing, snapshots, URL helpers and toolbar preservation. Reconstructed FastAPI URLs reproduce the snapshot fixture's duplicate SHA-256 exactly.
+
+### Fixed
+
+- Declared focusedWindow as number rather than the inferred -1 literal.
+- Closing the currently focused tab consumes and emits its dwell in BLUR before CLOSE, preserves its ref for the next FOCUS and never emits a second BLUR. Regression tests cover both removal-first and activation-first callback orders.
+- Initial focused HTTP(S) tab now emits FOCUS with null previous_tab_ref before any later BLUR; added a regression test.
+
+### Verification
+
+- Confirmed branch feat/d-2-capture, HEAD 328d7a8 and required package/open_tabs fixture. Node 20.20.2 used via PATH prefix.
+- Reproduced missing startup FOCUS and lost close dwell with failing regression tests before applying fixes.
+- `PATH="/opt/homebrew/opt/node@20/bin:$PATH" pnpm test`: 5 files, 34 tests passed. Existing mock-server tests require loopback access; initial sandbox run failed with listen EPERM, final permitted run passed.
+- Same PATH prefix with `pnpm typecheck` and `pnpm build`: exit 0; Vite transformed 9 modules and built in 154ms.
+- `git diff --check` passed. Contracts, manifest, preflight, mock API and dependency files unchanged. Chrome not run; manual console verification remains for Deep.
+
+### Notes
+
+- First FOCUS has previous_tab_ref null. IDLE/ACTIVE without a focused eligible tab emit nothing; locked maps to IDLE. Background-window activations do not count as user focus; window changes pause/resume/select timing without emitting events.
+- Removal-first callbacks emit BLUR, CLOSE, then the later FOCUS; activation-first emits BLUR, FOCUS, CLOSE. Callback timestamps/order are preserved, with serialized async Chrome lookups/hashes. No event delivery queue, retries, storage, network calls, auth or bridge handlers.
+- HTTP(S)-only eligibility also applies to live capture; pendingUrl is used only when url is absent. An active new-tab page starts timing when its HTTP URL becomes available. Missing titles are null; titles truncate at 300 Unicode code points. Snapshot ties preserve query order; missing lastAccessed is treated as zero.
+- Query extraction uses exact canonical engine hosts (optional www); regional engine domains are not inferred. Tracking parameter removal is case-insensitive, remaining parameters sort by key, and repeated-key order is preserved. Fixture duplicate URLs were reconstructed, not recovered from the fixture, which has no URL fields.
+- Closed tabs lose their Chrome-ID mapping while their local URL remains in memory; worker restarts lose all state until D-3. Callback failures log a generic warning without page details.
+- `[tf-capture]` console output currently includes unredacted titles/search queries as explicitly requested for D-2. This temporary debug output MUST be removed or sanitized in D-4/D-5; the Hollow must wrap emit before anything is queued.
+- No commit or push.
+
 ## [2026-10-03] — PRE-C1 draft: P's contracts on the shared demo scenario (P)
 
 ### Changed
