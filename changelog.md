@@ -6,6 +6,23 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — R-15 The engine reads the real events (R)
+
+### Fixed
+
+- `apps/api/app/engine/adapters/stats.py`: `get_stats_source(pool)` now returns `DbStats`, which reads the signed-in user's rows of `browser_events` (session id, previous tab, dwell) for events, the query-family window and per-tab attention. Until now every grow read the fixture events, so on real browsing every tree showed "0 min", there were no open questions and no query families, while the timeline (which reads the database) showed the real attention. `grove.py`, `features.py` and `prune.py` pass their pool.
+- Every query filters on `user_id`; refs that are not UUIDs match nothing and never reach the SQL. If the table is missing or a query fails, the fixture answers instead (logged); if nothing is stored for the asked tabs and they are all demo tabs, the demo replays from fixtures, so the demo snapshot still works against a database without the demo user's events. A real user with no events gets empty answers, never demo data.
+- `tests/test_stats_db.py`: 9 tests (mapping, user isolation, attention sums, every fallback, and the real SQL against a database when `DATABASE_URL` is set).
+
+### Verification
+
+- Full flow with the real extension in Chromium, the real API, Postgres and the deployed Azure OpenAI model, 28 demo tabs browsed over about five simulated hours: before the change every tree showed 0 min and 0 open questions; after it the trees show 90, 85, 31, 27 and 18 minutes (the timeline's 90 minutes for the authentication tree agrees) and the grove finds the real open question about refresh-token storage.
+- `pytest app/engine/tests tests`: all pass; the real-SQL test passes against a throwaway Postgres.
+
+### Notes
+
+- Saved contexts (`adapters/contexts.py`, C13) still read their fixture; they belong to R-12.
+
 ## [2026-10-04] — P-12 to P-14: isolation suite, hardening, CI/CD (P)
 
 ### Added

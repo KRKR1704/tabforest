@@ -186,4 +186,4 @@ async def prune_suggestions(body: PruneRequest, user_id: UUID = Depends(get_user
     pool = await db.get_pool()
     grove = await last_grove(pool, user_id) if pool is not None else None
     return JSONResponse(await build_suggestions(user_id, body.tab_refs, grove, embed=_default_embed(user_id, pool),
-                                                stats=get_stats_source()))
+                                                stats=get_stats_source(pool)))

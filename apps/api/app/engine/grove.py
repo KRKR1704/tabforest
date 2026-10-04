@@ -418,7 +418,7 @@ class GrowRun:
         self.pool = pool
         self.client = client
         self.snapshot_at = snapshot_at or datetime.now(timezone.utc)
-        self.stats = stats or get_stats_source()
+        self.stats = stats or get_stats_source(pool)
         self.persist = persist
         self.model_name = model_name
         self.run_id = str(uuid.uuid4())
