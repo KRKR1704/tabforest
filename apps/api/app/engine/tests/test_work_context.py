@@ -605,6 +605,6 @@ def test_unblocks_follows_the_blocker_that_replaced_its_twin() -> None:
 
 
 def test_the_prompt_ranks_unblocking_actions_and_the_nearest_dated_step_first() -> None:
-    prompt = wc.SYSTEM_PROMPT
+    prompt = " ".join(wc.SYSTEM_PROMPT.split())  # the prompt is wrapped across lines
     assert "Rank first the actions that unblock a blocker" in prompt
     assert prompt.index("unblock a blocker") < prompt.index("nearest date or deadline") < prompt.index("the rest, most important first")
