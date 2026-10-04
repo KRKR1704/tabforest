@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import type { GroveResponse } from '../types';
-import { computeGroveLayout } from './layout';
-import { renderGrove, type GroveZoomControls } from './render';
+import { computeGroveLayout, computeRoots, type RootsAnchor } from './layout';
+import { renderGrove, type GroveZoomControls, type LeafDrop } from './render';
 import type { GroveSelection } from './selection';
 
 interface GroveCanvasProps {
@@ -11,6 +11,18 @@ interface GroveCanvasProps {
   selected?: GroveSelection | null;
   /** Called with the clicked element, or null when empty ground is clicked. */
   onSelect?: (selection: GroveSelection | null) => void;
+  /** Called when a leaf is dragged to another tree or to the new-tree zone. */
+  onDropLeaf?: (drop: LeafDrop) => void;
+  /** The claim whose evidence leaves should be lit by roots. */
+  roots?: GroveRoots | null;
+  /** The tree to zoom in on. */
+  focusTreeId?: string | null;
+}
+
+export interface GroveRoots {
+  treeId: string;
+  anchor: RootsAnchor;
+  tabRefs: string[];
 }
 
 const ZOOM_STEP = 1.3;
@@ -24,7 +36,14 @@ function describe(grove: GroveResponse): string {
 }
 
 /** React owns this panel and its controls; D3 owns everything inside the <svg>. */
-export const GroveCanvas: React.FC<GroveCanvasProps> = ({ grove, selected = null, onSelect }) => {
+export const GroveCanvas: React.FC<GroveCanvasProps> = ({
+  grove,
+  selected = null,
+  onSelect,
+  onDropLeaf,
+  roots = null,
+  focusTreeId = null,
+}) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const controlsRef = useRef<GroveZoomControls | null>(null);
   const layout = useMemo(() => computeGroveLayout(grove), [grove]);
@@ -32,12 +51,15 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({ grove, selected = null
   // Kept in a ref so a new callback never forces D3 to redraw and lose the zoom.
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onDropLeafRef = useRef(onDropLeaf);
+  onDropLeafRef.current = onDropLeaf;
 
   useEffect(() => {
     if (!svgRef.current) return;
-    const controls = renderGrove(svgRef.current, layout, (selection) =>
-      onSelectRef.current?.(selection)
-    );
+    const controls = renderGrove(svgRef.current, layout, {
+      onSelect: (selection) => onSelectRef.current?.(selection),
+      onDropLeaf: (drop) => onDropLeafRef.current?.(drop),
+    });
     controlsRef.current = controls;
     return () => {
       controls.destroy();
@@ -57,6 +79,18 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({ grove, selected = null
       if (selected.treeId === tree) node.setAttribute('data-selected', 'true');
     });
   }, [selected, layout]);
+
+  useEffect(() => {
+    controlsRef.current?.showRoots(
+      roots ? computeRoots(layout, roots.treeId, roots.anchor, roots.tabRefs) : null
+    );
+  }, [roots, layout]);
+
+  useEffect(() => {
+    if (focusTreeId) controlsRef.current?.focusTree(focusTreeId);
+    // The layout is left out on purpose: an edit to the grove must not re-zoom.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTreeId]);
 
   const buttonClass =
     'flex h-8 w-8 items-center justify-center text-forest-200 hover:bg-forest-800 hover:text-forest-50';

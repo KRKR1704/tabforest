@@ -91,6 +91,7 @@ export interface WireTree {
   hypotheses: WireClaim[];
   important_tab_refs: string[];
   shared_tab_refs: string[];
+  query_families?: Array<{ id: string; queries: string[]; tab_refs: string[]; open_loop: boolean }>;
 }
 
 export interface WireSprout {
@@ -156,7 +157,7 @@ export function indexTabs(
   return new Map(tabs.map((tab) => [tab.tab_ref, { title: tab.title, domain: tab.domain }]));
 }
 
-function looseTab(tabRef: string, index: TabIndex): GroveTab {
+export function looseTab(tabRef: string, index: TabIndex = EMPTY_INDEX): GroveTab {
   const known = index.get(tabRef);
   return {
     tab_ref: tabRef,
@@ -253,6 +254,7 @@ export function normalizeTree(wire: WireTree, generatedAt: string): TreeData {
     })),
     important_tab_refs: wire.important_tab_refs,
     shared_tab_refs: wire.shared_tab_refs,
+    query_families: wire.query_families ?? [],
     hypotheses: wire.hypotheses.map(claim),
     tabs: wire.branches.flatMap((branch) =>
       branch.leaves.map((leaf) => ({
@@ -309,26 +311,39 @@ export function normalizeGrove(wire: WireGrove, index: TabIndex = EMPTY_INDEX): 
 
 export function normalizeStreamMessage(
   wire: WireStreamMessage,
+  index: TabIndex = EMPTY_INDEX,
   receivedAt: string = new Date().toISOString()
 ): StreamMessage {
   if (wire.type === 'clusters') {
     return {
       type: 'clusters',
+      run_id: wire.run_id,
+      hollow_count: wire.hollow_count,
       clusters: wire.clusters.map((cluster) => ({
         cluster_ref: cluster.project_id,
         project_name: cluster.name,
         tab_refs: cluster.tab_refs,
+        tabs: cluster.tab_refs.map((ref) => looseTab(ref, index)),
       })),
-      sprouts: wire.sprouts.map((sprout, i) => ({
-        sprout_ref: `sprout-${i + 1}`,
-        label: sprout.label,
-        tab_count: sprout.tab_refs.length,
+      sprouts: normalizeSprouts(wire.sprouts ?? [], index),
+      meadow_tab_refs: wire.meadow ?? [],
+      meadow: {
+        label: 'Wildflower Meadow',
+        tabs: (wire.meadow ?? []).map((ref) => looseTab(ref, index)),
+      },
+      fog: (wire.fog ?? []).map((item) => ({
+        tab: looseTab(item.tab_ref, index),
+        reason: item.reason,
       })),
-      meadow_tab_refs: wire.meadow,
     };
   }
   if (wire.type === 'tree') {
     return { type: 'tree', ...normalizeTree(wire, receivedAt) };
   }
-  return { type: 'done', run_id: wire.run_id, degraded: wire.degraded };
+  return {
+    type: 'done',
+    run_id: wire.run_id,
+    degraded: wire.degraded,
+    past_connections: normalizeFireflies(wire.fireflies),
+  };
 }

@@ -34,9 +34,9 @@ export interface TabSnapshotItem {
   search_query: string | null;
 }
 
+/** Reply to GET_SNAPSHOT and the body of grow (contracts/snapshot.example.json). */
 export interface SnapshotPayload {
-  tabs: TabSnapshotItem[];
-  captured_at: string;
+  open_tabs: TabSnapshotItem[];
 }
 
 export interface OpenTabPayload {

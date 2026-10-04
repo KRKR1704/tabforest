@@ -26,21 +26,25 @@ describe('Contracts & Payload Validation', () => {
   });
 
   it('validates 28-tab snapshot payload conforms to SPEC §4.2', () => {
-    expect(mockSnapshot.tabs.length).toBeGreaterThan(0);
-    const tab = mockSnapshot.tabs[0];
+    expect(mockSnapshot.open_tabs).toHaveLength(28);
+    const tab = mockSnapshot.open_tabs[0];
     expect(tab.tab_ref).toBeTruthy();
     expect(tab.domain).toBeTruthy();
     expect(tab.title).toBeTruthy();
     expect(tab.dup_key).toBeTruthy();
   });
 
-  it('validates Timeline buckets conform to continuous aggregate format', () => {
-    expect(mockTimelineResponse.project_id).toBe('p-backend-auth');
-    expect(mockTimelineResponse.buckets.length).toBeGreaterThan(0);
-    const bucket = mockTimelineResponse.buckets[0];
-    expect(bucket.minutes).toBeGreaterThan(0);
-    expect(bucket.branch_label).toBeTruthy();
-    expect(bucket.markers).toBeDefined();
+  it('validates the Timeline mock is the contract example', () => {
+    expect(mockTimelineResponse.project_id).toBe(mockGroveResponse.trees[0].project.id);
+    expect(mockTimelineResponse.bucket).toBe('30m');
+    expect(mockTimelineResponse.lanes.length).toBeGreaterThan(0);
+    const point = mockTimelineResponse.lanes[0].points[0];
+    expect(point.active_ms).toBeGreaterThan(0);
+    expect(point.tabs[0].title).toBeTruthy();
+    expect(mockTimelineResponse.markers.map((marker) => marker.kind).sort()).toEqual([
+      'decision',
+      'question',
+    ]);
   });
 
   it('validates Saved Context and Resume Card contracts', () => {

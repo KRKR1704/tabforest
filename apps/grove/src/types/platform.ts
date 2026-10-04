@@ -33,34 +33,72 @@ export interface BrowserSession {
   unassigned_switches?: number;
 }
 
-export interface TimelineMarker {
-  type: 'question' | 'decision' | 'note';
-  id: string;
-  label: string;
-  ts: string;
+// Timeline (connection C7, contracts/timeline.example.json). Durations are
+// whole milliseconds so sums stay exact; the screen converts to minutes.
+export interface TimelineTab {
+  tab_ref: string;
+  domain: string;
+  title: string;
+  active_ms: number;
 }
 
-export interface TimelineBucket {
-  time: string;
-  branch_ref: string;
-  branch_label: string;
-  minutes: number;
+/** Attention on one branch during one bucket. `t` is the bucket's start, in UTC. */
+export interface TimelinePoint {
+  t: string;
+  active_ms: number;
+  tabs: TimelineTab[];
+}
+
+export interface TimelineLane {
+  /** Branch label. Null collects project tabs that sit on no branch. */
+  branch: string | null;
+  status: 'active' | 'explored';
+  active_ms: number;
+  points: TimelinePoint[];
+}
+
+export interface TimelineSwitches {
+  t: string;
   tab_switches: number;
   intent_switches: number;
-  tabs: Array<{
-    tab_ref: string;
-    domain: string;
-    minutes: number;
-  }>;
-  markers: TimelineMarker[];
+  unassigned_switches: number;
+}
+
+/** When a question first appeared, or when a decision was made. */
+export interface TimelineMarker {
+  kind: 'question' | 'decision';
+  t: string;
+  id: string;
+  text: string;
+  provenance?: 'stated' | 'sourced' | 'inferred' | 'hypothesis';
+  status?: 'open' | 'resolved';
 }
 
 export interface TimelineResponse {
   project_id: string;
-  project_name: string;
+  name: string;
   range: string;
-  buckets: TimelineBucket[];
+  /** Bucket width, e.g. "30m". */
+  bucket: string;
+  from: string;
+  to: string;
+  lanes: TimelineLane[];
+  switches: TimelineSwitches[];
+  markers: TimelineMarker[];
+  totals: {
+    active_ms: number;
+    tab_switches: number;
+    intent_switches: number;
+    unassigned_switches: number;
+  };
 }
+
+export type TimelineResult =
+  | { status: 'ok'; timeline: TimelineResponse }
+  /** The memory store is down (503); the API says when to ask again. */
+  | { status: 'reconnecting'; retryAfterMs: number }
+  /** The project is unknown to the server, e.g. a tree planted a moment ago. */
+  | { status: 'not-found' };
 
 export interface SavedContextItem {
   id: string;

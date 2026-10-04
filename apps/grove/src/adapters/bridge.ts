@@ -53,7 +53,8 @@ export async function sendBridgeMessage<TPayload = unknown, TResponse = unknown>
   if (isExtensionEnvironment()) {
     try {
       const response = await new Promise<BridgeResponse<TResponse>>((resolve, reject) => {
-        chrome.runtime.sendMessage({ type, payload }, (res: any) => {
+        // contracts/bridge.types.ts: payload fields sit next to `type`, not nested.
+        chrome.runtime.sendMessage({ type, ...(payload ?? {}) }, (res: any) => {
           if (chrome.runtime.lastError) {
             return reject(new Error(chrome.runtime.lastError.message));
           }
@@ -80,7 +81,7 @@ function handleMockBridgeMessage<TPayload, TResponse>(
 
     case 'OPEN_TAB': {
       const { tab_ref } = (payload || {}) as OpenTabPayload;
-      const tab = mockSnapshot.tabs.find((t) => t.tab_ref === tab_ref);
+      const tab = mockSnapshot.open_tabs.find((t) => t.tab_ref === tab_ref);
       if (tab) {
         window.open(`https://${tab.domain}`, '_blank');
       }
@@ -103,7 +104,7 @@ function handleMockBridgeMessage<TPayload, TResponse>(
       const { tab_refs } = (payload || { tab_refs: [] }) as GetUrlsPayload;
       const urls: Record<string, string> = {};
       tab_refs.forEach((ref) => {
-        const tab = mockSnapshot.tabs.find((t) => t.tab_ref === ref);
+        const tab = mockSnapshot.open_tabs.find((t) => t.tab_ref === ref);
         if (tab) urls[ref] = `https://${tab.domain}/page`;
       });
       return { ok: true, data: urls as TResponse };

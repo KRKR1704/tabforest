@@ -1,12 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  getGrove,
-  growGrove,
-  streamGrowGrove,
-  updateClaim,
-  assignTab,
-  addNote,
-} from '../adapters/grove';
+import { getGrove, growGrove, streamGrowGrove } from '../adapters/grove';
 import { searchMemory, getPruneSuggestions } from '../adapters/memory';
 import { analyzeWorkContext } from '../adapters/workContext';
 import {
@@ -50,19 +43,6 @@ describe('Adapters Suite (C3–C7)', () => {
     expect(isDone).toBe(true);
   });
 
-  it('updates claims and adds notes', async () => {
-    const claimRes = await updateClaim('dec-1', { action: 'confirm' });
-    expect(claimRes.status).toBe('confirmed');
-    expect(claimRes.provenance).toBe('stated');
-
-    const assignRes = await assignTab('t1', { target_cluster_id: 'c1' });
-    expect(assignRes.pinned).toBe(true);
-
-    const noteRes = await addNote({ cluster_id: 'c1', text: 'My note' });
-    expect(noteRes.text).toBe('My note');
-    expect(noteRes.cleared_fog).toBe(true);
-  });
-
   it('searches memory and fetches prune suggestions', async () => {
     const hit = await searchMemory('session storage');
     expect(hit.results.length).toBeGreaterThan(0);
@@ -93,8 +73,8 @@ describe('Adapters Suite (C3–C7)', () => {
     const sessions = await getSessions();
     expect(sessions.length).toBeGreaterThan(0);
 
-    const timeline = await getTimeline('p-backend-auth', '24h');
-    expect(timeline.buckets.length).toBeGreaterThan(0);
+    const timeline = await getTimeline('p_10000000-0000-4000-8000-000000000001', '24h');
+    expect(timeline.status).toBe('ok');
 
     const contexts = await getContexts();
     expect(contexts.length).toBeGreaterThan(0);

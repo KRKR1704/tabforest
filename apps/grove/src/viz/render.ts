@@ -1,13 +1,16 @@
 // D3 owns everything inside the <svg>. All text goes through .text(), never
 // markup (SPEC §12): titles and labels come from web pages and the model.
-import { select, zoom, zoomIdentity, type Selection } from 'd3';
+import { drag, pointer, select, zoom, zoomIdentity, zoomTransform, type Selection } from 'd3';
+import { resolveDrop } from './layout';
 import type {
+  DropTarget,
   FireflyLayout,
   GroveLayout,
   HypothesisLayout,
   LeafLayout,
   MushroomLayout,
   PatchLayout,
+  RootsLayout,
   StoneLayout,
   TreeLayout,
 } from './layout';
@@ -17,10 +20,82 @@ import type { GroveSelection, SelectionKind } from './selection';
 export interface GroveZoomControls {
   zoomBy: (factor: number) => void;
   reset: () => void;
+  /** Zooms in on one tree, for Tree Detail. */
+  focusTree: (treeId: string) => void;
+  /** Lights the roots to a claim's evidence leaves; null hides them. */
+  showRoots: (roots: RootsLayout | null) => void;
   destroy: () => void;
 }
 
 export type SelectHandler = (selection: GroveSelection | null) => void;
+
+export interface LeafDrop {
+  tabRef: string;
+  fromTreeId: string;
+  target: DropTarget;
+}
+
+export interface GroveHandlers {
+  onSelect?: SelectHandler;
+  /** A leaf was dragged onto another tree or onto the new-tree zone. */
+  onDropLeaf?: (drop: LeafDrop) => void;
+}
+
+/** What the leaf drag needs from the canvas it runs in. */
+interface DragContext {
+  layout: GroveLayout;
+  root: Group;
+  zone: Group;
+  onDropLeaf: (drop: LeafDrop) => void;
+}
+
+/**
+ * Dragging a leaf moves the tab to another goal. d3-drag stops the event at the
+ * leaf, so the canvas does not pan while a leaf is being carried.
+ */
+function leafDrag(context: DragContext, treeId: string) {
+  let ghost: Selection<SVGPathElement, unknown, null, undefined> | null = null;
+
+  const at = (event: { sourceEvent: Event }) => {
+    const [x, y] = pointer(event.sourceEvent, context.root.node());
+    return { x, y };
+  };
+  const mark = (target: DropTarget | null) => {
+    context.root.selectAll<SVGGElement, unknown>('[data-kind="tree"]').attr('data-drop-target', function () {
+      return target?.kind === 'tree' && this.getAttribute('data-tree-id') === target.treeId
+        ? 'true'
+        : null;
+    });
+    context.zone.attr('data-drop-target', target?.kind === 'new' ? 'true' : null);
+  };
+
+  return drag<SVGPathElement, LeafLayout>()
+    .clickDistance(4)
+    .on('drag', (event, leaf) => {
+      const point = at(event);
+      if (!ghost) {
+        ghost = context.root
+          .append('path')
+          .attr('data-kind', 'drag-ghost')
+          .attr('d', leafPath(leaf.length))
+          .attr('fill', PALETTE.leafOpenEdge)
+          .attr('fill-opacity', 0.75)
+          .attr('pointer-events', 'none');
+        context.zone.attr('display', null);
+      }
+      ghost.attr('transform', `translate(${point.x},${point.y}) rotate(-45)`);
+      mark(resolveDrop(context.layout, point, treeId));
+    })
+    .on('end', (event, leaf) => {
+      if (!ghost) return; // released without moving: a click, handled elsewhere
+      ghost.remove();
+      ghost = null;
+      context.zone.attr('display', 'none');
+      mark(null);
+      const target = resolveDrop(context.layout, at(event), treeId);
+      if (target) context.onDropLeaf({ tabRef: leaf.tabRef, fromTreeId: treeId, target });
+    });
+}
 
 type Group = Selection<SVGGElement, unknown, null, undefined>;
 type AnySelection = Selection<any, any, any, any>;
@@ -67,7 +142,8 @@ function drawLeaves(
   leaves: LeafLayout[],
   fill: string,
   onSelect: SelectHandler,
-  treeId?: string
+  treeId?: string,
+  dragContext?: DragContext
 ): void {
   const nodes = parent
     .selectAll<SVGPathElement, LeafLayout>('path.leaf')
@@ -86,6 +162,7 @@ function drawLeaves(
     .attr('stroke-width', 1.25);
   nodes.append('title').text(leafTitle);
   selectable(nodes, onSelect, 'leaf', (leaf: LeafLayout) => leaf.tabRef, treeId);
+  if (dragContext && treeId) nodes.call(leafDrag(dragContext, treeId));
 }
 
 type LabelKind = 'name' | 'patch' | 'meta';
@@ -115,6 +192,7 @@ function plural(count: number, noun: string): string {
 }
 
 function treeMeta(tree: TreeLayout): string {
+  if (tree.pending) return `listening… · ${plural(tree.leafCount, 'tab')}`;
   const parts = [`${Math.round(tree.attentionMinutes)} min`, plural(tree.leafCount, 'tab')];
   // Dormancy is also written out so it never depends on canopy color alone.
   if (tree.dormant) {
@@ -289,12 +367,19 @@ function drawFirefly(parent: Group, firefly: FireflyLayout, onSelect: SelectHand
   selectable(group, onSelect, 'firefly', firefly.id, treeId);
 }
 
-function drawTree(parent: Group, tree: TreeLayout, groundY: number, onSelect: SelectHandler): void {
+function drawTree(
+  parent: Group,
+  tree: TreeLayout,
+  groundY: number,
+  onSelect: SelectHandler,
+  dragContext: DragContext
+): void {
   const group = parent
     .append('g')
     .attr('data-kind', 'tree')
     .attr('data-tree-id', tree.id)
-    .attr('data-canopy', tree.dormant ? 'amber' : 'green');
+    .attr('data-canopy', tree.dormant ? 'amber' : 'green')
+    .attr('data-pending', tree.pending ? 'true' : null);
   group.append('title').text(`${tree.name} · ${treeMeta(tree)}`);
   // Canopy, trunk and name select the tree; everything drawn below stops the click first.
   selectable(group, onSelect, 'tree', tree.id, tree.id);
@@ -345,7 +430,9 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number, onSelect: Se
       .attr('data-kind', 'branch')
       .attr('data-branch-ref', branch.ref)
       .attr('data-status', branch.status);
-    branchGroup.append('title').text(`${branch.label} · ${plural(branch.leaves.length, 'tab')}`);
+    branchGroup
+      .append('title')
+      .text(`${branch.label || 'Path'} · ${plural(branch.leaves.length, 'tab')}`);
     selectable(branchGroup, onSelect, 'branch', branch.ref, tree.id);
 
     branchGroup
@@ -374,7 +461,8 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number, onSelect: Se
       branch.leaves,
       tree.dormant ? PALETTE.leafAmber : PALETTE.leafGreen,
       onSelect,
-      tree.id
+      tree.id,
+      dragContext
     );
   }
 
@@ -424,6 +512,7 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number, onSelect: Se
     .attr('fill-opacity', 0.85);
   fallen.append('title').text((leaf) => `Stale tab · ${leafTitle(leaf)}`);
   selectable(fallen, onSelect, 'fallen-leaf', (leaf: LeafLayout) => leaf.tabRef, tree.id);
+  fallen.call(leafDrag(dragContext, tree.id));
 
   for (const mushroom of tree.mushrooms) drawMushroom(group, mushroom, onSelect, tree.id);
   for (const stone of tree.stones) drawStone(group, stone, onSelect, tree.id);
@@ -471,8 +560,9 @@ function drawPatch(
 export function renderGrove(
   svgElement: SVGSVGElement,
   layout: GroveLayout,
-  onSelect: SelectHandler = () => {}
+  handlers: GroveHandlers = {}
 ): GroveZoomControls {
+  const onSelect: SelectHandler = (selection) => handlers.onSelect?.(selection);
   const svg = select(svgElement);
   svg.selectAll('*').remove();
   svg
@@ -516,7 +606,32 @@ export function renderGrove(
     label(group, sprout.x, layout.groundY + 50, `sprout · ${plural(sprout.leaves.length, 'tab')}`, 'meta');
   }
 
-  for (const tree of layout.trees) drawTree(root, tree, layout.groundY, onSelect);
+  // Shown only while a leaf is being dragged.
+  const zone = root
+    .append('g')
+    .attr('data-kind', 'new-tree-zone')
+    .attr('display', 'none')
+    .attr('pointer-events', 'none');
+  zone
+    .append('circle')
+    .attr('cx', layout.newTreeZone.x)
+    .attr('cy', layout.newTreeZone.y)
+    .attr('r', layout.newTreeZone.r)
+    .attr('fill', PALETTE.ground)
+    .attr('fill-opacity', 0.6)
+    .attr('stroke', PALETTE.textMuted)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '5 5');
+  label(zone, layout.newTreeZone.x, layout.newTreeZone.y + 5, 'New tree', 'patch');
+
+  const dragContext: DragContext = {
+    layout,
+    root,
+    zone,
+    onDropLeaf: (drop) => handlers.onDropLeaf?.(drop),
+  };
+
+  for (const tree of layout.trees) drawTree(root, tree, layout.groundY, onSelect, dragContext);
 
   // Drawn after the trees so the vine crosses over both canopies it joins.
   for (const vine of layout.sharedVines) {
@@ -584,10 +699,66 @@ export function renderGrove(
     });
 
   svg.call(zoomBehavior);
+  // d3-zoom keeps its transform on the <svg>, which outlives a redraw. Applying
+  // it here means an edit to the grove does not throw away the user's view.
+  const kept = zoomTransform(svgElement);
+  if (kept.k !== 1 || kept.x !== 0 || kept.y !== 0) root.attr('transform', kept.toString());
+
+  const clearRoots = () => {
+    root.selectAll('[data-kind="roots"]').remove();
+    root.selectAll('[data-evidence]').attr('data-evidence', null);
+    root.selectAll('[data-dimmed]').attr('data-dimmed', null);
+  };
 
   return {
     zoomBy: (factor) => svg.call(zoomBehavior.scaleBy, factor),
     reset: () => svg.call(zoomBehavior.transform, zoomIdentity),
+    focusTree: (treeId) => {
+      const tree = layout.trees.find((t) => t.id === treeId);
+      if (!tree) return;
+      const scale = Math.max(
+        1,
+        Math.min(SCALE_EXTENT[1], layout.width / (tree.halfWidth * 2 + 160), 2.4)
+      );
+      const centerY = layout.groundY - 150;
+      svg.call(
+        zoomBehavior.transform,
+        zoomIdentity
+          .translate(layout.width / 2 - scale * tree.x, layout.height / 2 - scale * centerY)
+          .scale(scale)
+      );
+    },
+    showRoots: (roots) => {
+      clearRoots();
+      if (!roots) return;
+      const lit = new Set(roots.paths.map((path) => path.tabRef));
+      // Only the evidence leaves stay bright; the rest of the tree steps back.
+      root
+        .selectAll<SVGGElement, unknown>('[data-kind="tree"]')
+        .filter(function () {
+          return this.getAttribute('data-tree-id') === roots.treeId;
+        })
+        .selectAll<SVGPathElement, unknown>('[data-tab-ref]')
+        .each(function () {
+          const isEvidence = lit.has(this.getAttribute('data-tab-ref') ?? '');
+          this.setAttribute(isEvidence ? 'data-evidence' : 'data-dimmed', 'true');
+        });
+      root
+        .append('g')
+        .attr('data-kind', 'roots')
+        .attr('data-tree-id', roots.treeId)
+        .attr('pointer-events', 'none')
+        .selectAll('path')
+        .data(roots.paths)
+        .join('path')
+        .attr('data-root-to', (path) => path.tabRef)
+        .attr('d', (path) => path.d)
+        .attr('fill', 'none')
+        .attr('stroke', PALETTE.roots)
+        .attr('stroke-width', 1.75)
+        .attr('stroke-linecap', 'round')
+        .attr('stroke-opacity', 0.9);
+    },
     destroy: () => {
       svg.on('.zoom', null).on('click', null);
       svg.selectAll('*').remove();
