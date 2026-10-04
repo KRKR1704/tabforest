@@ -119,6 +119,36 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Ids are plain uuids; the API adds the contract prefixes (`p_`, `dec_`, `q_`, `a_`, `n_`, `g_`, `r_`). `user_note_id` is not a foreign key so notes survive cluster re-analysis.
 - At 51 rows the planner uses the `(user_id, kind)` index or a seq scan plus sort, not DiskANN; that is expected at this size (proposal §16: exact scan over one user's rows).
 - Leaf title, domain and source_type are not in R's tables: they come from P's `browser_events` and `tabs` (`tabs.title_norm`, `source_type`, `embedding_hash` are R-written columns that P's migration must create, §4.5).
+## [2026-10-03] — D-4 The Hollow (D)
+
+### Added
+
+- Central Hollow policy with suffix-matched built-in/user exclusions, decoded auth-path checks, incognito/non-HTTP guards, pause and text redaction; session-persisted distinct-tab counter, exposed as `hollowCount()` in the worker console.
+- Built-in domains (suffix-matched, 69 in total): banking/payments 25, health portals 14, personal email 12, password managers 6, identity providers 10. `okta.com`, `auth0.com` and `stripe.com` are deliberately not listed, so their developer documentation stays visible; their login pages are still stopped by the auth-path rule.
+- Seventeen new Hollow tests cover all categories, suffix boundaries, auth paths, incognito, pause/expiry, redaction, current-URL transitions, URL storage exclusion, distinct counts/restart and safe events/logs.
+
+### Changed
+
+- D-4b expanded the built-in domain lists to 69 domains: 25 banking/payments, 14 health portals, 12 personal email, 6 password managers and 10 identity providers (after review `stripe.com`, `okta.com` and `auth0.com` were dropped because they would hide developer documentation).
+- Capture evaluates eligibility before storing URLs or emitting any event; excluded navigation removes previously stored URLs and clears dwell without emitting a BLUR about the excluded page. Returning to an allowed page resumes timing. Wake loads purge excluded saved URLs; orphan local URLs are also pruned when policies exclude them.
+- Event logging now prints only `{type, event_id}`; titles redact before 300-code-point truncation, and text URL/email/token redaction also covers search-query content.
+- With Deep's approval, replaced only the old truncation fixture's long token with spaced research text, retaining the exact 300-code-point assertion and every other assertion in that test.
+- With Deep's approval, replaced only the old emit assertion with an exact single-argument `{type, event_id}` log assertion, retaining the rest of that test.
+
+### Verification
+
+- Node 20 PATH prefix: `pnpm test` passed 7 files / 68 tests, including all existing tests and 23 new Hollow tests; `pnpm typecheck` exited 0; `pnpm build` exited 0 (11 modules, 75ms). Existing mock tests used loopback access.
+- Fixed initialization read ordering without changing the existing lifecycle test that checks synchronous listener registration. No other existing test modified.
+- `git diff --check` passed; contracts, manifest, dependencies, preflight and mock API unchanged. No commit or push. Chrome not run.
+
+### Notes
+
+- Built-in domains are a reviewable starter list, not an exhaustive classification of banking/health sites. All built-in/user domains use exact-or-subdomain suffix matching, never substring matching.
+- Auth paths match `/login`, `/signin`, `/oauth`, `/auth` segments case-insensitively after URL decoding; invalid/non-HTTP URLs and malformed encoded paths are blocked.
+- `paused_until` accepts epoch milliseconds, an ISO timestamp or literal `until resumed`; user domains are read from `user_excluded_domains` and trimmed/lowercased, with optional `*.` removed. Settings refresh on capture callbacks; no settings writer or bridge added.
+- Prefer pending navigation URLs for privacy decisions; recheck page eligibility after async hashing. If Chrome has already removed a tab, CLOSE relies on its last observed eligibility. Excluded opener refs are omitted (null).
+- Counter persists session-local tab IDs only, not excluded URLs/titles; removal decrements it. Worker-console `hollowCount()` exposes only the number. D-4b now counts only tabs stopped for a privacy reason (built-in/user domain, auth path or incognito), excluding blank/internal/extension pages and tabs stopped only because capture is paused.
+- Manual check: reload the extension and open worker console; note `hollowCount()`, open a banking domain and an ordinary host's `/login` page, and confirm the count increases by two without event logs for them; an ordinary page should produce logs containing only type and event_id.
 
 ## [2026-10-03] — R-2: title normalization, source types, search queries, duplicates (R)
 

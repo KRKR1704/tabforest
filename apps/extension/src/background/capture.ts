@@ -2,12 +2,13 @@ import { emit, type CaptureEvent } from './emit';
 import { FocusTracker } from './focus-tracker';
 import { dupKey, httpUrl, searchQuery } from './url';
 import { CaptureStateStore } from './state';
+import { Hollow, redactText } from './hollow';
 
 export function registerCapture(
   api: typeof chrome = chrome,
   output: (event: CaptureEvent) => void = emit,
   now: () => number = Date.now,
-): { settled: () => Promise<void> } {
+): { settled: () => Promise<void>; hollowCount: () => number } {
   // Chrome IDs and full URLs remain private to this capture instance.
   const refs = new Map<number, string>();
   const openedRefs = new Set<string>();
@@ -15,6 +16,8 @@ export function registerCapture(
   const eligible = new Set<number>();
   const tracker = new FocusTracker(now);
   const store = new CaptureStateStore(api.storage);
+  const initialState = store.load();
+  const hollow = new Hollow(api.storage.local, now);
   let focusedWindow: number = api.windows.WINDOW_ID_NONE;
   let previousRef: string | null = null;
   let pending = Promise.resolve();
@@ -24,8 +27,25 @@ export function registerCapture(
   function run(work: (at: number) => void | Promise<void>): void {
     const at = now();
     pending = pending.then(async () => {
+      if (await hollow.refresh()) {
+        for (const tab of await api.tabs.query({})) {
+          if (hollow.excluded(tab)) remember(tab);
+          else hollow.observe(tab);
+        }
+      }
+      // Privacy settings can change without a tab navigation.
+      for (const [ref, url] of localUrls) {
+        if (hollow.excluded({ url })) {
+          localUrls.delete(ref);
+          tracker.remove(ref, at);
+          if (previousRef === ref) previousRef = null;
+          for (const [id, tabRef] of refs) if (tabRef === ref) {
+            eligible.delete(id); hollow.observe({ id, url } as chrome.tabs.Tab);
+          }
+        }
+      }
       await work(at);
-      await store.save({ refs: [...refs], openedRefs: [...openedRefs], eligible: [...eligible], focus: tracker.checkpoint(at),
+      await store.save({ refs: [...refs], openedRefs: [...openedRefs], hollowTabs: hollow.ids(), eligible: [...eligible], focus: tracker.checkpoint(at),
         previousTabRef: previousRef, lastSeenAt: at }, [...localUrls]);
     }).catch(() => {
       console.warn('[tf-capture] Capture callback failed');
@@ -40,8 +60,17 @@ export function registerCapture(
 
   function remember(tab: chrome.tabs.Tab): string | null {
     if (tab.id === undefined) return null;
+    if (hollow.observe(tab)) {
+      const oldRef = refs.get(tab.id);
+      if (oldRef) {
+        localUrls.delete(oldRef); tracker.remove(oldRef);
+        if (previousRef === oldRef) previousRef = null;
+      }
+      eligible.delete(tab.id);
+      return null;
+    }
     const ref = refFor(tab.id);
-    const url = httpUrl(tab.url ?? tab.pendingUrl);
+    const url = httpUrl(tab.pendingUrl ?? tab.url);
     if (!url) { eligible.delete(tab.id); return null; }
     eligible.add(tab.id);
     localUrls.set(ref, url.href);
@@ -53,6 +82,8 @@ export function registerCapture(
   }
 
   async function pageEvent(type: 'OPEN' | 'UPDATE', tab: chrome.tabs.Tab, at: number): Promise<void> {
+    const current = tab.id === undefined ? null : await getTab(tab.id);
+    if (current && hollow.excluded(current)) { remember(current); return; }
     const ref = remember(tab);
     if (!ref) return;
     if (type === 'OPEN' && openedRefs.has(ref)) return;
@@ -63,17 +94,29 @@ export function registerCapture(
     const url = localUrls.get(ref)!;
     const fields = {
       ...base(ref, at), domain: new URL(url).hostname,
-      title: tab.title === undefined ? null : Array.from(tab.title).slice(0, 300).join(''),
-      dup_key: await dupKey(url), search_query: searchQuery(url),
+      title: tab.title === undefined ? null : Array.from(redactText(tab.title)).slice(0, 300).join(''),
+      dup_key: await dupKey(url), search_query: searchQuery(url) === null ? null : redactText(searchQuery(url)!),
     };
+    // Navigation can happen while Web Crypto is hashing the event's URL.
+    const latest = tab.id === undefined ? null : await getTab(tab.id);
+    if (latest && hollow.excluded(latest)) { remember(latest); return; }
     if (type === 'OPEN') {
-      output({ ...fields, type, opener_tab_ref: tab.openerTabId === undefined ? null : refFor(tab.openerTabId) });
+      output({ ...fields, type, opener_tab_ref: tab.openerTabId === undefined || hollow.ids().includes(tab.openerTabId)
+        ? null : refFor(tab.openerTabId) });
       openedRefs.add(ref);
     } else output({ ...fields, type });
   }
 
   async function getTab(id: number): Promise<chrome.tabs.Tab | null> {
     try { return await api.tabs.get(id); } catch { return null; } // Tab may already be closed.
+  }
+
+  async function refreshFocused(): Promise<void> {
+    for (const [id, ref] of refs) if (ref === tracker.tabRef) {
+      const tab = await getTab(id);
+      if (tab) remember(tab);
+      break;
+    }
   }
 
   async function selectWindow(id: number, at: number): Promise<void> {
@@ -87,9 +130,10 @@ export function registerCapture(
 
   api.idle.setDetectionInterval(60);
   run(async at => {
-    const saved = await store.load();
-    for (const [ref, url] of saved.urls) localUrls.set(ref, url);
+    const saved = await initialState;
+    for (const [ref, url] of saved.urls) if (!hollow.excluded({ url })) localUrls.set(ref, url);
     if (saved.session) {
+      hollow.restore(saved.session.hollowTabs ?? []);
       for (const [id, ref] of saved.session.refs) refs.set(id, ref);
       for (const ref of saved.session.openedRefs ?? []) openedRefs.add(ref);
       for (const id of saved.session.eligible) eligible.add(id);
@@ -100,9 +144,13 @@ export function registerCapture(
       for (const [id, ref] of refs) {
         if (!liveIds.has(id)) { refs.delete(id); openedRefs.delete(ref); eligible.delete(id); tracker.remove(ref, at); }
       }
+      for (const id of hollow.ids()) if (!liveIds.has(id)) hollow.remove(id);
       const unknown = tabs.filter(tab => tab.id !== undefined && !refs.has(tab.id));
       for (const tab of tabs) remember(tab);
       for (const tab of unknown) await pageEvent('OPEN', tab, at);
+    } else {
+      // Count excluded tabs without changing D-2's cold-start OPEN/ref behavior.
+      for (const tab of await api.tabs.query({})) if (hollow.excluded(tab)) remember(tab);
     }
     tracker.setActive((await api.idle.queryState(60)) === 'active', at);
     const window = await api.windows.getLastFocused();
@@ -130,6 +178,7 @@ export function registerCapture(
   });
   api.tabs.onActivated.addListener(info => run(async at => {
     if (info.windowId !== focusedWindow) return; // A background window is not user focus.
+    await refreshFocused();
     const tab = await getTab(info.tabId);
     const next = tab ? remember(tab) : null;
     const prior = tracker.tabRef;
@@ -152,7 +201,9 @@ export function registerCapture(
     });
     if (change.status === 'complete' || change.title !== undefined) run(at => pageEvent('UPDATE', copy, at));
   });
-  api.tabs.onRemoved.addListener(id => run(at => {
+  api.tabs.onRemoved.addListener(id => run(async at => {
+    const current = await getTab(id);
+    if (current) remember(current);
     const ref = refs.get(id);
     if (ref && tracker.tabRef === ref) {
       output({ ...base(ref, at), type: 'BLUR', active_ms: tracker.take(ref, at) });
@@ -162,9 +213,12 @@ export function registerCapture(
     if (ref) { tracker.remove(ref, at); openedRefs.delete(ref); }
     refs.delete(id);
     eligible.delete(id);
+    hollow.remove(id);
   }));
   api.windows.onFocusChanged.addListener(id => run(at => selectWindow(id, at)));
-  api.idle.onStateChanged.addListener(state => run(at => {
+  api.idle.onStateChanged.addListener(state => run(async at => {
+    await refreshFocused();
+    if (!tracker.tabRef && focusedWindow !== api.windows.WINDOW_ID_NONE) await selectWindow(focusedWindow, at);
     const active = state === 'active';
     tracker.setActive(active, at);
     if (focusedWindow !== api.windows.WINDOW_ID_NONE && tracker.tabRef) {
@@ -179,5 +233,5 @@ export function registerCapture(
   }
   api.runtime.onInstalled.addListener(() => run(snapshot));
   api.runtime.onStartup.addListener(() => run(snapshot));
-  return { settled: () => pending };
+  return { settled: () => pending, hollowCount: () => hollow.hollowCount() };
 }
