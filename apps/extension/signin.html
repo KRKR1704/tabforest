@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in to TabForest</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 28px 24px; background: #0b1a12; color: #e3efe6; font: 14px/1.5 system-ui, sans-serif; }
+      h1 { font: 600 20px Georgia, 'Times New Roman', serif; margin: 0 0 4px; }
+      p.lead { margin: 0 0 20px; color: #9bb5a2; }
+      label { display: block; margin: 12px 0 4px; color: #9bb5a2; }
+      input { box-sizing: border-box; width: 100%; padding: 9px 10px; border: 1px solid #2d4a37; border-radius: 6px; background: #112218; color: inherit; font: inherit; }
+      input:focus-visible, button:focus-visible { outline: 2px solid #6fcf97; outline-offset: 2px; }
+      button { font: inherit; cursor: pointer; border-radius: 6px; padding: 9px 12px; width: 100%; }
+      button.primary { margin-top: 16px; border: 0; background: #3a6c47; color: #fff; }
+      button.secondary { margin-top: 10px; border: 1px solid #2d4a37; background: transparent; color: inherit; }
+      button.link { margin-top: 14px; border: 0; background: none; color: #9bb5a2; text-decoration: underline; width: auto; padding: 0; }
+      button[disabled] { opacity: .6; cursor: default; }
+      hr { border: 0; border-top: 1px solid #1f3727; margin: 22px 0 4px; }
+      #error { min-height: 20px; margin: 14px 0 0; color: #f08a78; }
+    </style>
+  </head>
+  <body>
+    <h1>Sign in to TabForest</h1>
+    <p class="lead">Your tabs stay on this device. Sign in so your grove is saved to your own account.</p>
+    <form id="login" autocomplete="on">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button class="primary" id="submit" type="submit">Sign in</button>
+    </form>
+    <hr>
+    <button class="secondary" id="microsoft" type="button">Sign in with Microsoft</button>
+    <p id="error" role="alert"></p>
+    <button class="link" id="cancel" type="button">Cancel</button>
+    <script type="module" src="/src/signin.ts"></script>
+  </body>
+</html>

@@ -1,4 +1,8 @@
 import type { FocusState } from './focus-tracker';
+import type { TabSnapshotItem } from '../../../../contracts/bridge.types';
+
+// C6 allows null titles; shared draft currently declares string only.
+export type SnapshotItem = Omit<TabSnapshotItem, 'title'> & { title: string | null };
 
 export const SESSION_KEY = 'tf_capture_session';
 export const URLS_KEY = 'tf_capture_urls';
@@ -6,6 +10,7 @@ export const URLS_KEY = 'tf_capture_urls';
 export interface SessionState {
   refs: [number, string][];
   openedRefs: string[];
+  snapshotItems?: [string, SnapshotItem][];
   hollowTabs: number[];
   eligible: number[];
   focus: FocusState;

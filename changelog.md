@@ -40,6 +40,54 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - A tab on no tree (meadow, fog, sprout) cannot be saved as a reference, because `save-context` is per project; it is left open and the message says so.
 - Clicking a vine opens the full list of suggestions rather than only that vine's.
 - BUILD_TASKS.md: S-11 row ticked only.
+## [2026-10-03] — D-11 Grove UI inside the extension (D)
+
+### Added
+
+- `apps/extension/scripts/bundle-grove.mjs` (and `pnpm bundle:grove`, `pnpm build:with-grove`): copies the Grove build (`apps/grove/dist`) into the extension build as `grove.html` plus its assets, skipping sourcemaps and removing their comment. The placeholder `grove.html` stays when the Grove build is missing. It refuses a Grove build with inline or remote scripts, an inline event handler, a reference to a file that is not in the build, or an asset name that already exists in the extension with different content, and writes nothing in those cases. Safe to run twice.
+- `tests/bundle-grove.test.mjs`: eight tests for the copy, the sourcemap handling, the fallback, the missing extension build, the refusals and running twice.
+- README section with the two build commands.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test`, `pnpm typecheck` and `pnpm build` pass (144 of 144 tests, 8 of them new). The earlier real-Chromium checks (capture, Hollow, sync, bridge) still pass with the bundled build. Grove built with `npm ci` and `npm run build` (its own `check-dist` step passes).
+- Real Chromium (Playwright, outside the repo) with the bundled build: `grove.html` loads inside the extension, shows the Grove with the extension runtime (the real bridge, not the stand-in), has no CSP violation, no script error and no failed request, and `GET_SNAPSHOT` from that page returns the three open tabs.
+
+### Notes
+
+- Shriya's code, `contracts/`, the manifest and the dependencies are unchanged; only `package.json` scripts were added.
+- The Grove shows its demo data until sign-in exists (D-6): `GET_TOKEN` is still `null`, so the page cannot call the API in production mode.
+- The Grove page loads Inter and Lora from Google Fonts (a remote stylesheet). The extension CSP only restricts scripts, so this works while online and falls back to system fonts offline.
+## [2026-10-03] — D-6 Sign-in: fallback login and Microsoft Entra ID (D)
+
+### Added
+
+- `src/background/auth.ts`: the token store (`chrome.storage.session` only, with a 30 s expiry margin), the fallback login (`POST /api/auth/login`) and the Microsoft Entra ID authorization code flow with PKCE (`launchWebAuthFlow`, S256 challenge, state check, code exchange). Only the public Entra client ID is in the bundle; `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_TENANT` and `VITE_ENTRA_SCOPE` can override the defaults.
+- `src/background/signin.ts` and `signin.html` with `src/signin.ts`: `SIGN_IN` opens a small sign-in window of the extension (email and password, or "Sign in with Microsoft"). The window talks to the worker with `AUTH_FALLBACK`, `AUTH_ENTRA` and `AUTH_CANCEL`, which are accepted only from that exact page and only while a sign-in is in progress. Closing the window or pressing Cancel ends `SIGN_IN` with `cancelled`.
+- Bridge: `SIGN_IN` returns the signed-in profile, `SIGN_OUT` clears the token and everything waiting to be sent (queue, last sent batch, sender state), `GET_AUTH_STATE` and `GET_TOKEN` answer from the stored token and return signed-out values once it expires. The sign-in messages are not queued behind each other, so waiting for the user does not hold up the rest of the bridge. The event sender now uses the token as `Authorization: Bearer`.
+- Worker globals `signIn()` for testing from the console.
+
+### Changed
+
+- `contracts/bridge.types.ts`: the reply of `SIGN_IN` is `AuthStateData` (it was an acknowledgement). Shriya's store already reads the profile from that reply. No other contract change.
+- `tests/fake-chrome.mjs` (helper): `storage.remove`, `windows.onRemoved/create/update` and `identity`; no existing assertion changed.
+- `vite.config.ts`: `signin.html` added as a page.
+
+### Tests
+
+- 29 new tests: `tests/auth.test.mjs` (token store, claims, fallback login results, PKCE test vector from RFC 7636, authorize URL, redirect parsing, code exchange, the whole Entra flow with a state mismatch and a closed window) and `tests/signin.test.mjs` (popup flow, shared window, wrong password then right one, cancel and window close, sender and state checks, sign-out, expiry, the password is never stored or logged, Microsoft sign-in, no auth service). A deliberate break of the sender check and of the expiry check was caught by these tests.
+
+### Verification
+
+- From `apps/extension/` with Node 20: 165 of 165 tests, typecheck and build pass. `contracts/` changes only as listed, `apps/grove`, the manifest permissions and dependencies are unchanged (the manifest already had `identity`).
+- Real Chromium (Playwright, outside the repo) against a stand-in API: 15 of 15 for the whole flow (401 and queued events before sign-in, the popup, a wrong then a right password, the profile, the token only in session storage, the Bearer token on the next send, sign-out clearing everything, capture still queuing locally, closing the window and the Cancel button). The capture, Hollow, sync and bridge checks still pass.
+
+### Notes
+
+- **The deployed API has the fallback login turned off** (`POST /api/auth/login` answers 404 because `FALLBACK_LOGIN` is false), so there only a Microsoft token (or the dev header) works. P has to turn the fallback on and create an account for the demo, or confirm Entra.
+- **The Microsoft path is not verified against a real tenant.** It follows the standard flow, but it needs the redirect URI `https://<extension id>.chromiumapp.org/` registered for the app and the scope `api://<client id>/user_impersonation` to match what the API expects; if the token request is refused for its origin, the registration type may have to change. Plan: try it with a real account; fall back to the email login if it does not work.
+- Sign-out follows SPEC §11.3 for the token and the queue, but capture keeps running locally and nothing is sent until the next sign-in (the spec says capture stops).
+- The Grove has no sign-in screen yet (S-13), so the entry points are the `SIGN_IN` message and the console helper `signIn()`.
 
 ## [2026-10-03] — Lane S-10 Privacy (S)
 
@@ -140,6 +188,29 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Saving references (`kind: "references"`) from the prune dialog is S-11; resuming one already works.
 - Restoring into a named tab group depends on the extension (`group_name` is sent).
 - BUILD_TASKS.md: S-8 row ticked only.
+## [2026-10-03] — D-7 Extension bridge handlers (D)
+
+### Added
+
+- Synchronously registered async onMessage router for all 16 bridge messages, own-extension sender validation, short error codes and message-type-only error logging.
+- Read-only snapshot, Hollow count, sender preview, stripped local URLs and auth/work-item stubs; snapshot metadata preserves the original OPEN timestamp across worker sleep and includes only opened, currently eligible tabs, sorted by recent access and capped at 60.
+- Local ref-based focus/reopen/close/restore actions, validated pause/domain settings and live local/session wipe; existing global helpers remain available.
+- Twelve new bridge and integration tests cover reply shapes, privacy filtering, tab actions, settings, live reset, synchronous registration and sender abort/drain during wipe.
+
+### Decisions
+
+- C6 permits null titles while the shared draft declares string, so the extension uses a local nullable snapshot type without changing contracts; old sessions lacking OPEN metadata are omitted rather than assigning invented opening times.
+- Epoch-millisecond pause values are accepted per C6 alongside the draft's string/null values; null removes the key, invalid values/domains return invalid_payload, and domain writes are serialized and deduplicated.
+- RESTORE fallback_urls uses positional matching, only when the local entry is missing; duplicate refs are processed once, reopen URLs must be HTTP(S), and group_name is validated but grouping waits for D-8.
+- RESTORE stops at the first unresolvable ref with not_found; earlier requested actions may already have completed.
+- GET_URLS additionally strips URL credentials; snapshot and other replies contain no Chrome IDs or raw URLs, with GET_URLS the explicit stripped-URL exception.
+- WIPE_LOCAL pauses sender triggers, aborts/drains the current request, waits for capture persistence, clears both stores and resets capture memory, then resumes normal operation; auth remains not_implemented until D-6 and work items remain empty until D-9.
+- Fake Chrome runtime gained id/onMessage support; no existing test assertion changed, no new dependencies or permissions, and no Grove or contract files edited.
+
+### Verification
+
+- All four Node 20 checkpoints passed; final pnpm test 136/136 tests, 13/13 files; pnpm typecheck exit 0; pnpm build exit 0 (14 modules, 168ms); git diff --check clean.
+- Real-Chromium verification remains with Claude/Deep; no new HTML or test page, commit or push.
 
 ## [2026-10-03] — Lane S-7 Timeline, and repair of a bad merge on main (S)
 
