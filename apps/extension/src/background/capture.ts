@@ -1,7 +1,7 @@
 import { emit, type CaptureEvent } from './emit';
 import { FocusTracker } from './focus-tracker';
 import { dupKey, httpUrl, searchQuery } from './url';
-import { CaptureStateStore, type SessionState } from './state';
+import { CaptureStateStore, type SessionState, type SnapshotItem } from './state';
 
 // Optional for sessions saved before D-2b; kept local to capture's allowed scope.
 type FirstOpenSession = SessionState & { awaitingOpen?: number[] };
@@ -11,10 +11,11 @@ export function registerCapture(
   api: typeof chrome = chrome,
   output: (event: CaptureEvent) => void | Promise<void> = emit,
   now: () => number = Date.now,
-): { settled: () => Promise<void>; hollowCount: () => number } {
+): { settled: () => Promise<void>; hollowCount: () => number; reset: () => Promise<void> } {
   // Chrome IDs and full URLs remain private to this capture instance.
   const refs = new Map<number, string>();
   const openedRefs = new Set<string>();
+  const snapshotItems = new Map<string, SnapshotItem>();
   const awaitingOpen = new Set<number>();
   const localUrls = new Map<string, string>();
   const eligible = new Set<number>();
@@ -49,7 +50,7 @@ export function registerCapture(
         }
       }
       await work(at);
-      const session: FirstOpenSession = { refs: [...refs], openedRefs: [...openedRefs], awaitingOpen: [...awaitingOpen], hollowTabs: hollow.ids(), eligible: [...eligible], focus: tracker.checkpoint(at),
+      const session: FirstOpenSession = { refs: [...refs], openedRefs: [...openedRefs], snapshotItems: [...snapshotItems], awaitingOpen: [...awaitingOpen], hollowTabs: hollow.ids(), eligible: [...eligible], focus: tracker.checkpoint(at),
         previousTabRef: previousRef, lastSeenAt: at };
       await store.save(session, [...localUrls]);
     }).catch(() => {
@@ -124,6 +125,12 @@ export function registerCapture(
       const openerRef = tab.openerTabId === undefined || hollow.ids().includes(tab.openerTabId)
         ? undefined : refs.get(tab.openerTabId);
       await output({ ...fields, type, opener_tab_ref: openerRef && openedRefs.has(openerRef) ? openerRef : null });
+      snapshotItems.set(ref, {
+        tab_ref: ref, domain: fields.domain, title: fields.title,
+        opener_tab_ref: openerRef && openedRefs.has(openerRef) ? openerRef : null,
+        opened_at: fields.ts, active: tab.active, pinned: tab.pinned,
+        dup_key: fields.dup_key, search_query: fields.search_query,
+      });
       openedRefs.add(ref);
       if (tab.id !== undefined) awaitingOpen.delete(tab.id);
       if (firstEligible && tab.active && tab.windowId === focusedWindow && tracker.tabRef === null && previousRef !== ref) {
@@ -131,7 +138,12 @@ export function registerCapture(
         await output({ ...base(ref, at), type: 'FOCUS', previous_tab_ref: previousRef });
         previousRef = ref;
       }
-    } else await output({ ...fields, type });
+    } else {
+      await output({ ...fields, type });
+      const item = snapshotItems.get(ref);
+      if (item) snapshotItems.set(ref, { ...item, domain: fields.domain, title: fields.title,
+        dup_key: fields.dup_key, search_query: fields.search_query });
+    }
   }
 
   async function getTab(id: number): Promise<chrome.tabs.Tab | null> {
@@ -161,6 +173,7 @@ export function registerCapture(
     for (const [ref, url] of saved.urls) if (!hollow.excluded({ url })) localUrls.set(ref, url);
     if (saved.session) {
       for (const id of (saved.session as FirstOpenSession).awaitingOpen ?? []) awaitingOpen.add(id);
+      for (const [ref, item] of saved.session.snapshotItems ?? []) snapshotItems.set(ref, item);
       hollow.restore(saved.session.hollowTabs ?? []);
       for (const [id, ref] of saved.session.refs) refs.set(id, ref);
       for (const ref of saved.session.openedRefs ?? []) openedRefs.add(ref);
@@ -171,7 +184,7 @@ export function registerCapture(
       const liveIds = new Set(tabs.map(tab => tab.id));
       for (const id of awaitingOpen) if (!liveIds.has(id)) awaitingOpen.delete(id);
       for (const [id, ref] of refs) {
-        if (!liveIds.has(id)) { refs.delete(id); openedRefs.delete(ref); eligible.delete(id); tracker.remove(ref, at); }
+        if (!liveIds.has(id)) { refs.delete(id); openedRefs.delete(ref); snapshotItems.delete(ref); eligible.delete(id); tracker.remove(ref, at); }
       }
       for (const id of hollow.ids()) if (!liveIds.has(id)) hollow.remove(id);
       const unknown = tabs.filter(tab => tab.id !== undefined && !refs.has(tab.id));
@@ -247,7 +260,7 @@ export function registerCapture(
       previousRef = ref;
     }
     if (ref && eligible.has(id)) await output({ ...base(ref, at), type: 'CLOSE' });
-    if (ref) { tracker.remove(ref, at); openedRefs.delete(ref); }
+    if (ref) { tracker.remove(ref, at); openedRefs.delete(ref); snapshotItems.delete(ref); }
     refs.delete(id);
     awaitingOpen.delete(id);
     eligible.delete(id);
@@ -271,5 +284,19 @@ export function registerCapture(
   }
   api.runtime.onInstalled.addListener(() => run(snapshot));
   api.runtime.onStartup.addListener(() => run(snapshot));
-  return { settled: () => pending, hollowCount: () => hollow.hollowCount() };
+  function reset(): Promise<void> {
+    const result = pending.then(async () => {
+      await api.storage.local.clear();
+      await api.storage.session.clear();
+      refs.clear(); openedRefs.clear(); awaitingOpen.clear(); snapshotItems.clear();
+      localUrls.clear(); eligible.clear(); previousRef = null;
+      hollow.restore([]);
+      await hollow.refresh();
+      tracker.restore({ current: null, totals: [], since: null,
+        windowFocused: focusedWindow !== api.windows.WINDOW_ID_NONE, active: true }, now(), now());
+    });
+    pending = result.catch(() => { console.warn('[tf-capture] Reset failed'); });
+    return result;
+  }
+  return { settled: () => pending, hollowCount: () => hollow.hollowCount(), reset };
 }
