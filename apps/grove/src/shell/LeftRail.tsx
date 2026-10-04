@@ -7,6 +7,9 @@ interface LeftRailProps {
   activeScreen: ActiveScreen;
   onNavigate: (screen: ActiveScreen) => void;
   hollowCount: number;
+  /** The signed-in user's name, shown above Sign out. */
+  userName?: string;
+  onSignOut?: () => void;
 }
 
 function hollowLine(count: number): string {
@@ -15,7 +18,13 @@ function hollowLine(count: number): string {
   return `${count} tabs are resting in the Hollow`;
 }
 
-export const LeftRail: React.FC<LeftRailProps> = ({ activeScreen, onNavigate, hollowCount }) => (
+export const LeftRail: React.FC<LeftRailProps> = ({
+  activeScreen,
+  onNavigate,
+  hollowCount,
+  userName,
+  onSignOut,
+}) => (
   <div className="flex w-60 shrink-0 flex-col border-r border-forest-800 bg-forest-900">
     <div className="flex h-14 items-center gap-2.5 border-b border-forest-800 px-5">
       <Trees className="h-5 w-5 text-forest-400" aria-hidden="true" />
@@ -51,5 +60,18 @@ export const LeftRail: React.FC<LeftRailProps> = ({ activeScreen, onNavigate, ho
     <p className="border-t border-forest-800 px-5 py-4 text-xs leading-relaxed text-forest-400">
       {hollowLine(hollowCount)}
     </p>
+
+    {onSignOut && (
+      <div className="flex items-center justify-between gap-3 border-t border-forest-800 px-5 py-3">
+        <span className="min-w-0 truncate text-xs text-forest-300">{userName || 'Signed in'}</span>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="shrink-0 text-xs text-forest-300 underline-offset-4 hover:text-forest-50 hover:underline"
+        >
+          Sign out
+        </button>
+      </div>
+    )}
   </div>
 );

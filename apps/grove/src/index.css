@@ -75,6 +75,16 @@
     animation: grove-fade-in 300ms ease-out both;
   }
 
+  /* A tree or patch reached with the keyboard. */
+  .grove-canvas [tabindex]:focus {
+    outline: none;
+  }
+  .grove-canvas [tabindex]:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 6px;
+    border-radius: 4px;
+  }
+
   /* Where a dragged leaf would land. */
   .grove-canvas [data-drop-target='true'] {
     filter: brightness(1.4);

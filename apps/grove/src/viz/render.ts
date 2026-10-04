@@ -120,6 +120,23 @@ function selectable(
     });
 }
 
+/**
+ * Puts a tree or a patch in the keyboard focus order. They are drawn left to
+ * right, so Tab moves across the grove in that order (SPEC §9.4); Enter or
+ * Space does what a click does.
+ */
+function focusable(group: Group, name: string): void {
+  group
+    .attr('tabindex', 0)
+    .attr('role', 'button')
+    .attr('aria-label', name)
+    .on('keydown', function (event: KeyboardEvent) {
+      if (event.target !== this || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      this.dispatchEvent(new MouseEvent('click', { bubbles: false }));
+    });
+}
+
 /** Teardrop pointing along +x from the origin; rotated into place by its angle. */
 function leafPath(length: number): string {
   const w = length * 0.42;
@@ -383,6 +400,7 @@ function drawTree(
   group.append('title').text(`${tree.name} · ${treeMeta(tree)}`);
   // Canopy, trunk and name select the tree; everything drawn below stops the click first.
   selectable(group, onSelect, 'tree', tree.id, tree.id);
+  focusable(group, `${tree.name} · ${treeMeta(tree)}`);
 
   group
     .append('g')
@@ -551,6 +569,7 @@ function drawPatch(
   const count = plural(patch.leaves.length, 'tab');
   group.append('title').text(`${patch.label} · ${count}`);
   selectable(group, onSelect, kind, id);
+  focusable(group, `${patch.label} · ${count}`);
   drawStems(group, patch);
   drawLeaves(group, patch.leaves, fill, onSelect);
   label(group, patch.x, groundY + 30, patch.label, 'patch');

@@ -8,6 +8,8 @@ interface AppShellProps {
   activeScreen: ActiveScreen;
   onNavigate: (screen: ActiveScreen) => void;
   hollowCount: number;
+  userName?: string;
+  onSignOut?: () => void;
   openQuestionCount: number;
   isGrowing?: boolean;
   onGrow?: () => void;
@@ -21,6 +23,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   activeScreen,
   onNavigate,
   hollowCount,
+  userName,
+  onSignOut,
   openQuestionCount,
   isGrowing,
   onGrow,
@@ -29,7 +33,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   children,
 }) => (
   <div className="flex h-screen bg-forest-950 font-sans text-forest-50">
-    <LeftRail activeScreen={activeScreen} onNavigate={onNavigate} hollowCount={hollowCount} />
+    <LeftRail
+      activeScreen={activeScreen}
+      onNavigate={onNavigate}
+      hollowCount={hollowCount}
+      userName={userName}
+      onSignOut={onSignOut}
+    />
     <div className="flex min-w-0 flex-1 flex-col">
       <TopBar
         title={navItemFor(activeScreen).label}

@@ -11,6 +11,7 @@ import { GroveOutline } from './GroveOutline';
 import { useGroveActions } from './useGroveActions';
 import { NOTICES } from '../grow/controller';
 import { useGroveStore } from '../store/useGroveStore';
+import { countGroveTabs } from '../lib/grove';
 
 interface CurrentGroveProps {
   grove: GroveResponse | null;
@@ -105,7 +106,8 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
     setActiveClaim(null);
   }, []);
 
-  if (!grove || grove.trees.length === 0) {
+  const tabTotal = countGroveTabs(grove);
+  if (!grove || (grove.trees.length === 0 && tabTotal === 0)) {
     return (
       <div className="mx-auto max-w-2xl px-8 py-12">
         {groveNotice && (
@@ -125,6 +127,9 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
 
   // Seedling mode says so in words; so does a grove that is not fresh.
   const banner = groveNotice ?? (grove.degraded ? grove.banner_text || NOTICES.degraded : null);
+
+  // Too little to tell goals apart (SPEC §13): the tabs show as sprouts and the grove says why.
+  const learning = !isGrowing && (grove.trees.length === 0 || tabTotal <= 3);
 
   const selected = selection ? describeSelection(grove, selection) : null;
   const showsDetail = selection !== null && OPENS_DETAIL.has(selection.kind);
@@ -219,6 +224,21 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
         >
           {banner}
         </p>
+      )}
+
+      {learning && (
+        <div role="status" className="shrink-0 border-b border-forest-800 px-6 py-4">
+          <p className="font-serif text-lg text-forest-50">TabForest learns as you browse</p>
+          <p className="mt-1 max-w-2xl text-sm text-forest-300">
+            {tabTotal <= 3
+              ? `With only ${tabTotal} ${tabTotal === 1 ? 'tab' : 'tabs'} open there is not enough yet to tell your goals apart.`
+              : 'No goal stands out among these tabs yet.'}{' '}
+            {grove.trees.length === 0
+              ? 'They are shown as they are, with no goal guessed for them.'
+              : 'What is shown is a first reading and may change.'}{' '}
+            Keep browsing, then grow again.
+          </p>
+        </div>
       )}
 
       <div className="min-h-0 flex-1">
@@ -349,7 +369,7 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
           </div>
         ) : (
           <div className="h-full overflow-y-auto">
-            <GroveOutline grove={grove} onShowEvidence={onShowEvidence} />
+            <GroveOutline grove={grove} onShowEvidence={onShowEvidence} onOpenTab={actions.openTab} />
           </div>
         )}
       </div>
