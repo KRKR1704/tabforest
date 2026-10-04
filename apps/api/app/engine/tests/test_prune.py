@@ -1,7 +1,7 @@
 """R-13 prune suggestions: rules, the similarity gate, requested-tabs-only, failure handling and the endpoint. No network."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import numpy as np
@@ -160,32 +160,73 @@ def test_the_semantic_group_is_not_repeated_when_the_same_vine_is_in_two_trees()
 
 # --- stale and distraction ---------------------------------------------------------------------------
 
-def test_stale_lists_the_fallen_leaves_that_were_asked_about_and_nothing_else() -> None:
-    fallen = {tid(18), tid(19), tid(20)}
-    assert set(by_kind(run())["stale"]["tab_refs"]) == fallen
+def test_stale_is_no_focus_for_three_days_and_not_cited_for_the_tabs_that_were_asked_about() -> None:
+    # Job Search: 16 and 17 are stale too but cited as evidence of the goal; 18, 19 and 20 are stale and uncited
+    assert set(by_kind(run())["stale"]["tab_refs"]) == {tid(18), tid(19), tid(20)}
     assert set(by_kind(run(refs=[tid(18), tid(1)]))["stale"]["tab_refs"]) == {tid(18)}
-    assert "stale" not in by_kind(run(refs=[tid(1), tid(2)]))
+    assert "stale" not in by_kind(run(refs=[tid(1), tid(2), tid(16), tid(17)]))   # fresh, or cited
 
 
 class Attention(FixtureStats):
-    def __init__(self, ms: int | None) -> None:
+    """Attention for every requested tab: `ms` of focus, last focused at `last` (None: never)."""
+
+    def __init__(self, ms: int | None, last: datetime | None = datetime(2026, 10, 4, tzinfo=UTC), per_tab=None) -> None:
         super().__init__()
-        self.ms = ms
+        self.ms, self.last, self.per_tab = ms, last, per_tab or {}
 
     async def attention(self, user_id, tab_refs, since=None):
         if self.ms is None:
             return {}
-        return {r: TabAttention(r, self.ms, 1, datetime(2026, 10, 4, tzinfo=UTC)) for r in tab_refs}
+        return {r: TabAttention(r, *self.per_tab.get(r, (self.ms, self.last))[:1], 1,
+                                self.per_tab.get(r, (self.ms, self.last))[1]) for r in tab_refs}
 
 
-def test_distraction_is_a_singleton_under_ten_seconds() -> None:
-    meadow = GROVE["meadow"]
+NOW = datetime(2026, 10, 4, 11, 40, tzinfo=UTC)
+
+
+def test_stale_comes_from_attention_for_every_tab_the_grove_knows_not_only_uncited_leaves() -> None:
+    old = datetime(2026, 10, 1, tzinfo=UTC)  # 3 days 11 h 40 min before NOW
+    stats = Attention(60_000, per_tab={tid(26): (60_000, old), tid(9): (60_000, old), tid(1): (60_000, old),
+                                       tid(2): (60_000, NOW - timedelta(days=2, hours=23))})
+    got = by_kind(run(stats=stats))["stale"]
+    # 26 is a meadow tab, 9 an uncited leaf the grove did not mark fallen: both are listed; 1 is cited; 2 is under 3 days
+    assert set(got["tab_refs"]) == {tid(26), tid(9)} and got["default_selected"] is False
+    # exactly three days is stale, one minute short of it is not
+    edge = Attention(60_000, per_tab={tid(26): (60_000, NOW - timedelta(days=3)), tid(9): (60_000, NOW - timedelta(days=3) + timedelta(minutes=1))})
+    assert by_kind(run(stats=edge, grove={**GROVE, "generated_at": "2026-10-04T11:40:00Z"}))["stale"]["tab_refs"] == [tid(26)]
+    # a tab with no focus record at all is not called stale
+    assert "stale" not in by_kind(run(stats=Attention(None)))
+
+
+def test_stale_is_measured_at_the_time_of_the_grove_not_at_the_time_of_the_request() -> None:
+    later = {**GROVE, "generated_at": "2026-10-20T00:00:00Z"}
+    assert set(by_kind(run(grove=later))["stale"]["tab_refs"]) >= {tid(18), tid(19), tid(20), tid(26)}  # 16 days on
+    assert set(by_kind(run(grove=GROVE))["stale"]["tab_refs"]) == {tid(18), tid(19), tid(20)}
+    assert asyncio.run(prune.stale(GROVE, {tid(18)}, prune._leaves(GROVE), USER, FixtureStats(), NOW))[0]["tab_refs"] == [tid(18)]
+    assert prune.reference_time({"generated_at": "garbage"}).year >= 2026 and prune.reference_time({}).year >= 2026
+
+
+def test_distraction_is_under_ten_seconds_for_tabs_in_a_tree_or_not() -> None:
+    cited = prune.cited_tabs(GROVE)
+    uncited = [r for r in prune.known_tabs(GROVE, prune._leaves(GROVE)) if r not in cited
+               and prune._leaves(GROVE).get(r, {}).get("source_type") != "search"]
     for ms, flagged in ((0, True), (9_999, True), (10_000, False), (84_000, False)):
-        got = run(stats=Attention(ms))
-        assert (("distraction" in by_kind(got)) is flagged), ms
-        if flagged:
-            flagged_refs = {r for s in got["suggestions"] if s["kind"] == "distraction" for r in s["tab_refs"]}
-            assert flagged_refs == set(meadow)
+        got = {r for s in run(stats=Attention(ms))["suggestions"] if s["kind"] == "distraction" for r in s["tab_refs"]}
+        assert got == (set(uncited) if flagged else set()), ms
+    assert tid(9) in uncited and tid(26) in uncited                    # an in-tree leaf and a meadow tab, both candidates
+
+
+def test_a_cited_tab_and_a_search_page_are_never_distractions() -> None:
+    got = {r for s in run(stats=Attention(0))["suggestions"] if s["kind"] == "distraction" for r in s["tab_refs"]}
+    assert got.isdisjoint(prune.cited_tabs(GROVE))                       # 1, 3, 4 ... are the evidence of a goal
+    searches = {t for t, leaf in prune._leaves(GROVE).items() if leaf["source_type"] == "search"}
+    assert searches and got.isdisjoint(searches)                         # 6, 7, 8: steps of a research path
+
+
+def test_an_in_tree_uncited_leaf_with_a_few_seconds_is_flagged_with_its_own_seconds() -> None:
+    got = run(stats=Attention(84_000, per_tab={tid(9): (4_000, NOW), tid(10): (3_000, NOW)}))
+    flagged = {s["tab_refs"][0]: s["reason"] for s in got["suggestions"] if s["kind"] == "distraction"}
+    assert flagged == {tid(9): "4 s of focus, unrelated to any goal"}    # 10 is cited as evidence: kept out
 
 
 def test_each_distraction_is_its_own_suggestion_with_its_own_seconds() -> None:
@@ -193,11 +234,6 @@ def test_each_distraction_is_its_own_suggestion_with_its_own_seconds() -> None:
     flagged = [s for s in got["suggestions"] if s["kind"] == "distraction"]
     assert [s["tab_refs"] for s in flagged] == [[tid(26)]]  # tab 27 had 84 s
     assert flagged[0]["reason"] == "9 s of focus, unrelated to any goal"
-
-
-def test_a_tab_in_a_tree_is_never_a_distraction_even_with_no_focus() -> None:
-    got = run(stats=Attention(0))
-    assert all(set(s["tab_refs"]).isdisjoint({tid(1), tid(3)}) for s in got["suggestions"] if s["kind"] == "distraction")
 
 
 # --- the endpoint ------------------------------------------------------------------------------------

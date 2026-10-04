@@ -165,3 +165,33 @@ def test_the_inferred_threshold_is_unchanged() -> None:
     assert (just_short.provenance, just_short.confidence) == ("hypothesis", 0.59)
     assert one_ref.provenance == "hypothesis"
     assert validate_claim("goal", "Choose", "inferred", 0.99, ev("t1", "t2", "t3", "t4"), CTX).confidence == 0.95
+
+
+# --- document types in the evidence cap (Work Context) ---------------------------------------------------------
+
+DOCS = {"d1": "d_00000000-0000-4000-8000-0000000000a1", "d2": "d_00000000-0000-4000-8000-0000000000a2",
+        "d3": "d_00000000-0000-4000-8000-0000000000a3"}
+DOC_CTX = ValidationContext(DOCS, {}, {}, documents=["x"], mode="work_context",
+                            doc_types={DOCS["d1"]: "ticket", DOCS["d2"]: "transcript", DOCS["d3"]: "ticket"})
+
+
+def test_the_cap_counts_distinct_document_types_not_documents() -> None:
+    two_types = validate_claim("blocker", "Blocked", "inferred", 0.99, ev("d1", "d2"), DOC_CTX)
+    one_type = validate_claim("blocker", "Blocked", "inferred", 0.99, ev("d1", "d3"), DOC_CTX)
+    three = validate_claim("blocker", "Blocked", "inferred", 0.99, ev("d1", "d2", "d3"), DOC_CTX)
+    assert two_types.confidence == 0.85        # 0.35 + 0.15 x 2 + 0.10 x 2 types (ticket, transcript)
+    assert one_type.confidence == 0.75         # two tickets: one type
+    assert three.confidence == pytest.approx(0.95)  # 0.35 + 0.45 + 0.20 = 1.00, capped at 0.95
+    unmapped = ValidationContext(DOCS, {}, {}, documents=["x"], mode="work_context")
+    assert validate_claim("blocker", "Blocked", "inferred", 0.99, ev("d1", "d2"), unmapped).confidence == 0.75  # unknown: "doc"
+    assert evidence_cap(two_types.evidence, DOC_CTX) == pytest.approx(0.85)  # the no-short-refs path agrees
+
+
+def test_only_goal_and_decision_notes_are_in_the_stated_note_map() -> None:
+    from app.engine.grove import stated_notes
+    rows = [{"id": "n_1", "text": "Not using OAuth providers", "kind": "decision"}, {"id": "n_2", "text": "Pick one", "kind": "goal"},
+            {"id": "n_3", "text": "Prototype a refresh flow", "kind": "note"}, {"id": "n_4", "text": "legacy row"}]
+    assert stated_notes(rows) == {"n_1": "Not using OAuth providers", "n_2": "Pick one"}
+    ctx = ValidationContext({"n1": "n_3"}, {}, stated_notes(rows))
+    c = validate_claim("decision", "Prototype a refresh flow", "stated", 0.9, ev("n1", "t1"), ctx, user_note_ref="n1")
+    assert c.provenance != "stated" and "stated without a real user note" in c.reasons   # a note-kind note is context only

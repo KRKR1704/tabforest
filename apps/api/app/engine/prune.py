@@ -5,8 +5,10 @@ POST /api/tabs/prune-suggestions {tab_refs} reads the user's last stored grove a
 - exact_duplicate     the same page open twice or more (the vine the grow run found from the device's dup_key);
 - semantic_redundant  tabs in the same branch whose embedding similarity to the tab we keep is at least SIMILARITY_MIN; the keeper is
                       the strongest source (importance, then dwell) and the one-line reason is the model's, from grow;
-- stale               leaves that were fallen when the grove was made: no focus for 3+ days and not used as evidence;
-- distraction         a singleton (Wildflower Meadow tab) with under 10 s of total focus.
+- stale               any requested tab with no focus for 3+ days (stats.attention, measured at the time of the grove) that no
+                      claim in the grove cites as evidence;
+- distraction         any requested tab with under 10 s of total focus that no claim cites and that is not a search page,
+                      in a tree or not (the meadow, the fog, the sprouts).
 
 No model call is made here. Semantic suggestions are dropped, never guessed, when the embeddings cannot be read.
 """
@@ -16,6 +18,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -27,7 +30,7 @@ from . import db
 from .adapters.auth import get_user_id
 from .adapters.stats import StatsSource, get_stats_source
 from .embeddings import embed_texts, tab_embedding_text
-from .features import DISTRACTION_MS
+from .features import DISTRACTION_MS, STALE_AFTER
 from .normalize import normalize_tab
 from .persist import last_grove
 from .schemas.prune import PruneRequest, PruneResponse
@@ -132,23 +135,57 @@ async def semantic_redundant(grove: Mapping[str, Any], wanted: set[str], leaves:
     return out
 
 
-def stale(grove: Mapping[str, Any], wanted: set[str], leaves: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
-    refs = [r for r, leaf in leaves.items() if leaf.get("fallen") and r in wanted]
-    refs.sort(key=lambda r: (-leaves[r].get("dwell_min", 0.0), r))
+def cited_tabs(grove: Mapping[str, Any]) -> set[str]:
+    """Every tab some claim of the grove cites as evidence (goal, direction, stones, mushrooms, actions, hypotheses)."""
+    out: set[str] = set()
+    for tree in grove.get("trees", []):
+        claims = [tree.get("goal"), tree.get("direction"), *tree.get("stones", []), *tree.get("mushrooms", []),
+                  *tree.get("next_actions", []), *tree.get("hypotheses", [])]
+        out |= {e["ref"] for c in claims if c for e in c.get("evidence", []) if e.get("ref_kind") == "tab"}
+    return out
+
+
+def known_tabs(grove: Mapping[str, Any], leaves: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """Every tab the grove knows, in a fixed order: tree leaves, sprouts, the meadow, the fog."""
+    order = [*leaves, *(r for s in grove.get("sprouts", []) for r in s.get("tab_refs", [])),
+             *grove.get("meadow", []), *(f["tab_ref"] for f in grove.get("fog", []))]
+    return list(dict.fromkeys(order))
+
+
+def reference_time(grove: Mapping[str, Any]) -> datetime:
+    """When the grove was made: stale means "3 days before that", not before whenever the request arrives."""
+    stamp = grove.get("generated_at")
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) if stamp else datetime.now(timezone.utc)
+    except ValueError:
+        return datetime.now(timezone.utc)
+
+
+async def stale(grove: Mapping[str, Any], wanted: set[str], leaves: Mapping[str, Mapping[str, Any]], user_id: UUID,
+                stats: StatsSource, now: datetime) -> list[dict[str, Any]]:
+    refs = [r for r in known_tabs(grove, leaves) if r in wanted]
     if not refs:
         return []
-    return [{"kind": "stale", "tab_refs": refs, "keep_ref": None,
+    cited = cited_tabs(grove)
+    attention = await stats.attention(user_id, set(refs))
+    old = [(attention[r].last_focus, r) for r in refs
+           if r not in cited and r in attention and attention[r].last_focus and now - attention[r].last_focus >= STALE_AFTER]
+    if not old:
+        return []
+    return [{"kind": "stale", "tab_refs": [r for _, r in sorted(old)], "keep_ref": None,
              "reason": "No focus for 3 days or more and not used as evidence", "default_selected": False}]
 
 
 async def distractions(grove: Mapping[str, Any], wanted: set[str], leaves: Mapping[str, Mapping[str, Any]],
                        user_id: UUID, stats: StatsSource) -> list[dict[str, Any]]:
-    singles = [r for r in grove.get("meadow", []) if r in wanted and r not in leaves]
-    if not singles:
+    cited = cited_tabs(grove)
+    candidates = [r for r in known_tabs(grove, leaves)
+                  if r in wanted and r not in cited and leaves.get(r, {}).get("source_type") != "search"]
+    if not candidates:
         return []
-    attention = await stats.attention(user_id, set(singles))
+    attention = await stats.attention(user_id, set(candidates))
     out = []
-    for ref in singles:
+    for ref in candidates:
         ms = attention[ref].active_ms if ref in attention else 0
         if ms < DISTRACTION_MS:
             out.append({"kind": "distraction", "tab_refs": [ref], "keep_ref": None,
@@ -157,7 +194,8 @@ async def distractions(grove: Mapping[str, Any], wanted: set[str], leaves: Mappi
 
 
 async def build_suggestions(user_id: UUID, tab_refs: Iterable[str], grove: Mapping[str, Any] | None, *, embed: Embed,
-                            stats: StatsSource, new_id: Callable[[], str] | None = None) -> dict[str, Any]:
+                            stats: StatsSource, new_id: Callable[[], str] | None = None,
+                            now: datetime | None = None) -> dict[str, Any]:
     wanted = set(tab_refs)
     new_id = new_id or (lambda: str(uuid.uuid4()))
     found: list[dict[str, Any]] = []
@@ -167,7 +205,7 @@ async def build_suggestions(user_id: UUID, tab_refs: Iterable[str], grove: Mappi
         # A tab already in an exact group is not suggested twice as redundant.
         taken = {frozenset(s["tab_refs"]) for s in found}
         found += await semantic_redundant(grove, wanted, leaves, embed, taken)
-        found += stale(grove, wanted, leaves)
+        found += await stale(grove, wanted, leaves, user_id, stats, now or reference_time(grove))
         found += await distractions(grove, wanted, leaves, user_id, stats)
     response = PruneResponse.model_validate({
         "suggestions": [{"id": f"pr_{new_id()}", **s} for s in found], "actions": ACTIONS, "note": NOTE})

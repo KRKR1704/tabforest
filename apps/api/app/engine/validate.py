@@ -35,10 +35,12 @@ _SHORT_REF = re.compile(r"^[tqndc]\d+$")
 class ValidationContext:
     refs: Mapping[str, str]                 # short ref -> real id (features.DataBlock.refs)
     tab_types: Mapping[str, str]            # real tab_ref -> leaf source type
-    notes: Mapping[str, str]                # real note id ("n_<uuid>") -> text, this user's notes only
+    notes: Mapping[str, str]                # real note id ("n_<uuid>") -> text: this user's goal and decision notes
+                                            # only (the notes a claim may be "stated" from); other notes are context
     documents: Sequence[str] = ()           # supplied text (Work Context); empty in browser mode
     mode: Literal["browser", "work_context"] = "browser"
     anchors: Mapping[str, tuple[str, str]] = field(default_factory=dict)  # comparison id -> shown (kind, id)
+    doc_types: Mapping[str, str] = field(default_factory=dict)  # document id -> its type (ticket, transcript, ...)
 
 
 @dataclass
@@ -185,12 +187,19 @@ def _map_evidence(evidence: Sequence[Any], ctx: ValidationContext, reasons: list
 
 def evidence_cap(evidence: Sequence[Mapping[str, str]], ctx: ValidationContext,
                  short_refs: Sequence[str] | None = None) -> float:
-    """0.35 + 0.15 per valid ref + 0.10 per distinct source type (tab leaf types, query, note, doc,
+    """0.35 + 0.15 per valid ref + 0.10 per distinct source type (tab leaf types, document types, query, note,
     comparison), at most 0.95."""
+    def type_of(kind: str, ref: str) -> str:
+        if kind == "tab":
+            return ctx.tab_types.get(ref, "other")
+        if kind == "doc":  # a document counts as its own type: a ticket and a transcript are two source types
+            return ctx.doc_types.get(ref, "doc")
+        return kind
+
     if short_refs is None:
-        types = {ctx.tab_types.get(e["ref"], "other") if e["ref_kind"] == "tab" else e["ref_kind"] for e in evidence}
+        types = {type_of(e["ref_kind"], e["ref"]) for e in evidence}
     else:  # types of the refs as cited: a c* is a "comparison", not its anchor tab's type
-        types = {ctx.tab_types.get(ctx.refs.get(r, ""), "other") if r[0] == "t" else REF_KIND[r[0]] for r in short_refs}
+        types = {type_of(REF_KIND[r[0]], ctx.refs.get(r, "")) if r[0] in "td" else REF_KIND[r[0]] for r in short_refs}
     return min(CAP_BASE + CAP_PER_REF * len(evidence) + CAP_PER_TYPE * len(types), CAP_MAX)
 
 

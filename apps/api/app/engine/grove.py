@@ -30,12 +30,14 @@ from . import metrics
 from .adapters.stats import StatsSource, get_stats_source
 from .carry import Carry, load_carry
 from .cluster import Cluster, cluster_snapshot, cluster_snapshot_no_embeddings
+from .embeddings import embed_tabs
 from .features import (ClusterFeatures, DataBlock, compute_features, finalize_importance, importance_pre,
                        to_data_block, visits_from)
 from .infer import MAX_LLM_CALLS, InferenceOutcome, PriorInsight, infer_all, infer_cluster, retrieve_prior_research
 from .labels import top_terms
 from .model_schema import ClusterInference
-from .normalize import duplicate_groups
+from .normalize import duplicate_groups, normalize_tab
+from .redundancy import semantic_vines
 from .schemas.grove import GroveResponse
 from .schemas.stream import ClustersLine, DoneLine, TreeLine
 from .validate import ValidatedClaim, ValidationContext, display_text, map_tab_refs, validate_claim
@@ -157,7 +159,7 @@ def _note_evidence(note_id: str, why: str) -> dict[str, str]:
 def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, block: DataBlock,
                   inference: ClusterInference, snapshot_tabs: Mapping[str, Mapping[str, Any]],
                   snapshot_at: datetime, notes: Mapping[str, str], shared: set[str],
-                  carry: Carry | None = None) -> TreeBuild:
+                  carry: Carry | None = None, vectors: Mapping[str, Any] | None = None) -> TreeBuild:
     carry = carry or Carry()
     ctx = ValidationContext(block.refs, {r: f.source_type for r, f in features.tabs.items()}, notes,
                             anchors=block.anchors)
@@ -332,6 +334,9 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
         vines.append({"tab_refs": refs, "kind": "semantic",
                       "keep_ref": keep_ref[0] if keep_ref else max(refs, key=lambda r: imp[r]),
                       "reason": g.reason.strip()[:300]})
+    if vectors:  # semantic groups by code: same branch, same leaf type, close embeddings (redundancy.py)
+        vines += semantic_vines(branches, features, vectors, imp, taken=[set(v["tab_refs"]) for v in vines],
+                                skip={r for v in vines if v["kind"] == "exact" for r in v["tab_refs"] if r != v["keep_ref"]})
 
     important = map_tab_refs(inf.important_tab_refs, ctx) or sorted(features.tab_refs, key=lambda r: -imp[r])[:4]
     minutes, days, canopy = _attention(features, snapshot_tabs, snapshot_at)
@@ -395,7 +400,7 @@ async def load_notes(pool: Any, user_id: UUID, project_ids: Sequence[str], tab_r
         return []
     try:
         rows = await pool.fetch(
-            "SELECT id::text AS id, text, project_id::text AS project_id, tab_ref::text AS tab_ref "
+            "SELECT id::text AS id, text, kind, project_id::text AS project_id, tab_ref::text AS tab_ref "
             "FROM user_notes WHERE user_id = $1 AND (project_id = ANY($2::uuid[]) OR tab_ref = ANY($3::uuid[])) "
             "ORDER BY created_at, id", user_id, [UUID(p) for p in project_ids], [UUID(r) for r in tab_refs])
     except Exception as exc:  # noqa: BLE001 - notes are optional context
@@ -405,6 +410,15 @@ async def load_notes(pool: Any, user_id: UUID, project_ids: Sequence[str], tab_r
 
 
 Prepared = tuple[ClusterFeatures, DataBlock, list[PriorInsight], dict[str, str], Carry]
+
+# Only these notes can make a claim "stated". A `note`-kind note (made by confirming or editing a next action or a
+# question) is context for the model, never a decision source: the model once turned an edited action into a
+# carved stone.
+STATED_NOTE_KINDS = ("goal", "decision")
+
+
+def stated_notes(note_rows: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    return {r["id"]: r["text"] for r in note_rows if r.get("kind") in STATED_NOTE_KINDS}
 
 
 class GrowRun:
@@ -427,6 +441,7 @@ class GrowRun:
         self.builds: list[TreeBuild] = []
         self.clusters: list[Cluster] = []
         self.prior: dict[str, list[PriorInsight]] = {}
+        self.tab_vectors: dict[str, Any] = {}
 
     # -- preparation (shared with POST /api/projects/{id}/analyze) ---------------------------------
 
@@ -442,13 +457,23 @@ class GrowRun:
                                            stats=self.stats, client=self.client)
             mine = [n for n in notes if (n["project_id"] and n["project_id"] == c.is_existing_project_id)
                     or (n["tab_ref"] and n["tab_ref"] in c.tab_refs)]
-            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"]} for n in mine]
+            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"], "kind": n.get("kind")} for n in mine]
             prior = await retrieve_prior_research(self.pool, self.user_id, c.centroid)
             block = to_data_block(feats, note_rows, [p.for_model() for p in prior], carry.dismissed)
-            return feats, block, prior, {r["id"]: r["text"] for r in note_rows}, carry
+            return feats, block, prior, stated_notes(note_rows), carry
 
+        self.tab_vectors = await self._tab_vectors({r for c in clusters for r in c.tab_refs})
         done = await asyncio.gather(*(prepare(c, k) for c, k in zip(clusters, carries, strict=True)))
         return dict(zip([c.id for c in clusters], done, strict=True))
+
+    async def _tab_vectors(self, refs: set[str]) -> dict[str, Any]:
+        """Tab embeddings for the semantic groups: cache hits after clustering. Empty when embeddings are down."""
+        try:
+            tabs = [normalize_tab(self.by_ref[r]) for r in sorted(refs) if r in self.by_ref]
+            return dict((await embed_tabs(self.user_id, tabs, self.pool, client=self.client)).vectors)
+        except Exception as exc:  # noqa: BLE001 - no semantic groups without embeddings; everything else still works
+            log.warning("tab embeddings unavailable for semantic groups (%s)", type(exc).__name__)
+            return {}
 
     # -- the run -------------------------------------------------------------------------------------
 
@@ -504,7 +529,7 @@ class GrowRun:
             feats = await compute_features(self.user_id, refs, self.tabs, self.snapshot_at, self.pool,
                                            stats=self.stats, client=self.client)
             notes = await load_notes(self.pool, self.user_id, [], refs)
-            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"]} for n in notes]
+            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"], "kind": n.get("kind")} for n in notes]
             block = to_data_block(feats, note_rows)
             outcome = await infer_cluster("small", block, self.client, repair=False)
             self.report.llm_calls += outcome.llm_calls
@@ -513,7 +538,7 @@ class GrowRun:
                 return None
             g = outcome.inference.goal
             ctx = ValidationContext(block.refs, {r: f.source_type for r, f in feats.tabs.items()},
-                                    {r["id"]: r["text"] for r in note_rows}, anchors=block.anchors)
+                                    stated_notes(note_rows), anchors=block.anchors)
             c = validate_claim("goal", g.text, g.provenance, g.confidence, g.evidence, ctx)
             if c.provenance not in ("inferred", "stated") or c.confidence < SINGLE_GOAL_MIN_CONFIDENCE:
                 return None
@@ -610,7 +635,7 @@ class GrowRun:
         if outcome.inference is not None:
             try:
                 build = assemble_tree(c, pid, feats, block, outcome.inference, self.by_ref, self.snapshot_at,
-                                      notes, shared, carry)
+                                      notes, shared, carry, self.tab_vectors)
                 for claim in build.claims:
                     if claim.downgraded:
                         r.downgrades.append({"cluster": c.id, "kind": claim.kind, "from": claim.model_provenance,
