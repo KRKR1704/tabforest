@@ -95,9 +95,14 @@ function handleMockBridgeMessage<TPayload, TResponse>(
     }
 
     case 'RESTORE': {
-      const { tab_refs, group_name, fallback_urls } = (payload || {}) as RestorePayload;
-      console.log(`[Mock Bridge] Restored tabs in group "${group_name || 'TabForest'}"`, tab_refs, fallback_urls);
-      return { ok: true, data: { restored_count: tab_refs?.length || 0 } as TResponse };
+      const { tab_refs = [], fallback_urls = [] } = (payload || {}) as RestorePayload;
+      // The stand-in has no URL store, so it opens the saved URL, or the tab's site.
+      tab_refs.forEach((ref, index) => {
+        const tab = mockSnapshot.open_tabs.find((t) => t.tab_ref === ref);
+        const url = fallback_urls[index] || (tab ? `https://${tab.domain}` : '');
+        if (url) window.open(url, '_blank');
+      });
+      return { ok: true, data: null as TResponse };
     }
 
     case 'GET_URLS': {
@@ -107,7 +112,7 @@ function handleMockBridgeMessage<TPayload, TResponse>(
         const tab = mockSnapshot.open_tabs.find((t) => t.tab_ref === ref);
         if (tab) urls[ref] = `https://${tab.domain}/page`;
       });
-      return { ok: true, data: urls as TResponse };
+      return { ok: true, data: { urls } as TResponse };
     }
 
     case 'SIGN_IN':

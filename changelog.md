@@ -6,6 +6,39 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-8 Saved Groves + Resume (S)
+
+### Added
+- "Save context" in Tree Detail: sends `GET_URLS` for the tree's tabs, then `POST /api/projects/{id}/save-context` with `kind: "resume"`, the card and the tabs.
+- `apps/grove/src/lib/contextCard.ts`: `buildContextCard` (goal, direction, decisions, explored branches, open questions, first next action, in the grove's own claim shapes), `buildContextTabs` (stripped URL, `important`, `excluded_reason` of `exact_duplicate` / `semantic_redundant` / `stale`), `restorePayload`, `formatDuration` ("2 h 14 m"), `formatWhen` ("Yesterday, 11:31 AM").
+- `apps/grove/src/screens/SavedGroves.tsx`: one card per saved context with last active, time invested and sessions, open questions, important-of-total tabs, goal summary, next action, and a Resume button (Open for references). Sample rows are labelled as such when the list cannot be loaded.
+- `apps/grove/src/components/ResumeCard.tsx`, pinned above the grove after Resume: last active, time across sessions, goal, explored paths, direction, decisions, unresolved questions and next action with their provenance pills, then "Restore N important tabs", "Restore all N" and "Just read summary" (only the options in `restore_options`). `store/useResumeStore.ts` holds the resumed context.
+- Restore sends `RESTORE {tab_refs, group_name, fallback_urls}`: the important tabs by default, every saved tab for "all", with `fallback_urls` in the same order as `tab_refs`.
+- `apps/grove/src/adapters/contexts.ts` (C7): `saveContext`, `listContexts`, `resumeContext` in the shapes of `contracts/saved-context.example.json`, with an in-memory stand-in so a context saved offline can be listed and resumed until reload.
+
+### Changed
+- Mock bridge: `GET_URLS` replies `{ urls }` as `contracts/bridge.types.ts` defines (was a bare map); `RESTORE` opens the fallback URL or the tab's site.
+- `apps/grove/src/App.tsx`: Saved Groves screen; the resume card sits above Current Grove, including when no grove has grown yet.
+
+### Removed
+- S-1 `saveContext`, `getContexts`, `resumeContext` in `adapters/platform.ts`, the `SavedContextItem` / `ResumeCardData` types and `mockSavedContexts`: their shapes did not match P's saved-context contract.
+
+### Tests
+- `src/__tests__/savedGroves.test.tsx` (32): the built card and tabs deep-equal the contract's save request; excluded tabs are never important; formatting; restore payloads; adapter in stand-in and live mode (save, list, resume requests against the contract, query strings stripped, failed save throws, sample rows on list failure, 404 on resume); Saved Groves cards; ResumeCard content, options and dismissal; and through `App`: save from Tree Detail (`GET_URLS` then listed first), resume pins the card, Restore important sends exactly the four important refs with fallback URLs, Restore all sends all ten, Just read summary sends nothing.
+- Updated 2 tests for the removed functions.
+
+### Verification
+- `npm test`: 14 files, 260 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): Saved Groves showed the three contract contexts; Resume pinned the card above the grove with the three restore buttons.
+
+### Notes
+- A failed save shows "Could not save this context. Nothing was stored." rather than falling back to the stand-in, so a user never closes tabs believing they were saved.
+- URLs are stripped of query string and fragment again in the adapter before sending, in addition to the bridge doing so.
+- A tab the device has no URL for is sent without `fallback_url`; the contract examples always include one.
+- Saving references (`kind: "references"`) from the prune dialog is S-11; resuming one already works.
+- Restoring into a named tab group depends on the extension (`group_name` is sent).
+- BUILD_TASKS.md: S-8 row ticked only.
+
 ## [2026-10-03] — Lane S-7 Timeline, and repair of a bad merge on main (S)
 
 ### Added

@@ -317,6 +317,7 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
                 onAddNote={(kind, text) => void actions.addNote(detailTree.cluster_ref, kind, text)}
                 onOpenTab={actions.openTab}
                 onExcludeDomain={(domain) => void actions.excludeDomain(domain)}
+                onSaveContext={() => void actions.saveContext(detailTree)}
                 onClose={closeDetail}
               />
             )}

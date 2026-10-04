@@ -6,7 +6,6 @@ import {
   getMe,
   getSessions,
   getTimeline,
-  getContexts,
   getPrivacy,
 } from '../adapters/platform';
 import { mockSnapshot } from '../mocks/mockData';
@@ -75,9 +74,6 @@ describe('Adapters Suite (C3–C7)', () => {
 
     const timeline = await getTimeline('p_10000000-0000-4000-8000-000000000001', '24h');
     expect(timeline.status).toBe('ok');
-
-    const contexts = await getContexts();
-    expect(contexts.length).toBeGreaterThan(0);
 
     const privacy = await getPrivacy();
     expect(privacy.excluded_domains.length).toBeGreaterThan(0);
