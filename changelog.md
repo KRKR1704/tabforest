@@ -39,6 +39,38 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - The saved grove is not yet cleared by sign-out or "Delete all"; that belongs with `WIPE_LOCAL` in S-10.
 - The wow animation (S-12) is not part of this; trees currently appear with the listening shimmer only.
 - BUILD_TASKS.md: S-6 row ticked only.
+## [2026-10-03] — R-5: calibrated clustering, sprouts, meadow/fog, pins, shared tabs (R)
+
+### Added
+
+- `apps/api/app/engine/cluster.py`: pure `cluster()` and async `cluster_snapshot()` (normalize → R-4 embeddings → pins and project centroids from the DB → cluster). Affinity = 0.65·cos_cal + 0.20·opener + 0.15·temporal (3 min); average-linkage agglomerative clustering (scikit-learn, `metric="precomputed"`) on 1 − affinity. Search tabs join the cluster of the tabs they opened, else the next focused tab, else the nearest cluster. User pins (`assigned_by='user'`, latest per tab) override everything; a pin to a project with no matching cluster creates that cluster. Leftover singletons go to the fog (top two cluster affinities ≥ 0.30 and within 0.05: "unclear between X and Y") or the meadow ("low affinity to any goal"). Multi-membership (§27): a tab also joins a second tree when its mean affinity there is ≥ 0.45 and ≥ 0.9× its own. Sprouts: earliest tab < 30 min old and < 3 tabs. Clusters matched one-to-one to existing projects by centroid. Output `ClusterResult` (clusters, sprouts, meadow, fog, shared tabs, diagnostics), deterministic and independent of input order; at most 60 tabs.
+- `engine/labels.py`: top shared title terms, moved out of `scripts/gen_contracts.py`, which now imports it (stream cluster names and engine labels come from one function).
+- `engine/evaluation.py`: demo ground truth from `contracts/grove.example.json`, labeled-snapshot loader, ARI.
+- `engine/scripts/gen_cluster_snapshots.py` → `engine/fixtures/cluster_snapshots/trip_laptops_thesis.json` and `nextjs_k8s_gift.json` (20 tabs each, 3 groups + 2 singletons, opener chains, interleaved times).
+- `engine/scripts/calibrate_cluster.py`: grid search (283 parameter sets) over the three snapshots, leave-one-snapshot-out check, demo table.
+
+### Changed
+
+- `engine/scripts/gen_contracts.py`: uses `app.engine.labels`; `REPO` is derived from the script's location instead of a hard-coded absolute path. Contracts regenerate byte-identical (check I).
+
+### Tests
+
+- `engine/tests/test_cluster.py` (14, synthetic vectors, no network): calibration options, opener/temporal components, two clear groups, search tab follows its opened tab / next focus / nearest, sprout rule (age and size), fog vs meadow, a bridge tab becomes shared, project match and no-history, pin to another project survives a re-run, pin to a new tree (nothing shared into it), labels, determinism and order independence, limits.
+- `engine/tests/test_cluster_live.py` (9, real embeddings via R-4, test user `…00ef`, rows deleted after): ARI ≥ 0.6 on each snapshot, demo sprout/search tabs/singletons, pins, determinism, DB loaders in a rolled-back transaction, `cluster_snapshot()` end to end; plus a strict xfail for "demo has exactly 4 trees" (see Notes).
+
+### Verification
+
+- `calibrate_cluster.py`: plan as written (raw cosine, threshold 0.45) ARI 0.177 / 0.185 / 0.185; chosen fixed 0.05/0.50, threshold 0.65 → demo 0.886, trip_laptops_thesis 0.905, nextjs_k8s_gift 1.000 (min 0.886). Leave-one-snapshot-out held-out ARI: 0.713 (demo), 0.815, 1.000.
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 138 passed, 1 xfailed. `check_contracts.py`: 34/34 PASS.
+
+### Notes (deviations from the plan's numbers)
+
+- Cosine is calibrated: `clip((cos − 0.05)/(0.50 − 0.05), 0, 1)`. The plan uses raw cosine; with text-embedding-3-small related titles sit at ≈ 0.3–0.5, so raw cosine never reaches the merge distance (ARI 0.18). Fixed rescale beat per-snapshot percentiles (best min 0.815) and raw cosine with a re-tuned threshold (best min 0.815).
+- Merge distance 0.65 instead of 0.45 (0.45 gives min ARI 0.70 with this calibration). Weights 0.65/0.20/0.15 and the 3-minute window are unchanged.
+- The demo yields 5 trees, not 4: Tiger Data docs and d3-hierarchy (GirlHacks sponsor tech) form their own tree because nothing but domain knowledge links them to the Devpost tabs; LeetCode and Instacart fall into the meadow. Threshold 0.55 keeps 4 trees + sprout but drops 6 tabs into the meadow/fog and lowers the minimum ARI to 0.815, so it was not chosen; the narrated shape is expected from R-7 (the model can merge or rename trees). Tab 05 does not come out shared naturally.
+- Existing-project match uses the RAW centroid cosine (≥ 0.80), not the calibrated one: centroids average out noise, so their cosines are far higher than pairwise tab cosines and the pairwise calibration saturates at 1.
+- Not in the plan, chosen and unit-tested (not grid-tuned): fog floor 0.30 and margin 0.05, share threshold 0.45 with ratio 0.9, singletons are never sprouts, and pinned-only trees never receive shared tabs.
+- New dependency installed into `apps/api/.venv` for P's `pyproject.toml`: `scikit-learn` 1.9.1 (pulls in `scipy` 1.18.1, `joblib` 1.6.0, `threadpoolctl` 3.7.0).
 
 ## [2026-10-03] — Lane S-5 Tree Detail (S)
 
