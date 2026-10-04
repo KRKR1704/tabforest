@@ -10,7 +10,7 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Changed
 - `GET /health` also answers `HEAD`, so `curl -I` and uptime probes get 200 with the HSTS headers instead of 405.
-- `.github/workflows/api.yml`: one workflow run at a time (`group: api-database`), because the database tests share Tiger Cloud and the demo story uses fixed project ids. With the `DATABASE_URL` secret set, the whole suite did not finish in the 10-minute limit (14% after 5.7 minutes, run 37187558508, cancelled), so the workflow is split: `test` (no database, 21 s, gates the deploy) and `database-tests` (with the database, 40-minute limit, runs beside it and does not gate the deploy).
+- `.github/workflows/api.yml`: one workflow run at a time (`group: api-database`), because the database tests share Tiger Cloud and the demo story uses fixed project ids. With the `DATABASE_URL` secret set, the first run did not finish in the 10-minute limit (14% after 5.7 minutes, run 37187558508, cancelled; I did not find out why), and the next run finished the whole suite in 4 minutes 3 seconds (461 passed, 31 skipped, run 37188146506). Because that time is too long for a deploy gate, the workflow is split: `test` (no database, 21 s, gates the deploy) and `database-tests` (with the database, 40-minute limit, runs beside it and does not gate the deploy).
 
 ### Tests
 - Local: `test_health_answers_head_too`.
