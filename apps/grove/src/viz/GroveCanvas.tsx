@@ -32,6 +32,10 @@ interface GroveCanvasProps {
   growKey?: number;
   /** Multiplies the animation's durations. Tests pass a small number. */
   growTimeScale?: number;
+  /** A tab to point out: its leaf, its branch and its copies are lit. */
+  highlight?: { tabRef: string; treeId?: string | null; copyRefs?: string[] } | null;
+  /** The pointer moved onto a leaf, or off it (null). */
+  onHoverLeaf?: (leaf: { tabRef: string; treeId: string | null } | null) => void;
 }
 
 export interface GroveRoots {
@@ -64,6 +68,8 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
   focusTreeId = null,
   growKey = 0,
   growTimeScale = 1,
+  highlight = null,
+  onHoverLeaf,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const controlsRef = useRef<GroveZoomControls | null>(null);
@@ -88,6 +94,33 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
   onSelectRef.current = onSelect;
   const onDropLeafRef = useRef(onDropLeaf);
   onDropLeafRef.current = onDropLeaf;
+  const onHoverLeafRef = useRef(onHoverLeaf);
+  onHoverLeafRef.current = onHoverLeaf;
+
+  // Leaves report the pointer through the <svg>, so redraws need no rewiring.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const leafOf = (target: EventTarget | null) =>
+      target instanceof Element ? target.closest('[data-tab-ref][data-kind$="leaf"]') : null;
+    const over = (event: Event) => {
+      const leaf = leafOf(event.target);
+      if (!leaf) return;
+      onHoverLeafRef.current?.({
+        tabRef: leaf.getAttribute('data-tab-ref') ?? '',
+        treeId: leaf.closest('[data-tree-id]')?.getAttribute('data-tree-id') ?? null,
+      });
+    };
+    const out = (event: Event) => {
+      if (leafOf(event.target)) onHoverLeafRef.current?.(null);
+    };
+    svg.addEventListener('mouseover', over);
+    svg.addEventListener('mouseout', out);
+    return () => {
+      svg.removeEventListener('mouseover', over);
+      svg.removeEventListener('mouseout', out);
+    };
+  }, []);
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -149,6 +182,28 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
       if (selected.treeId === tree) node.setAttribute('data-selected', 'true');
     });
   }, [selected, layout]);
+
+  // Point out one tab: its leaf, the branch it hangs on, and its copies on the same tree.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    for (const name of ['data-hover', 'data-hover-branch', 'data-hover-copy']) {
+      svg.querySelectorAll(`[${name}]`).forEach((node) => node.removeAttribute(name));
+    }
+    if (!highlight) return;
+    const copies = new Set(highlight.copyRefs ?? []);
+    svg.querySelectorAll<SVGElement>('[data-tab-ref][data-kind$="leaf"]').forEach((leaf) => {
+      const ref = leaf.getAttribute('data-tab-ref') ?? '';
+      const tree = leaf.closest('[data-tree-id]')?.getAttribute('data-tree-id') ?? null;
+      const sameTree = !highlight.treeId || tree === highlight.treeId;
+      if (ref === highlight.tabRef && sameTree) {
+        leaf.setAttribute('data-hover', 'true');
+        leaf.closest('[data-kind="branch"]')?.setAttribute('data-hover-branch', 'true');
+      } else if (copies.has(ref) && sameTree) {
+        leaf.setAttribute('data-hover-copy', 'true');
+      }
+    });
+  }, [highlight, layout]);
 
   useEffect(() => {
     controlsRef.current?.showRoots(
