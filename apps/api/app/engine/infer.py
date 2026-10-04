@@ -71,6 +71,8 @@ Rules:
 - next_actions: concrete next steps; unblocks_question is the 0-based index of the question it resolves, or null.
 - redundant_groups: tabs that say the same thing; keep_ref is the strongest source.
 - important_tab_refs: the most useful tabs, most important first.
+- dismissed_by_user (when present) lists claims the user already dismissed for this project: do not suggest them
+  again or rephrase them.
 - quote is null unless provenance is "sourced".
 """
 
@@ -104,11 +106,11 @@ class InferenceOutcome:
     validation_failures: int = 0
 
 
-async def infer_cluster(cluster_id: str, block: DataBlock, client: Any) -> InferenceOutcome:
-    """One call; on schema/JSON failure one repair retry; never raises."""
+async def infer_cluster(cluster_id: str, block: DataBlock, client: Any, *, repair: bool = True) -> InferenceOutcome:
+    """One call; on schema/JSON failure one repair retry (unless repair=False); never raises."""
     messages = build_messages(block)
     outcome = InferenceOutcome(cluster_id, None)
-    for attempt in (1, 2):
+    for attempt in ((1, 2) if repair else (1,)):
         outcome.llm_calls += 1
         try:
             parsed, tokens = await client.chat_structured_usage(messages, ClusterInference)
@@ -123,7 +125,7 @@ async def infer_cluster(cluster_id: str, block: DataBlock, client: Any) -> Infer
         except (StructuredOutputError, ValidationError, json.JSONDecodeError) as exc:
             outcome.validation_failures += 1
             log.warning("cluster %s invalid model output on attempt %d (%s)", cluster_id, attempt, type(exc).__name__)
-            if attempt == 1:
+            if attempt == 1 and repair:
                 messages = [*messages, {"role": "user", "content": REPAIR_INSTRUCTION}]
                 continue
             outcome.fallback_reason = "invalid_output"
@@ -181,7 +183,7 @@ async def retrieve_prior_research(pool: Any, user_id: UUID, centroid: Sequence[f
                                   threshold: float = PRIOR_RESEARCH_THRESHOLD,
                                   k: int = PRIOR_RESEARCH_TOP_K) -> list[PriorInsight]:
     """Top-k of the user's research insights by cosine similarity to the cluster centroid."""
-    if pool is None:
+    if pool is None or not len(centroid):  # no centroid: Seedling clustering without embeddings
         return []
     vec = _to_pgvector(np.asarray(centroid, dtype=np.float32))
     try:

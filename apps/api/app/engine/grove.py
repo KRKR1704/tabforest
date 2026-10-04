@@ -1,9 +1,17 @@
-"""Grove assembly and the grow pipeline (R-8, proposal §12 steps 6–10, §14, §22, §24).
+"""Grove assembly and the grow pipeline (R-8, R-9, R-10; proposal §12 steps 6–10, §14, §22, §24, §27).
 
 GrowRun.stream() yields the NDJSON lines of BUILD_TASKS.md §4.7: the `clusters` line as soon as
 R-5 finishes, one `tree` line per cluster as each model result lands, then `done` (after the run
 is persisted). GrowRun.response is the full GroveResponse (contracts/grove.example.json shape).
 Every line and the response are validated against engine/schemas before they leave.
+
+Failure behaviour (R-9, proposal §8, §27):
+- every AI-eligible cluster fails (Azure down, wrong key, content filter on all): Seedling mode,
+  deterministic labels, every tree fogged, no claims, degraded=true;
+- some clusters fail: only those come back as fogged groups (per-cluster fallback);
+- embeddings fail during clustering: affinity from opener + time + title-term Jaccard, no model calls,
+  Seedling-labelled, degraded=true;
+- 2-3 tabs: one sprout (and at most one model call to name it); 0-1 tabs: an empty grove.
 """
 
 from __future__ import annotations
@@ -20,23 +28,29 @@ from uuid import UUID
 
 from . import metrics
 from .adapters.stats import StatsSource, get_stats_source
-from .cluster import Cluster, cluster_snapshot
+from .carry import Carry, load_carry
+from .cluster import Cluster, cluster_snapshot, cluster_snapshot_no_embeddings
 from .features import (ClusterFeatures, DataBlock, compute_features, finalize_importance, importance_pre,
                        to_data_block, visits_from)
-from .infer import MAX_LLM_CALLS, InferenceOutcome, PriorInsight, infer_all, retrieve_prior_research
+from .infer import MAX_LLM_CALLS, InferenceOutcome, PriorInsight, infer_all, infer_cluster, retrieve_prior_research
+from .labels import top_terms
 from .model_schema import ClusterInference
-from .normalize import duplicate_groups, leaf_source_type, normalize_tab
+from .normalize import duplicate_groups
 from .schemas.grove import GroveResponse
 from .schemas.stream import ClustersLine, DoneLine, TreeLine
-from .validate import ValidatedClaim, ValidationContext, map_tab_refs, validate_claim
+from .validate import ValidatedClaim, ValidationContext, display_text, map_tab_refs, validate_claim
 
 log = logging.getLogger("tabforest.engine.grove")
 
 AMBER_AFTER_DAYS = 3
 FALLBACK_CONFIDENCE = 0.45
+SMALL_SNAPSHOT_MAX_TABS = 3
+SINGLE_GOAL_MIN_CONFIDENCE = 0.60
+SPROUT_LABEL_MAX = 80
 BANNER_ALL_FALLBACK = "AI unavailable — showing groups only"
+BANNER_LEARNING = "TabForest learns as you browse"
 REASON_LABEL = {"content_filter": "content filter", "invalid_output": "invalid AI output",
-                "ai_unavailable": "AI unavailable"}
+                "ai_unavailable": "AI unavailable", "embeddings_unavailable": "embeddings unavailable"}
 
 
 def _p(prefix: str, value: str) -> str:
@@ -59,7 +73,7 @@ class TreeBuild:
     label: str
     tree: dict[str, Any]                 # API shape (schemas.grove.Tree)
     pinned_tab_refs: list[str]
-    decisions: list[dict[str, Any]] = field(default_factory=list)   # every model decision, any provenance
+    decisions: list[dict[str, Any]] = field(default_factory=list)   # decisions-table rows: stones, hypotheses, direction
     questions: list[dict[str, Any]] = field(default_factory=list)   # mushrooms + downgraded questions
     blockers: list[dict[str, Any]] = field(default_factory=list)
     actions: list[dict[str, Any]] = field(default_factory=list)
@@ -109,13 +123,15 @@ def _leaf(ref: str, snapshot_tabs: Mapping[str, Mapping[str, Any]], features: Cl
 def fallback_tree(cluster: Cluster, project_id: str, features: ClusterFeatures,
                   snapshot_tabs: Mapping[str, Mapping[str, Any]], snapshot_at: datetime,
                   shared: set[str], reason: str | None) -> TreeBuild:
-    """Deterministic fogged tree (contracts/grove.degraded.example.json): top shared terms, no model claims."""
+    """Deterministic fogged tree (Seedling, contracts/grove.degraded.example.json): the top shared title
+    terms (labels.py) as the name, a "Maybe: tabs about …" goal below 0.60, and no stones, mushrooms,
+    next actions or hypotheses."""
     imp = {r: i.total for r, i in importance_pre(features).items()}
     ranked = sorted(features.tab_refs, key=lambda r: (-imp[r], features.tab_refs.index(r)))
     terms = [t for t in cluster.label.split(" · ") if t]
     text = "Tabs about " + ", ".join(terms) if terms else "Tabs opened together"
     goal = {"id": _p("g_", str(uuid.uuid4())), "text": text, "provenance": "hypothesis",
-            "confidence": FALLBACK_CONFIDENCE, "display_text": "Maybe: " + text[:1].lower() + text[1:],
+            "confidence": FALLBACK_CONFIDENCE, "display_text": display_text("goal", "hypothesis", text),
             "evidence": [{"ref_kind": "tab", "ref": r, "why": "shares title terms with the group"} for r in ranked[:2]],
             "user_note_id": None}
     minutes, days, canopy = _attention(features, snapshot_tabs, snapshot_at)
@@ -134,9 +150,15 @@ def fallback_tree(cluster: Cluster, project_id: str, features: ClusterFeatures,
                      list(cluster.pinned_tab_refs), fallback_reason=reason)
 
 
+def _note_evidence(note_id: str, why: str) -> dict[str, str]:
+    return {"ref_kind": "note", "ref": note_id, "why": why}
+
+
 def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, block: DataBlock,
                   inference: ClusterInference, snapshot_tabs: Mapping[str, Mapping[str, Any]],
-                  snapshot_at: datetime, notes: Mapping[str, str], shared: set[str]) -> TreeBuild:
+                  snapshot_at: datetime, notes: Mapping[str, str], shared: set[str],
+                  carry: Carry | None = None) -> TreeBuild:
+    carry = carry or Carry()
     ctx = ValidationContext(block.refs, {r: f.source_type for r, f in features.tabs.items()}, notes,
                             anchors=block.anchors)
     short_of = {real: short for short, real in block.refs.items()}
@@ -150,23 +172,39 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
         build.claims.append(c)
         return c
 
+    def keep(c: ValidatedClaim, *, covered: bool = False) -> bool:
+        """False (and forget the claim) when the user dismissed it, or already said it in a note."""
+        if c.provenance != "stated" and (carry.is_dismissed(c.text) or (covered and carry.covered_by_note(c.text))):
+            build.claims.remove(c)
+            return False
+        return True
+
     inf = inference
     goal_c = check("goal", inf.goal.text, inf.goal.provenance, inf.goal.confidence, inf.goal.evidence)
     goal = _claim_dict("g_", goal_c)
+    named = carry.goal_note(set(cluster.tab_refs))
+    if named is not None:  # the user named the goal (clear the fog, confirm or edit it): stated, never re-guessed
+        goal = {**goal, "text": named.text, "provenance": "stated", "confidence": 1.0, "display_text": named.text,
+                "evidence": [_note_evidence(named.id, "user named this goal"), *goal["evidence"]],
+                "user_note_id": named.id}
 
     direction = None
     if inf.current_direction:
         d = inf.current_direction
         c = check("direction", d.text, d.provenance, d.confidence, d.evidence)
-        direction = _claim_dict("dir_", c)
-        if c.provenance == "hypothesis":
-            hypotheses.append(direction)
-            direction = None
+        if keep(c, covered=True):
+            direction = _claim_dict("dir_", c)
+            build.decisions.append(direction)
+            if c.provenance == "hypothesis":
+                hypotheses.append(direction)
+                direction = None
 
     stones = []
     for d in inf.decisions:
         c = check("decision", d.text, d.provenance, d.confidence, d.evidence, user_note_ref=d.user_note_ref,
                   quote=d.quote)
+        if not keep(c, covered=True):
+            continue
         item = {**_claim_dict("dec_", c), "kind": "carved" if c.provenance in ("stated", "sourced") else "mossy",
                 "quote": c.quote}
         build.decisions.append(item)
@@ -176,22 +214,33 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
             stones.append(item)
 
     mushrooms, question_ids = [], []
+    taken_resolved: set[int] = set()
+
+    def question_item(text: str, c: ValidatedClaim, kind: str, recurrence: int, family_ids: set[str]) -> dict[str, Any]:
+        item = {**_claim_dict("q_", c), "kind": kind, "status": "open", "answer": None, "resolved_at": None,
+                "recurrence": recurrence}
+        done = carry.match_resolved(text, family_ids, taken_resolved)
+        if done is not None:  # the user resolved this open loop before: it stays a flower
+            item.update(text=done.text, display_text=display_text("question", c.provenance, done.text),
+                        status="resolved", answer=done.answer, resolved_at=done.resolved_at)
+        return item
+
     for q in inf.unresolved_questions:
         c = check("question", q.question, q.provenance, q.confidence, q.evidence)
+        if not keep(c):
+            continue
         cited = [families[block.refs[r]] for r in c.short_refs if r[0] == "q" and block.refs[r] in families]
-        recurrence = max([f.rephrasings for f in cited] or [1])
-        item = {**_claim_dict("q_", c), "kind": mushroom_kind(q.kind, c.short_refs, block, features),
-                "status": "open", "answer": None, "resolved_at": None,
-                "recurrence": recurrence}
+        item = question_item(c.text, c, mushroom_kind(q.kind, c.short_refs, block, features),
+                             max([f.rephrasings for f in cited] or [1]), {f.id for f in cited})
         build.questions.append(item)
-        if c.provenance == "hypothesis":
+        if c.provenance == "hypothesis" and item["status"] == "open":
             hypotheses.append(_claim_dict_from(item))
             question_ids.append(None)
         else:
             mushrooms.append(item)
             question_ids.append(item["id"])
 
-    # Open-loop families no surviving mushroom covers become deterministic mushrooms.
+    # Open-loop families no surviving mushroom covers become deterministic mushrooms (or flowers).
     covered = {e["ref"] for m in mushrooms for e in m["evidence"] if e["ref_kind"] == "query"}
     for f in features.families:
         if not f.open_loop or f.id in covered:
@@ -200,11 +249,14 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
         ev += [_Ev(short_of[r], "search: " + features.tabs[r].title) for r in f.tab_refs if r in short_of]
         text = f.queries[0][:1].upper() + f.queries[0][1:].rstrip("?") + "?"
         c = check("question", text, "inferred", 0.75, ev)
-        item = {**_claim_dict("q_", c), "kind": "repeated_search", "status": "open", "answer": None,
-                "resolved_at": None, "recurrence": f.rephrasings}
+        if not keep(c):
+            continue
+        item = question_item(text, c, "repeated_search", f.rephrasings, {f.id})
         build.questions.append(item)
-        (mushrooms if c.provenance != "hypothesis" else hypotheses).append(
-            item if c.provenance != "hypothesis" else _claim_dict_from(item))
+        if c.provenance != "hypothesis" or item["status"] == "resolved":
+            mushrooms.append(item)
+        else:
+            hypotheses.append(_claim_dict_from(item))
 
     for b in inf.blockers:
         c = check("blocker", b.text, b.provenance, b.confidence, b.evidence)
@@ -213,6 +265,8 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
     next_actions = []
     for a in inf.next_actions:
         c = check("action", a.action, a.provenance, a.confidence, a.evidence)
+        if not keep(c):
+            continue
         idx = a.unblocks_question
         unblocks = question_ids[idx] if idx is not None and 0 <= idx < len(question_ids) else None
         item = {**_claim_dict("a_", c), "unblocks": unblocks, "reason": a.reason.strip()[:300]}
@@ -224,7 +278,24 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
 
     for h in inf.hypotheses:
         c = check("hypothesis", h.text, h.provenance, h.confidence, h.evidence)
-        hypotheses.append(_claim_dict("h_", c))
+        if not keep(c, covered=True):
+            continue
+        item = _claim_dict("h_", c)
+        build.decisions.append(item)
+        hypotheses.append(item)
+
+    # Decision notes are carved stones, always: a model that forgot them, or a re-grow, never loses them.
+    have = {s["user_note_id"] for s in stones if s.get("user_note_id")}
+    carved = []
+    for n in carry.decision_notes():
+        if n.id in have:
+            continue
+        item = {"id": _p("dec_", str(uuid.uuid4())), "text": n.text, "provenance": "stated", "confidence": 1.0,
+                "display_text": n.text, "evidence": [_note_evidence(n.id, "user note")], "user_note_id": n.id,
+                "kind": "carved", "quote": None}
+        carved.append(item)
+        build.decisions.append(item)
+    stones = carved + stones
 
     # Importance with the validated evidence counts (R-6 finalize_importance).
     counts: dict[str, int] = {}
@@ -257,17 +328,19 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
         refs = map_tab_refs(g.tab_refs, ctx)
         if len(refs) < 2 or set(refs) in exact:
             continue
-        keep = map_tab_refs([g.keep_ref], ctx)
-        vines.append({"tab_refs": refs, "kind": "semantic", "keep_ref": keep[0] if keep else max(refs, key=lambda r: imp[r]),
+        keep_ref = map_tab_refs([g.keep_ref], ctx)
+        vines.append({"tab_refs": refs, "kind": "semantic",
+                      "keep_ref": keep_ref[0] if keep_ref else max(refs, key=lambda r: imp[r]),
                       "reason": g.reason.strip()[:300]})
 
     important = map_tab_refs(inf.important_tab_refs, ctx) or sorted(features.tab_refs, key=lambda r: -imp[r])[:4]
     minutes, days, canopy = _attention(features, snapshot_tabs, snapshot_at)
+    name = carry.project_name if carry.user_named and carry.project_name else (inf.project_name.strip()[:60] or cluster.label)
     build.tree = {
-        "project_id": _p("p_", project_id), "name": inf.project_name.strip()[:60] or cluster.label,
+        "project_id": _p("p_", project_id), "name": name,
         "is_existing_project_id": _p("p_", cluster.is_existing_project_id) if cluster.is_existing_project_id else None,
         "goal": goal, "attention_min": minutes, "days_since_active": days, "canopy": canopy,
-        "fogged": goal_c.provenance == "hypothesis", "branches": branches, "direction": direction,
+        "fogged": goal["provenance"] == "hypothesis", "branches": branches, "direction": direction,
         "stones": stones, "mushrooms": mushrooms, "next_actions": next_actions, "vines": vines,
         "hypotheses": hypotheses, "query_families": _query_families(features), "important_tab_refs": important,
         "shared_tab_refs": [r for r in features.tab_refs if r in shared],
@@ -331,6 +404,9 @@ async def load_notes(pool: Any, user_id: UUID, project_ids: Sequence[str], tab_r
     return [dict(r) for r in rows]
 
 
+Prepared = tuple[ClusterFeatures, DataBlock, list[PriorInsight], dict[str, str], Carry]
+
+
 class GrowRun:
     def __init__(self, user_id: UUID, open_tabs: Sequence[Mapping[str, Any]], hollow_count: int, *,
                  pool: Any, client: Any, snapshot_at: datetime | None = None, stats: StatsSource | None = None,
@@ -352,10 +428,110 @@ class GrowRun:
         self.clusters: list[Cluster] = []
         self.prior: dict[str, list[PriorInsight]] = {}
 
+    # -- preparation (shared with POST /api/projects/{id}/analyze) ---------------------------------
+
+    async def prepare_clusters(self, clusters: Sequence[Cluster]) -> dict[str, Prepared]:
+        """Features, notes, carry-over and prior research per cluster, then the DATA block."""
+        existing = [c.is_existing_project_id for c in clusters if c.is_existing_project_id]
+        notes = await load_notes(self.pool, self.user_id, existing, list(self.by_ref))
+        carries = await asyncio.gather(*(load_carry(self.pool, self.user_id, c.is_existing_project_id)
+                                         for c in clusters))
+
+        async def prepare(c: Cluster, carry: Carry) -> Prepared:
+            feats = await compute_features(self.user_id, c.tab_refs, self.tabs, self.snapshot_at, self.pool,
+                                           stats=self.stats, client=self.client)
+            mine = [n for n in notes if (n["project_id"] and n["project_id"] == c.is_existing_project_id)
+                    or (n["tab_ref"] and n["tab_ref"] in c.tab_refs)]
+            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"]} for n in mine]
+            prior = await retrieve_prior_research(self.pool, self.user_id, c.centroid)
+            block = to_data_block(feats, note_rows, [p.for_model() for p in prior], carry.dismissed)
+            return feats, block, prior, {r["id"]: r["text"] for r in note_rows}, carry
+
+        done = await asyncio.gather(*(prepare(c, k) for c, k in zip(clusters, carries, strict=True)))
+        return dict(zip([c.id for c in clusters], done, strict=True))
+
+    # -- the run -------------------------------------------------------------------------------------
+
     async def stream(self) -> AsyncIterator[dict[str, Any]]:
         t0 = time.perf_counter()
+        if len(self.tabs) <= SMALL_SNAPSHOT_MAX_TABS:
+            async for line in self._stream_small(t0):
+                yield line
+        else:
+            async for line in self._stream_full(t0):
+                yield line
+
+    def _clusters_line(self, clusters: list[dict[str, Any]], sprouts: list[dict[str, Any]], meadow: list[str],
+                       fog: list[dict[str, str]]) -> dict[str, Any]:
+        return {"type": "clusters", "run_id": _p("r_", self.run_id), "hollow_count": self.hollow_count,
+                "clusters": clusters, "sprouts": sprouts, "meadow": meadow, "fog": fog}
+
+    async def _finish(self, t0: float, line: dict[str, Any], trees: list[dict[str, Any]], degraded: bool,
+                      banner: str | None, fireflies: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+        self.report.latency_ms = round((time.perf_counter() - t0) * 1000)
+        response = {"run_id": _p("r_", self.run_id), "generated_at": datetime.now(timezone.utc),
+                    "hollow_count": self.hollow_count, "degraded": degraded, "banner_text": banner,
+                    "trees": trees, "sprouts": line["sprouts"], "meadow": line["meadow"],
+                    "fog": line["fog"], "fireflies": fireflies}
+        self.response = GroveResponse.model_validate(response).model_dump(mode="json")
+        downgraded = len(self.report.downgrades)
+        metrics.record_grow(self.report.latency_ms, downgraded, len(self.report.fallbacks),
+                            self.report.validation_failures)
+        log.info("grow run %s: %d trees, %d llm calls, %d tokens, %d downgraded, %d fallbacks, degraded=%s, %d ms",
+                 self.run_id, len(trees), self.report.llm_calls, self.report.tokens, downgraded,
+                 len(self.report.fallbacks), degraded, self.report.latency_ms)
+        if self.persist is not None:
+            await self.persist(self)
+        yield DoneLine.model_validate({"type": "done", "run_id": self.response["run_id"], "degraded": degraded,
+                                       "fireflies": self.response["fireflies"]}).model_dump(mode="json")
+
+    async def _stream_small(self, t0: float) -> AsyncIterator[dict[str, Any]]:
+        """0-1 tabs: an empty grove. 2-3 tabs: no forced clustering, one sprout, at most one model call."""
+        sprouts: list[dict[str, Any]] = []
+        if len(self.tabs) >= 2:
+            ordered = sorted(self.tabs, key=lambda t: (str(t["opened_at"]), t["tab_ref"]))
+            refs = [t["tab_ref"] for t in ordered]
+            label = top_terms(t["title"] for t in ordered) or "Tabs opened together"
+            sprouts = [{"label": await self._single_goal(refs) or label, "tab_refs": refs}]
+        line = self._clusters_line([], sprouts, [], [])
+        yield ClustersLine.model_validate(line).model_dump(mode="json")
+        async for done in self._finish(t0, line, [], False, BANNER_LEARNING, []):
+            yield done
+
+    async def _single_goal(self, refs: list[str]) -> str | None:
+        """One model call to name the goal of 2-3 tabs; used only when its validated confidence is >= 0.60."""
+        try:
+            feats = await compute_features(self.user_id, refs, self.tabs, self.snapshot_at, self.pool,
+                                           stats=self.stats, client=self.client)
+            notes = await load_notes(self.pool, self.user_id, [], refs)
+            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"]} for n in notes]
+            block = to_data_block(feats, note_rows)
+            outcome = await infer_cluster("small", block, self.client, repair=False)
+            self.report.llm_calls += outcome.llm_calls
+            self.report.tokens += outcome.tokens
+            if outcome.inference is None:
+                return None
+            g = outcome.inference.goal
+            ctx = ValidationContext(block.refs, {r: f.source_type for r, f in feats.tabs.items()},
+                                    {r["id"]: r["text"] for r in note_rows}, anchors=block.anchors)
+            c = validate_claim("goal", g.text, g.provenance, g.confidence, g.evidence, ctx)
+            if c.provenance not in ("inferred", "stated") or c.confidence < SINGLE_GOAL_MIN_CONFIDENCE:
+                return None
+            label = c.display_text
+            return label if len(label) <= SPROUT_LABEL_MAX else label[:SPROUT_LABEL_MAX - 1].rstrip() + "…"
+        except Exception as exc:  # noqa: BLE001 - the sprout keeps its deterministic label
+            log.warning("single-goal call failed (%s)", type(exc).__name__)
+            return None
+
+    async def _stream_full(self, t0: float) -> AsyncIterator[dict[str, Any]]:
         at = self.snapshot_at.isoformat()
-        result = await cluster_snapshot(self.user_id, self.tabs, self.pool, at, client=self.client)
+        embedding_failed = False
+        try:
+            result = await cluster_snapshot(self.user_id, self.tabs, self.pool, at, client=self.client)
+        except Exception as exc:  # noqa: BLE001 - Seedling clustering without embeddings (R-9)
+            log.warning("embeddings unavailable for clustering (%s); Seedling clustering", type(exc).__name__)
+            embedding_failed = True
+            result = await cluster_snapshot_no_embeddings(self.user_id, self.tabs, self.pool, at)
         clusters = result.clusters
         self.clusters = clusters
         pids = {c.id: (c.is_existing_project_id or str(uuid.uuid4())) for c in clusters}
@@ -373,52 +549,26 @@ class GrowRun:
             days = max((self.snapshot_at - last).days, 0)
             return minutes, days, "amber" if days >= AMBER_AFTER_DAYS else "green"
 
-        line = {"type": "clusters", "run_id": _p("r_", self.run_id), "hollow_count": self.hollow_count,
-                "clusters": [{"project_id": _p("p_", pids[c.id]), "name": c.label, "tab_refs": c.tab_refs,
-                              **dict(zip(("attention_min", "days_since_active", "canopy"), attention(c)))}
-                             for c in clusters],
-                "sprouts": [{"label": s.label, "tab_refs": s.tab_refs} for s in result.sprouts],
-                "meadow": [s.tab_ref for s in result.meadow],
-                "fog": [{"tab_ref": s.tab_ref, "reason": s.reason} for s in result.fog]}
+        line = self._clusters_line(
+            [{"project_id": _p("p_", pids[c.id]), "name": c.label, "tab_refs": c.tab_refs,
+              **dict(zip(("attention_min", "days_since_active", "canopy"), attention(c), strict=True))}
+             for c in clusters],
+            [{"label": s.label, "tab_refs": s.tab_refs} for s in result.sprouts],
+            [s.tab_ref for s in result.meadow], [{"tab_ref": s.tab_ref, "reason": s.reason} for s in result.fog])
         yield ClustersLine.model_validate(line).model_dump(mode="json")
 
-        # Features, notes and prior research per cluster, then one model call per cluster.
-        existing = [c.is_existing_project_id for c in clusters if c.is_existing_project_id]
-        notes = await load_notes(self.pool, self.user_id, existing, list(self.by_ref))
-
-        async def prepare(c: Cluster) -> tuple[ClusterFeatures, DataBlock, list[PriorInsight], dict[str, str]]:
-            feats = await compute_features(self.user_id, c.tab_refs, self.tabs, self.snapshot_at, self.pool,
-                                           stats=self.stats, client=self.client)
-            mine = [n for n in notes if (n["project_id"] and n["project_id"] == c.is_existing_project_id)
-                    or (n["tab_ref"] and n["tab_ref"] in c.tab_refs)]
-            note_rows = [{"id": _p("n_", n["id"]), "text": n["text"]} for n in mine]
-            prior = await retrieve_prior_research(self.pool, self.user_id, c.centroid)
-            block = to_data_block(feats, note_rows, [p.for_model() for p in prior])
-            return feats, block, prior, {r["id"]: r["text"] for r in note_rows}
-
-        prepared = dict(zip([c.id for c in clusters], await asyncio.gather(*(prepare(c) for c in clusters))))
+        prepared = await self.prepare_clusters(clusters)
         by_id = {c.id: c for c in clusters}
         self.prior = {cid: p[2] for cid, p in prepared.items()}
         trees: dict[str, dict[str, Any]] = {}
-        async for outcome in infer_all([(cid, p[1]) for cid, p in prepared.items()], self.client,
-                                       cap=MAX_LLM_CALLS):
-            build = self._build(outcome, by_id[outcome.cluster_id], pids[outcome.cluster_id],
-                                prepared[outcome.cluster_id], shared)
+        async for outcome in self._outcomes(prepared, embedding_failed):
+            build = self.build_tree(outcome, by_id[outcome.cluster_id], pids[outcome.cluster_id],
+                                    prepared[outcome.cluster_id], shared)
             self.builds.append(build)
             trees[outcome.cluster_id] = build.tree
             tree_line = TreeLine.model_validate({"type": "tree", **build.tree}).model_dump(mode="json")
             yield {"type": tree_line.pop("type"), **tree_line}
 
-        fireflies = []
-        for c in clusters:
-            prior = prepared[c.id][2]
-            if prior:
-                p = prior[0]
-                fireflies.append({"id": _p("ff_", p.insight_id), "project_id": _p("p_", pids[c.id]),
-                                  "past_project_id": _p("p_", p.project_id), "past_project_name": p.project_name,
-                                  "past_date": p.on.isoformat(), "similarity": min(max(p.similarity, 0.0), 1.0),
-                                  "saved_context_id": _p("s_", p.saved_context_id) if p.saved_context_id else None,
-                                  "display_text": f"You researched this on {p.on:%B} {p.on.day}."})
         ai_eligible = [cid for cid in prepared if self.report.fallbacks.get(cid) != "llm_cap"]
         failed = [cid for cid in ai_eligible if cid in self.report.fallbacks]
         degraded = bool(ai_eligible) and len(failed) == len(ai_eligible)
@@ -428,27 +578,31 @@ class GrowRun:
         elif failed:
             why = sorted({REASON_LABEL.get(self.report.fallbacks[cid].split(":")[0], "AI error") for cid in failed})
             banner = f"{len(failed)} of {len(clusters)} trees shown as groups only ({', '.join(why)})"
-        self.report.latency_ms = round((time.perf_counter() - t0) * 1000)
-        response = {"run_id": _p("r_", self.run_id), "generated_at": datetime.now(timezone.utc),
-                    "hollow_count": self.hollow_count, "degraded": degraded, "banner_text": banner,
-                    "trees": [trees[c.id] for c in clusters], "sprouts": line["sprouts"], "meadow": line["meadow"],
-                    "fog": line["fog"], "fireflies": fireflies}
-        self.response = GroveResponse.model_validate(response).model_dump(mode="json")
-        downgraded = len(self.report.downgrades)
-        metrics.record_grow(self.report.latency_ms, downgraded, len(self.report.fallbacks),
-                            self.report.validation_failures)
-        log.info("grow run %s: %d clusters, %d llm calls, %d tokens, %d downgraded, %d fallbacks, %d ms",
-                 self.run_id, len(clusters), self.report.llm_calls, self.report.tokens, downgraded,
-                 len(self.report.fallbacks), self.report.latency_ms)
-        if self.persist is not None:
-            await self.persist(self)
-        yield DoneLine.model_validate({"type": "done", "run_id": self.response["run_id"], "degraded": degraded,
-                                       "fireflies": self.response["fireflies"]}).model_dump(mode="json")
+        fireflies = []
+        for c in clusters if not degraded else []:  # Seedling shows no fireflies
+            prior = prepared[c.id][2]
+            if prior:
+                p = prior[0]
+                fireflies.append({"id": _p("ff_", p.insight_id), "project_id": _p("p_", pids[c.id]),
+                                  "past_project_id": _p("p_", p.project_id), "past_project_name": p.project_name,
+                                  "past_date": p.on.isoformat(), "similarity": min(max(p.similarity, 0.0), 1.0),
+                                  "saved_context_id": _p("s_", p.saved_context_id) if p.saved_context_id else None,
+                                  "display_text": f"You researched this on {p.on:%B} {p.on.day}."})
+        async for done in self._finish(t0, line, [trees[c.id] for c in clusters], degraded, banner, fireflies):
+            yield done
 
-    def _build(self, outcome: InferenceOutcome, c: Cluster, pid: str,
-               prepared: tuple[ClusterFeatures, DataBlock, list[PriorInsight], dict[str, str]],
-               shared: set[str]) -> TreeBuild:
-        feats, block, _, notes = prepared
+    async def _outcomes(self, prepared: Mapping[str, Prepared], embedding_failed: bool
+                        ) -> AsyncIterator[InferenceOutcome]:
+        if embedding_failed:  # Azure is unreachable for embeddings: Seedling, no model calls
+            for cid in prepared:
+                yield InferenceOutcome(cid, None, "embeddings_unavailable")
+            return
+        async for outcome in infer_all([(cid, p[1]) for cid, p in prepared.items()], self.client, cap=MAX_LLM_CALLS):
+            yield outcome
+
+    def build_tree(self, outcome: InferenceOutcome, c: Cluster, pid: str, prepared: Prepared,
+                   shared: set[str]) -> TreeBuild:
+        feats, block, _, notes, carry = prepared
         r = self.report
         r.llm_calls += outcome.llm_calls
         r.tokens += outcome.tokens
@@ -456,7 +610,7 @@ class GrowRun:
         if outcome.inference is not None:
             try:
                 build = assemble_tree(c, pid, feats, block, outcome.inference, self.by_ref, self.snapshot_at,
-                                      notes, shared)
+                                      notes, shared, carry)
                 for claim in build.claims:
                     if claim.downgraded:
                         r.downgrades.append({"cluster": c.id, "kind": claim.kind, "from": claim.model_provenance,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -58,11 +59,25 @@ def budget_exceeded(tokens: int, calls: int) -> str | None:
     return None
 
 
+LAST_GROVE_SQL = (
+    "SELECT run_id, response, snapshot FROM analysis_runs WHERE user_id = $1 AND kind = 'grow' "
+    "AND response IS NOT NULL ORDER BY degraded, ts DESC LIMIT 1")
+
+
+async def last_grove_row(conn: Any, user_id: UUID, *, lock: bool = False) -> dict[str, Any] | None:
+    """The stored grove GET /api/grove serves: the newest full grove; a Seedling (degraded) grove only
+    when no full one exists, so an Azure outage never hides the last good grove (proposal §8).
+    {run_id, response, snapshot}; lock=True takes the row lock for a mutation in the same transaction."""
+    row = await conn.fetchrow(LAST_GROVE_SQL + (" FOR UPDATE" if lock else ""), user_id)
+    if row is None:
+        return None
+    load = lambda v: json.loads(v) if isinstance(v, str) else v  # noqa: E731 - asyncpg returns jsonb as text
+    return {"run_id": row["run_id"], "response": load(row["response"]), "snapshot": load(row["snapshot"])}
+
+
 async def last_grove(pool: Any, user_id: UUID) -> dict[str, Any] | None:
-    row = await pool.fetchval(
-        "SELECT response FROM analysis_runs WHERE user_id = $1 AND kind = 'grow' AND response IS NOT NULL "
-        "ORDER BY ts DESC LIMIT 1", user_id)
-    return json.loads(row) if row else None
+    row = await last_grove_row(pool, user_id)
+    return row["response"] if row else None
 
 
 async def persist_run(run: GrowRun) -> None:
@@ -74,62 +89,14 @@ async def persist_run(run: GrowRun) -> None:
     async with pool.acquire() as conn, conn.transaction():
         await conn.execute(
             "INSERT INTO analysis_runs (run_id, user_id, kind, clusters, model, latency_ms, llm_calls, tokens, "
-            "downgraded_claims, fallback_used, degraded, hollow_count, response) "
-            "VALUES ($1, $2, 'grow', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)",
+            "downgraded_claims, fallback_used, degraded, hollow_count, response, snapshot) "
+            "VALUES ($1, $2, 'grow', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb)",
             UUID(run.run_id), user, len(run.builds), run.model_name, r.latency_ms, r.llm_calls, r.tokens,
-            len(r.downgrades), bool(r.fallbacks), run.response["degraded"], run.hollow_count, _j(run.response))
+            len(r.downgrades), bool(r.fallbacks), run.response["degraded"], run.hollow_count, _j(run.response),
+            _j({"snapshot_at": run.snapshot_at.isoformat(), "open_tabs": run.tabs}))
 
         for b in run.builds:
-            t = b.tree
-            pid = await conn.fetchval(
-                "INSERT INTO projects (id, user_id, name, last_active_at) VALUES ($1, $2, $3, now()) "
-                "ON CONFLICT (id) DO UPDATE SET last_active_at = now(), status = 'active' "
-                "WHERE projects.user_id = excluded.user_id RETURNING id", UUID(b.project_id), user, t["name"])
-            if pid is None:
-                raise PermissionError("project id belongs to another user")
-            goal = t["goal"]
-            cluster_id = await conn.fetchval(
-                "INSERT INTO intent_clusters (user_id, project_id, analysis_run_id, label, matched_existing, goal_id, "
-                "goal, goal_provenance, goal_confidence, goal_evidence, goal_user_note_id, direction, hypotheses, "
-                "vines, query_families, important_tab_refs, fogged) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, "
-                "$10::jsonb, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::uuid[], $17) RETURNING id",
-                user, pid, UUID(run.run_id), b.label, b.matched_existing, _u(goal["id"]), goal["text"],
-                goal["provenance"], goal["confidence"], _j(goal["evidence"]), _u(goal["user_note_id"]),
-                _j(t["direction"]) if t["direction"] else None, _j(t["hypotheses"]), _j(t["vines"]),
-                _j(t["query_families"]), [UUID(x) for x in t["important_tab_refs"]], t["fogged"])
-
-            pinned = set(b.pinned_tab_refs)
-            for position, branch in enumerate(t["branches"]):
-                branch_id = await conn.fetchval(
-                    "INSERT INTO intent_branches (user_id, cluster_id, label, status, position) "
-                    "VALUES ($1, $2, $3, $4, $5) RETURNING id", user, cluster_id, branch["label"], branch["status"],
-                    position)
-                await conn.executemany(
-                    "INSERT INTO cluster_tabs (user_id, cluster_id, branch_id, tab_ref, importance, assigned_by, "
-                    "fallen, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
-                    "ON CONFLICT (cluster_id, tab_ref) DO UPDATE SET branch_id = excluded.branch_id, "
-                    "importance = excluded.importance, fallen = excluded.fallen, position = excluded.position "
-                    "WHERE cluster_tabs.assigned_by <> 'user'",  # a user's assignment is never overwritten
-                    [(user, cluster_id, branch_id, UUID(leaf["tab_ref"]), leaf["importance"],
-                      "user" if leaf["tab_ref"] in pinned else "ai", leaf["fallen"], i)
-                     for i, leaf in enumerate(branch["leaves"])])
-
-            await conn.executemany(
-                "INSERT INTO decisions (id, user_id, cluster_id, text, provenance, confidence, evidence, user_note_id, "
-                "quote) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)",
-                [(_u(d["id"]), user, cluster_id, d["text"], d["provenance"], d["confidence"], _j(d["evidence"]),
-                  _u(d["user_note_id"]), d["quote"]) for d in b.decisions])
-            await conn.executemany(
-                "INSERT INTO unresolved_questions (id, user_id, cluster_id, question, kind, provenance, confidence, "
-                "evidence, recurrence, user_note_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)",
-                [(_u(q["id"]), user, cluster_id, q["text"], q["kind"], q["provenance"], q["confidence"],
-                  _j(q["evidence"]), q["recurrence"], _u(q["user_note_id"])) for q in b.questions + b.blockers])
-            await conn.executemany(
-                "INSERT INTO suggested_actions (id, user_id, cluster_id, kind, action, reason, unblocks_question_id, "
-                "provenance, confidence, evidence, user_note_id) "
-                "VALUES ($1, $2, $3, 'next_action', $4, $5, $6, $7, $8, $9::jsonb, $10)",
-                [(_u(a["id"]), user, cluster_id, a["text"], a["reason"], _u(a["unblocks"]), a["provenance"],
-                  a["confidence"], _j(a["evidence"]), _u(a["user_note_id"])) for a in b.actions])
+            await persist_build(conn, user, UUID(run.run_id), b)
 
         # R's columns of P's tabs: UPDATE only; skipped if P's table or columns are missing.
         rows = []
@@ -142,3 +109,67 @@ async def persist_run(run: GrowRun) -> None:
                     "UPDATE tabs SET title_norm = $3, source_type = $4 WHERE user_id = $1 AND tab_ref = $2", rows)
         except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError) as exc:
             log.warning("tabs columns not updated (%s)", type(exc).__name__)
+
+
+async def persist_build(conn: Any, user: UUID, run_id: UUID, b: Any) -> None:
+    """One tree: project, cluster, branches, cluster_tabs and its claims (inside the caller's transaction)."""
+    t = b.tree
+    # A project keeps its name when the user created it (assign to a new tree, clear the fog: a placeholder
+    # cluster with no analysis run) and when this tree is a Seedling fallback (a label of title terms must
+    # not replace the name the model gave it); every other project takes the tree's name.
+    pid = await conn.fetchval(
+        "INSERT INTO projects (id, user_id, name, last_active_at) VALUES ($1, $2, $3, now()) "
+        "ON CONFLICT (id) DO UPDATE SET last_active_at = now(), status = 'active', "
+        "name = CASE WHEN $4 OR EXISTS (SELECT 1 FROM intent_clusters ic WHERE ic.user_id = projects.user_id "
+        "AND ic.project_id = projects.id AND ic.analysis_run_id IS NULL) THEN projects.name "
+        "ELSE excluded.name END "
+        "WHERE projects.user_id = excluded.user_id RETURNING id", UUID(b.project_id), user, t["name"],
+        b.fallback_reason is not None)
+    if pid is None:
+        raise PermissionError("project id belongs to another user")
+    goal = t["goal"]
+    cluster_id = await conn.fetchval(
+        "INSERT INTO intent_clusters (user_id, project_id, analysis_run_id, label, matched_existing, goal_id, "
+        "goal, goal_provenance, goal_confidence, goal_evidence, goal_user_note_id, direction, hypotheses, "
+        "vines, query_families, important_tab_refs, fogged) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, "
+        "$10::jsonb, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::uuid[], $17) RETURNING id",
+        user, pid, run_id, b.label, b.matched_existing, _u(goal["id"]), goal["text"],
+        goal["provenance"], goal["confidence"], _j(goal["evidence"]), _u(goal["user_note_id"]),
+        _j(t["direction"]) if t["direction"] else None, _j(t["hypotheses"]), _j(t["vines"]),
+        _j(t["query_families"]), [UUID(x) for x in t["important_tab_refs"]], t["fogged"])
+
+    pinned = set(b.pinned_tab_refs)
+    for position, branch in enumerate(t["branches"]):
+        branch_id = await conn.fetchval(
+            "INSERT INTO intent_branches (user_id, cluster_id, label, status, position) "
+            "VALUES ($1, $2, $3, $4, $5) RETURNING id", user, cluster_id, branch["label"], branch["status"],
+            position)
+        await conn.executemany(
+            "INSERT INTO cluster_tabs (user_id, cluster_id, branch_id, tab_ref, importance, assigned_by, "
+            "fallen, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
+            "ON CONFLICT (cluster_id, tab_ref) DO UPDATE SET branch_id = excluded.branch_id, "
+            "importance = excluded.importance, fallen = excluded.fallen, position = excluded.position "
+            "WHERE cluster_tabs.assigned_by <> 'user'",  # a user's assignment is never overwritten
+            [(user, cluster_id, branch_id, UUID(leaf["tab_ref"]), leaf["importance"],
+              "user" if leaf["tab_ref"] in pinned else "ai", leaf["fallen"], i)
+             for i, leaf in enumerate(branch["leaves"])])
+
+    await conn.executemany(
+        "INSERT INTO decisions (id, user_id, cluster_id, text, provenance, confidence, evidence, user_note_id, "
+        "quote) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)",
+        [(_u(d["id"]), user, cluster_id, d["text"], d["provenance"], d["confidence"], _j(d["evidence"]),
+          _u(d["user_note_id"]), d.get("quote")) for d in b.decisions])
+    await conn.executemany(
+        "INSERT INTO unresolved_questions (id, user_id, cluster_id, question, kind, provenance, confidence, "
+        "evidence, recurrence, user_note_id, status, answer, resolved_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13)",
+        [(_u(q["id"]), user, cluster_id, q["text"], q["kind"], q["provenance"], q["confidence"],
+          _j(q["evidence"]), q["recurrence"], _u(q["user_note_id"]), q.get("status", "open"), q.get("answer"),
+          datetime.fromisoformat(q["resolved_at"]) if q.get("resolved_at") else None)
+         for q in b.questions + b.blockers])
+    await conn.executemany(
+        "INSERT INTO suggested_actions (id, user_id, cluster_id, kind, action, reason, unblocks_question_id, "
+        "provenance, confidence, evidence, user_note_id) "
+        "VALUES ($1, $2, $3, 'next_action', $4, $5, $6, $7, $8, $9::jsonb, $10)",
+        [(_u(a["id"]), user, cluster_id, a["text"], a["reason"], _u(a["unblocks"]), a["provenance"],
+          a["confidence"], _j(a["evidence"]), _u(a["user_note_id"])) for a in b.actions])
