@@ -11,14 +11,27 @@ function containsUserId(value) {
   );
 }
 
+const baseFields = ['event_id', 'ts', 'tab_ref', 'type'];
+const pageFields = ['domain', 'title', 'dup_key', 'search_query'];
+const fieldsByType = new Map([
+  ['OPEN', [...pageFields, 'opener_tab_ref']], ['UPDATE', pageFields],
+  ['FOCUS', ['previous_tab_ref']], ['BLUR', ['active_ms']],
+  ['CLOSE', []], ['IDLE', []], ['ACTIVE', []],
+]);
+function validEvent(event) {
+  if (!event || typeof event.event_id !== 'string' || !event.event_id || !fieldsByType.has(event.type)) return false;
+  const allowed = new Set([...baseFields, ...fieldsByType.get(event.type)]);
+  return Object.keys(event).every(key => allowed.has(key));
+}
+
 export function createMockServer(allowedOrigin = process.env.ALLOWED_EXTENSION_ORIGIN ?? defaultOrigin) {
   const seen = new Set();
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     res.setHeader('Vary', 'Origin');
     if (req.headers.origin === allowedOrigin) {
       res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Dev-User');
     }
     const reply = (status, body) => {
       res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -46,9 +59,9 @@ export function createMockServer(allowedOrigin = process.env.ALLOWED_EXTENSION_O
       reply(422, { detail: 'Expected a JSON batch' });
       return;
     }
-    if (containsUserId(body) || !Array.isArray(body?.events) || body.events.length > 500 ||
-        body.events.some(event => !event || typeof event.event_id !== 'string' || !event.event_id)) {
-      reply(422, { detail: 'Expected at most 500 events with event_id and no user_id' });
+    if (containsUserId(body) || !Array.isArray(body?.events) || Object.keys(body).some(key => key !== 'events') ||
+        body.events.length === 0 || body.events.length > 500 || body.events.some(event => !validEvent(event))) {
+      reply(422, { detail: 'Expected 1 to 500 known events with no unknown fields' });
       return;
     }
     let accepted = 0;
@@ -62,6 +75,8 @@ export function createMockServer(allowedOrigin = process.env.ALLOWED_EXTENSION_O
     }
     reply(202, { accepted, duplicates });
   });
+  Object.defineProperty(server, 'storedEventCount', { get: () => seen.size });
+  return server;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

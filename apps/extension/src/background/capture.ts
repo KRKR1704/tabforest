@@ -9,7 +9,7 @@ import { Hollow, redactText } from './hollow';
 
 export function registerCapture(
   api: typeof chrome = chrome,
-  output: (event: CaptureEvent) => void = emit,
+  output: (event: CaptureEvent) => void | Promise<void> = emit,
   now: () => number = Date.now,
 ): { settled: () => Promise<void>; hollowCount: () => number } {
   // Chrome IDs and full URLs remain private to this capture instance.
@@ -123,15 +123,15 @@ export function registerCapture(
     if (type === 'OPEN') {
       const openerRef = tab.openerTabId === undefined || hollow.ids().includes(tab.openerTabId)
         ? undefined : refs.get(tab.openerTabId);
-      output({ ...fields, type, opener_tab_ref: openerRef && openedRefs.has(openerRef) ? openerRef : null });
+      await output({ ...fields, type, opener_tab_ref: openerRef && openedRefs.has(openerRef) ? openerRef : null });
       openedRefs.add(ref);
       if (tab.id !== undefined) awaitingOpen.delete(tab.id);
       if (firstEligible && tab.active && tab.windowId === focusedWindow && tracker.tabRef === null && previousRef !== ref) {
         tracker.select(ref, at);
-        output({ ...base(ref, at), type: 'FOCUS', previous_tab_ref: previousRef });
+        await output({ ...base(ref, at), type: 'FOCUS', previous_tab_ref: previousRef });
         previousRef = ref;
       }
-    } else output({ ...fields, type });
+    } else await output({ ...fields, type });
   }
 
   async function getTab(id: number): Promise<chrome.tabs.Tab | null> {
@@ -190,13 +190,13 @@ export function registerCapture(
       if (!tracker.tabRef && focusedWindow !== api.windows.WINDOW_ID_NONE) {
         await selectWindow(focusedWindow, at);
         if (tracker.tabRef) {
-          output({ ...base(tracker.tabRef, at), type: 'FOCUS', previous_tab_ref: previousRef });
+          await output({ ...base(tracker.tabRef, at), type: 'FOCUS', previous_tab_ref: previousRef });
           previousRef = tracker.tabRef;
         }
       }
     } else if (window.focused && window.id !== undefined) await selectWindow(window.id, at);
     if (!saved.session && tracker.tabRef) {
-      output({ ...base(tracker.tabRef, at), type: 'FOCUS', previous_tab_ref: null });
+      await output({ ...base(tracker.tabRef, at), type: 'FOCUS', previous_tab_ref: null });
       previousRef = tracker.tabRef;
     }
   });
@@ -217,12 +217,12 @@ export function registerCapture(
     }
     const prior = tracker.tabRef;
     if (prior) {
-      output({ ...base(prior, at), type: 'BLUR', active_ms: tracker.take(prior, at) });
+      await output({ ...base(prior, at), type: 'BLUR', active_ms: tracker.take(prior, at) });
       previousRef = prior;
     }
     tracker.select(next, at);
     if (next) {
-      output({ ...base(next, at), type: 'FOCUS', previous_tab_ref: previousRef });
+      await output({ ...base(next, at), type: 'FOCUS', previous_tab_ref: previousRef });
       previousRef = next;
     }
   }));
@@ -243,10 +243,10 @@ export function registerCapture(
     if (current) remember(current);
     const ref = refs.get(id);
     if (ref && tracker.tabRef === ref) {
-      output({ ...base(ref, at), type: 'BLUR', active_ms: tracker.take(ref, at) });
+      await output({ ...base(ref, at), type: 'BLUR', active_ms: tracker.take(ref, at) });
       previousRef = ref;
     }
-    if (ref && eligible.has(id)) output({ ...base(ref, at), type: 'CLOSE' });
+    if (ref && eligible.has(id)) await output({ ...base(ref, at), type: 'CLOSE' });
     if (ref) { tracker.remove(ref, at); openedRefs.delete(ref); }
     refs.delete(id);
     awaitingOpen.delete(id);
@@ -260,7 +260,7 @@ export function registerCapture(
     const active = state === 'active';
     tracker.setActive(active, at);
     if (focusedWindow !== api.windows.WINDOW_ID_NONE && tracker.tabRef) {
-      output({ ...base(tracker.tabRef, at), type: active ? 'ACTIVE' : 'IDLE' });
+      await output({ ...base(tracker.tabRef, at), type: active ? 'ACTIVE' : 'IDLE' });
     }
   }));
 
