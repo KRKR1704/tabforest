@@ -1,7 +1,5 @@
 import {
   GroveResponse,
-  MemorySearchResponse,
-  PruneSuggestionsResponse,
   UserProfile,
   PrivacySettings,
   BrowserSession,
@@ -28,68 +26,6 @@ export const mockGroveResponse: GroveResponse = normalizeGrove(
 // The Backend Authentication timeline from the contract (its "story_24h" example).
 export const mockTimelineResponse = timelineContract.examples[0].response
   .body as unknown as TimelineResponse;
-
-export const mockMemorySearchResponse: MemorySearchResponse = {
-  query: 'session storage',
-  results: [
-    {
-      id: 'mem-1',
-      project_id: 'proj-march12',
-      project_name: 'Backend Scaling - March 12',
-      date: '2026-03-12',
-      similarity: 0.86,
-      summary: 'Researched session cookies vs token storage; chose Redis backplane with 2h expiration.',
-      decisions: ['Store session state in Redis rather than JWT for instant revocation'],
-      attention_minutes: 54.0,
-      sessions_count: 2,
-    },
-  ],
-};
-
-export const mockPruneSuggestionsResponse: PruneSuggestionsResponse = {
-  suggestions: [
-    {
-      id: 'prune-1',
-      kind: 'exact_duplicate',
-      branch_label: 'JWT',
-      tab_refs: ['t7', 't8'],
-      keep_ref: 't1',
-      title: 'FastAPI Auth in 5 Minutes (Duplicate)',
-      domain: 'dev.to',
-      reason: 'Exact mirror of previously loaded medium.com article (dup_key match)',
-    },
-    {
-      id: 'prune-2',
-      kind: 'semantic_redundancy',
-      branch_label: 'JWT',
-      tab_refs: ['t7'],
-      keep_ref: 't1',
-      title: 'FastAPI Auth in 5 Minutes',
-      domain: 'medium.com',
-      reason: 'Restates FastAPI official documentation with lower dwell and no unique code examples',
-    },
-    {
-      id: 'prune-3',
-      kind: 'stale',
-      branch_label: 'Job Listings',
-      tab_refs: ['t13'],
-      keep_ref: null,
-      title: 'Software Engineer Intern Salaries & Roles',
-      domain: 'levels.fyi',
-      reason: 'No focus in 3+ days and not cited as evidence',
-    },
-    {
-      id: 'prune-4',
-      kind: 'distraction',
-      branch_label: 'Wildflower Meadow',
-      tab_refs: ['t15'],
-      keep_ref: null,
-      title: 'Newark, NJ Weather Forecast',
-      domain: 'weather.com',
-      reason: 'Single tab visit under 10 seconds total focus',
-    },
-  ],
-};
 
 export const mockUserProfile: UserProfile = {
   id: 'usr-5d0a-9b1e-3f4a',
