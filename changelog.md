@@ -23,6 +23,20 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - Saved contexts (`adapters/contexts.py`, C13) still read their fixture; they belong to R-12.
 
+## [2026-10-04] — Restore click can no longer be held forever (D)
+
+### Fixed
+
+- `public/tf-permissions.js`: the click on a "Restore ..." button is held while Chrome asks for the optional `tabGroups` permission. If the question is never answered (a prompt that does not show, an automated browser) the click stayed held and the button was dead. It now goes through after 15 seconds; a late "yes" applies to the next restore.
+
+### Added
+
+- `apps/extension/e2e/restore-click.mjs`: in real Chromium, the click is held, goes through once after 15 seconds, and later clicks go straight through (3 of 3).
+
+### Notes
+
+- Found by a full end-to-end run in headless Chromium, where nobody can answer the permission prompt.
+
 ## [2026-10-04] — P-12 to P-14: isolation suite, hardening, CI/CD (P)
 
 ### Added
