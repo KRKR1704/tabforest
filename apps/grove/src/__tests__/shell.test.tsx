@@ -157,7 +157,10 @@ describe('App shell', () => {
     });
     fireEvent.submit(screen.getByRole('search'));
     expect(screen.getByRole('heading', { level: 1, name: 'Ask Memory' })).toBeInTheDocument();
-    expect(screen.getByText('<b>session storage</b>')).toBeInTheDocument();
+    // The question is carried over as plain text, never as markup.
+    const ask = within(screen.getByRole('search', { name: 'Ask memory' }));
+    expect(ask.getByRole('textbox')).toHaveValue('<b>session storage</b>');
+    expect(document.querySelector('main b')).toBeNull();
   });
 
   it('opens and closes the evidence drawer from a provenance pill', () => {
