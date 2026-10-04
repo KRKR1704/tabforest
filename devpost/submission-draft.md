@@ -4,7 +4,7 @@
 
 **Event:** GirlHacks 2026 (NJIT)  
 **Tracks:** 
-1. **Azure AI Track** (Azure OpenAI Structured Outputs, Prompt Shields content filtering, Azure App Service, Application Insights)
+1. **Azure AI Track** (Azure OpenAI Structured Outputs, Azure App Service, Application Insights)
 2. **Tiger Data Memory Track** (TimescaleDB time-series hypertables, continuous aggregates, pgvector DiskANN vector embeddings)
 
 ---

@@ -182,5 +182,7 @@ describe('App shell', () => {
     useGroveStore.setState({ grove: null });
     render(<App />);
     expect(screen.getByText('No grove yet.')).toBeInTheDocument();
+    // Opening the page does not grow with fewer than two tabs, so the hint says how many are needed.
+    expect(screen.getByText('Open at least two tabs, then press “Grow grove”.')).toBeInTheDocument();
   });
 });

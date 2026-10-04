@@ -6,6 +6,24 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S: empty-state wording and Prompt Shields removed from README and Devpost (S)
+
+### Changed
+- `apps/grove/src/screens/CurrentGrove.tsx`: the empty state's second line is now "Open at least two tabs, then press “Grow grove”." It said "Grow one from the tabs you have open.", which contradicted the page no longer growing by itself with fewer than two open tabs (lane D, PRs #63 and #65).
+- `README.md` (stack table) and `devpost/submission-draft.md` (Azure track line): the mention of Prompt Shields is removed, at lane D's request.
+
+### Tests
+- `src/__tests__/shell.test.tsx`: the empty state shows the new line.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 23 files, 503 tests passing.
+- Checked, nothing to change: neither `README.md` nor anything in `devpost/` says "never records what you type"; the landing page already says the Chrome Web Store version is not available and does not mention Prompt Shields, any Microsoft account or the fallback login.
+
+### Notes
+- `SPEC.md` still names Prompt Shields in three places (§4 diagram, §12, §14). That is the specification and is not changed here; for lane R to decide.
+- The landing page keeps its live demo; the store screenshots in `apps/extension/store/screenshots/` are not used.
+- The address where the landing page is hosted is not in the README yet: it is not hosted, and lane P has not said where it will be.
+
 ## [2026-10-04] — Privacy sentence: search text is recorded (D)
 
 ### Changed

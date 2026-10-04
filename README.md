@@ -113,7 +113,7 @@ Confidence is capped by the amount and diversity of evidence, not by the model's
 | Extension | Manifest V3 · TypeScript · React 18 · Tailwind · Vite + CRXJS |
 | Visualization | D3.js v7 on SVG |
 | Backend | Python 3.12 · FastAPI · Pydantic v2 · asyncpg · scikit-learn |
-| AI | Azure OpenAI (Structured Outputs + `text-embedding-3-small`, Prompt Shields) |
+| AI | Azure OpenAI (Structured Outputs + `text-embedding-3-small`) |
 | Memory | Tiger Cloud: hypertables, continuous aggregates, pgvector + pgvectorscale |
 | Auth | Microsoft Entra ID (PKCE) |
 | Hosting | Azure App Service · Application Insights |
