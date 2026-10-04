@@ -91,6 +91,7 @@ export interface WireTree {
   hypotheses: WireClaim[];
   important_tab_refs: string[];
   shared_tab_refs: string[];
+  query_families?: Array<{ id: string; queries: string[]; tab_refs: string[]; open_loop: boolean }>;
 }
 
 export interface WireSprout {
@@ -253,6 +254,7 @@ export function normalizeTree(wire: WireTree, generatedAt: string): TreeData {
     })),
     important_tab_refs: wire.important_tab_refs,
     shared_tab_refs: wire.shared_tab_refs,
+    query_families: wire.query_families ?? [],
     hypotheses: wire.hypotheses.map(claim),
     tabs: wire.branches.flatMap((branch) =>
       branch.leaves.map((leaf) => ({

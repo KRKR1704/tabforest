@@ -1,16 +1,5 @@
-import {
-  GroveResponse,
-  StreamMessage,
-  UpdateClaimRequest,
-  UpdateClaimResponse,
-  AssignTabRequest,
-  AssignTabResponse,
-  AddNoteRequest,
-  AddNoteResponse,
-  SnapshotPayload,
-  TokenData,
-} from '../types';
-import { mockGroveResponse, mockClaimsResponse } from '../mocks/mockData';
+import { GroveResponse, StreamMessage, SnapshotPayload, TokenData } from '../types';
+import { mockGroveResponse } from '../mocks/mockData';
 import { sendBridgeMessage } from './bridge';
 import {
   indexTabs,
@@ -25,6 +14,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 export const isMockMode = (): boolean => {
   return import.meta.env.VITE_MOCK !== '0';
 };
+
+export const apiBaseUrl = (): string => API_BASE_URL;
+
+/** Bearer token from the extension bridge; held in memory only, never stored. */
+export const authHeaders = (): Promise<Record<string, string>> => getAuthHeader();
 
 async function getAuthHeader(): Promise<Record<string, string>> {
   const tokenRes = await sendBridgeMessage<void, TokenData>('GET_TOKEN');
@@ -165,121 +159,5 @@ export async function streamGrowGrove(
     console.warn('[Grove Stream Adapter] Stream failed, falling back to mock stream:', err);
     if (onError) onError(err);
     streamGrowGrove(snapshot, onMessage, onDone);
-  }
-}
-
-export async function analyzeProject(projectId: string): Promise<GroveResponse> {
-  if (isMockMode()) {
-    return mockGroveResponse;
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return normalizeGrove((await res.json()) as WireGrove);
-  } catch (err) {
-    console.warn('[Grove Adapter] analyzeProject fallback:', err);
-    return mockGroveResponse;
-  }
-}
-
-export async function updateClaim(
-  claimId: string,
-  request: UpdateClaimRequest
-): Promise<UpdateClaimResponse> {
-  if (isMockMode()) {
-    return {
-      id: claimId,
-      status: request.action === 'confirm' ? 'confirmed' : 'updated',
-      provenance: request.action === 'confirm' ? 'stated' : 'inferred',
-      user_note_id: request.action === 'confirm' ? 'n-user-note' : undefined,
-      confirmed_at: new Date().toISOString(),
-      answer: request.answer || undefined,
-    };
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/claims/${claimId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(request),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Grove Adapter] updateClaim fallback:', err);
-    return mockClaimsResponse.updateClaim;
-  }
-}
-
-export async function assignTab(
-  tabRef: string,
-  request: AssignTabRequest
-): Promise<AssignTabResponse> {
-  if (isMockMode()) {
-    return {
-      tab_ref: tabRef,
-      cluster_id: request.target_cluster_id,
-      branch_id: request.target_branch_id,
-      assigned_by: 'user',
-      pinned: true,
-    };
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/tabs/${tabRef}/assign`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(request),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Grove Adapter] assignTab fallback:', err);
-    return mockClaimsResponse.assignTab;
-  }
-}
-
-export async function addNote(request: AddNoteRequest): Promise<AddNoteResponse> {
-  if (isMockMode()) {
-    return {
-      note_id: `note-${Date.now()}`,
-      cluster_id: request.cluster_id,
-      text: request.text,
-      created_at: new Date().toISOString(),
-      cleared_fog: true,
-    };
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/notes`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(request),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Grove Adapter] addNote fallback:', err);
-    return mockClaimsResponse.addNote;
   }
 }

@@ -53,7 +53,8 @@ export async function sendBridgeMessage<TPayload = unknown, TResponse = unknown>
   if (isExtensionEnvironment()) {
     try {
       const response = await new Promise<BridgeResponse<TResponse>>((resolve, reject) => {
-        chrome.runtime.sendMessage({ type, payload }, (res: any) => {
+        // contracts/bridge.types.ts: payload fields sit next to `type`, not nested.
+        chrome.runtime.sendMessage({ type, ...(payload ?? {}) }, (res: any) => {
           if (chrome.runtime.lastError) {
             return reject(new Error(chrome.runtime.lastError.message));
           }

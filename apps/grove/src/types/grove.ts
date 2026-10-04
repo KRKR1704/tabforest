@@ -152,6 +152,15 @@ export interface TreeData {
   fogged?: boolean;
   /** Tabs that also appear on another tree. */
   shared_tab_refs?: string[];
+  /** Groups of rephrased searches; query evidence points at one of these. */
+  query_families?: QueryFamily[];
+}
+
+export interface QueryFamily {
+  id: string;
+  queries: string[];
+  tab_refs: string[];
+  open_loop: boolean;
 }
 
 export interface FogTab {

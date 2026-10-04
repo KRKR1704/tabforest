@@ -6,6 +6,42 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-5 Tree Detail (S)
+
+### Added
+- `apps/grove/src/components/TreeDetailDrawer.tsx`: right-hand drawer for one tree with Goal, Direction, Decisions, Open questions, Next actions, hypotheses ("In the fog"), Add a note, and Sources. Every claim has a provenance pill; clicking it expands the claim's evidence and lights its roots. Actions per claim: Confirm (inferred and hypothesis only), Edit, Dismiss, and Mark resolved with an answer for open questions. Sources open the tab or exclude its domain.
+- `apps/grove/src/adapters/claims.ts` (C4): `patchClaim` (`PATCH /api/claims/{id}`), `assignTab` (`POST /api/tabs/{tab_ref}/assign`), `createNote` (`POST /api/notes`), `analyzeTree` (`POST /api/projects/{id}/analyze`), in the shapes of `contracts/claims.example.json`, with a stand-in for mock mode and for API failure.
+- `apps/grove/src/lib/groveEdits.ts`: pure grove edits (`applyClaimUpdate`, `addDecision`, `moveTab`, `nameFogTab`, `replaceTree`). `apps/grove/src/screens/useGroveActions.ts`: sends each correction, then applies it to the grove in the store.
+- Canvas (`viz/layout.ts`, `viz/render.ts`): roots from a stone, mushroom or the trunk to exactly the evidence leaves (a search-family ref lights that family's tabs), dimming the tree's other leaves; dragging a leaf onto another tree (nearest branch) or onto a "New tree" zone shown during the drag; zoom to the selected tree.
+
+### Changed
+- Clicking a tree, stone, mushroom, flower or hypothesis now opens Tree Detail on that tree (S-4 opened the evidence drawer). Clicking a leaf sends `OPEN_TAB` and shows a caption with "Exclude <domain>" (`EXCLUDE_DOMAIN`). A tab in the Unclear patch gets a "Clear the fog" form that names its goal.
+- A mushroom becomes a flower when its question is marked resolved; a confirmed mossy stone becomes carved; the top-bar open-question count follows.
+- `apps/grove/src/viz/render.ts`: the zoom and pan are kept when the grove is redrawn after an edit.
+- `apps/grove/src/adapters/bridge.ts`: extension messages are sent flat (`{type, tab_ref}`) as `contracts/bridge.types.ts` defines, not nested under `payload`.
+- `apps/grove/src/mocks/mockData.ts`: the mock snapshot is the 28 contract tabs, so the mock bridge can open them.
+- `apps/grove/src/types/grove.ts`, `adapters/groveContract.ts`: trees carry `query_families`.
+
+### Removed
+- S-1 `updateClaim`, `assignTab`, `addNote`, `analyzeProject` in `adapters/grove.ts`, their types and `mockClaimsResponse`: their request and response shapes did not match R's claims contract. Replaced by `adapters/claims.ts`.
+
+### Tests
+- `src/__tests__/claims.test.ts` (28): contract responses parsed; in live mode each request's method, path, body and bearer header checked against the contract examples (confirm, edit, dismiss, resolve, assign to tree, assign to new tree, clear the fog, analyze); no `user_id` in any body; fallback on failure; mock mode makes no network call; flat bridge messages; every grove edit.
+- `src/__tests__/treeDetail.test.tsx` (26): roots, drop targets, drag (onto a tree, onto empty ground), all drawer sections and pills, zoom kept after an edit, confirm, resolve, edit, dismiss, add note, open tab, exclude domain, close, hostile text, leaf click, clear the fog, move by drag, plant a new tree, and the contract PATCH sent from the Confirm button in live mode.
+- Updated 2 S-4 tests (canvas claims open Tree Detail) and removed 1 S-1 adapter test for the removed functions.
+
+### Verification
+- `npm test`: 11 files, 179 tests passing. `npm run build`: passes with zero TypeScript errors.
+- Manual (dev server): clicking the mushroom zoomed to its tree, opened Tree Detail on the question and drew 4 roots to its evidence leaves with the other 6 dimmed; Confirm updated the claim and kept the zoom.
+
+### Notes
+- "Add a note" sends `kind: "decision"` or `kind: "note"` with `project_id` (from R's `NoteCreateRequest`; the contract file only shows `kind: "goal"`). A decision note appears as a carved stone; a plain note shows only a confirmation.
+- Confirming a hypothesis moves it into Decisions as a stated claim. This is S's reading: the contract only shows a hypothesis being dismissed.
+- After a move, the trees in `reanalyze_project_ids` are re-read with `analyze` in live mode; offline the move is applied locally.
+- Excluding a domain does not remove its leaves from the current grove; it takes effect on later captures.
+- Not here: Save context (S-8), the prune dialog and "Save as references" (S-11), keyboard access to canvas elements (S-13).
+- BUILD_TASKS.md: S-5 row ticked only.
+
 ## [2026-10-03] — Lane S-4 Forest elements (S)
 
 ### Added

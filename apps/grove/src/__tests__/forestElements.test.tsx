@@ -385,23 +385,19 @@ describe('Current Grove: clicking the canvas', () => {
     useGroveStore.setState({ grove: mockGroveResponse, activeScreen: 'grove', isStreaming: false });
   });
 
-  it('opens the evidence drawer for a mushroom', () => {
+  it('opens Tree Detail on the question when a mushroom is clicked', () => {
     const { container } = render(<App />);
     click(container, '[data-kind="mushroom"]');
-    const drawer = screen.getByRole('complementary', { name: 'Evidence' });
-    expect(within(drawer).getByText('Open question')).toBeInTheDocument();
+    const drawer = screen.getByRole('complementary', { name: 'Tree detail' });
+    expect(within(drawer).getByRole('heading', { name: auth.project.name })).toBeInTheDocument();
     expect(
       within(drawer).getByText(auth.unresolved_questions[0].display_text ?? '')
     ).toBeInTheDocument();
   });
 
-  it('names a non-claim element in the caption and closes the drawer', () => {
+  it('names a non-claim element in the caption', () => {
     const { container } = render(<App />);
-    click(container, '[data-kind="stone"]');
-    expect(screen.getByRole('complementary', { name: 'Evidence' })).toBeInTheDocument();
-
     click(container, '[data-kind="firefly"]');
-    expect(screen.queryByRole('complementary', { name: 'Evidence' })).not.toBeInTheDocument();
     const caption = screen.getByRole('status');
     expect(within(caption).getByText('Past research')).toBeInTheDocument();
     expect(within(caption).getByText(/You researched this on/)).toBeInTheDocument();
