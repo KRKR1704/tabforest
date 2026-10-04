@@ -6,6 +6,20 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Secret audit and placeholder values in .env.example (P)
+
+### Changed
+- `apps/api/.env.example`: the empty secret entries now show the expected format with obvious dummy values (`replace-with-your-azure-openai-key`, `postgresql://DB_USER:DB_PASSWORD@DB_HOST:5432/DB_NAME?sslmode=require`, a placeholder `JWT_SECRET` and `FALLBACK_ACCOUNTS`). The Application Insights string stays empty on purpose: a fake one would switch telemetry on. The untouched example still loads as valid settings.
+
+### Verification
+- The secret values from the local `.env` files (database URL and password, Azure OpenAI key, Application Insights string) appear in no tracked file and in no commit of the history.
+- 84,628 changed lines across every commit were checked for connection strings with passwords, instrumentation and storage keys, `sk-` and GitHub tokens, private keys, JWTs, password literals and argon2 hashes. The only hits are the dummy test URL `nobody:nothing@127.0.0.1` and a mock dev token in the Grove's stand-in data.
+- The Azure subscription and tenant ids, the Tiger service id and host, and personal emails are not in any file or commit. The Microsoft personal-account tenant id and a made-up demo object id in the contracts are public or fake.
+- `apps/api/.env` is git-ignored and untracked.
+
+### Notes
+- Nothing needed rotating from the repository. The Azure OpenAI key and the database password were pasted in the group chat, so they are to be rotated after the event.
+
 ## [2026-10-04] — API: ALLOWED_EXTENSION_ORIGIN takes several extension IDs (D, for P)
 
 ### Changed
