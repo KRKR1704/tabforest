@@ -6,6 +6,17 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — The restored grove stays on open (D, in S's App.tsx with her ask pending)
+
+### Fixed
+- `apps/grove/src/App.tsx`: on open, the page showed the stored grove and then grew from the open tabs, which replaced the user's trees with a small grove of only the tabs open at that moment. The page now grows on its own only when there is no stored grove to show. The Grow grove button is unchanged and adds the current tabs.
+
+### Tests
+- `keepRestoredGrove.test.tsx`: a restored grove is kept with three tabs open and no grow is asked for; with no stored grove the page still grows on open.
+
+### Verification
+- Grove tests, type check and lint.
+
 ## [2026-10-04] — Second UI pass: hover, entrances and a fuller landing backdrop (S)
 
 Presentation only. No adapter, store, bridge, API, routing or extension code changed. Not a row in `BUILD_TASKS.md`.

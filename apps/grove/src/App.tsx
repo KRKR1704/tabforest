@@ -92,12 +92,14 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
     initializeBridge();
   }, [initializeBridge]);
 
-  // Open: show the last stored grove at once, then grow from the open tabs. Both wait until the extension has
-  // said the user is signed in; before that the API only answers 401 and the grove would stay empty.
+  // Open: show the last stored grove at once. Only when there is none to show does the page grow from the open
+  // tabs on its own; a grow would replace the user's trees with just the tabs open now (the Grow grove button
+  // still adds them). Both wait until the extension has said the user is signed in; before that the API only
+  // answers 401 and the grove would stay empty.
   const signedIn = authChecked && authState.signed_in;
   useEffect(() => {
     if (!growOnOpen || showInspector || !signedIn) return;
-    void restoreStoredGrove().then(() => runGrow({ auto: true }));
+    void restoreStoredGrove().then((restored) => { if (!restored) void runGrow({ auto: true }); });
   }, [growOnOpen, signedIn]);
 
   // Once the user is known to be signed in, ask the server who they are. The
