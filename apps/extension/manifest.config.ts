@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin';
 export default defineManifest({
   "manifest_version": 3,
   "name": "TabForest",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Remembers why you opened your tabs -- goals, open questions and where to resume.",
   "incognito": "not_allowed",
   "background": {
