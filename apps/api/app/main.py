@@ -20,6 +20,7 @@ from app.auth import EntraVerifier, current_user
 from app.config import Settings, load_settings
 from app.db.pool import Database, StorageUnavailable
 from app.deletion import router as deletion_router
+from app.demo_pages import router as demo_router
 from app.errors import install_error_handlers
 from app.limits import limiter, rate_limited
 from app.privacy import router as privacy_router
@@ -112,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.include_router(demo_router)
     app.include_router(router)
     app.include_router(privacy_router)
     app.include_router(deletion_router)
