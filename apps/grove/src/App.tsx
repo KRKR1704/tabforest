@@ -9,6 +9,7 @@ import { CurrentGrove } from './screens/CurrentGrove';
 import { ScreenPlaceholder } from './screens/ScreenPlaceholder';
 import { Timeline } from './screens/Timeline';
 import { SavedGroves } from './screens/SavedGroves';
+import { WorkContext } from './screens/WorkContext';
 import { ResumeCard } from './components/ResumeCard';
 import { resumeContext } from './adapters/contexts';
 import { sendBridgeMessage } from './adapters/bridge';
@@ -139,6 +140,8 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
         <Timeline grove={grove} />
       ) : activeScreen === 'saved' ? (
         <SavedGroves onResume={startResume} />
+      ) : activeScreen === 'work-context' ? (
+        <WorkContext />
       ) : (
         <ScreenPlaceholder description={navItemFor(activeScreen).description}>
           {activeScreen === 'memory' && memoryQuery && (

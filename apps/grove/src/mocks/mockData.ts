@@ -2,7 +2,6 @@ import {
   GroveResponse,
   MemorySearchResponse,
   PruneSuggestionsResponse,
-  WorkContextResponse,
   UserProfile,
   PrivacySettings,
   BrowserSession,
@@ -29,60 +28,6 @@ export const mockGroveResponse: GroveResponse = normalizeGrove(
 // The Backend Authentication timeline from the contract (its "story_24h" example).
 export const mockTimelineResponse = timelineContract.examples[0].response
   .body as unknown as TimelineResponse;
-
-export const mockWorkContextResponse: WorkContextResponse = {
-  project: 'Cloud Migration',
-  goal: 'Migrate data ingestion pipeline to Azure serverless architecture',
-  decisions: [
-    {
-      text: 'Deploy ingestion workers on Azure Functions Consumption tier',
-      provenance: 'sourced',
-      quote: 'We decided to deploy the ingestion workers on Azure Functions Consumption tier for v1',
-      source_title: 'Teams Transcript - Architecture Sync',
-      timestamp: '00:14:32',
-      confidence: 0.95,
-    },
-  ],
-  blockers: [
-    {
-      text: 'Production service principal credentials awaiting Infosec signoff',
-      provenance: 'sourced',
-      quote: 'Production service principal credentials have not been approved by Infosec',
-      source_title: 'Jira CAM-142 Migration Blocker',
-      severity: 'high',
-    },
-  ],
-  owners: [
-    { name: 'Infosec Team', role: 'Credential Approver' },
-    { name: 'Backend Team', role: 'Function Deployment' },
-  ],
-  open_questions: [
-    {
-      question: 'What is the expected cold-start latency budget on Consumption plan?',
-      kind: 'unresolved_comparison',
-      confidence: 0.8,
-    },
-  ],
-  next_actions: [
-    {
-      action: 'Escalate ticket CAM-142 for service principal credentials',
-      priority: 1,
-      owner: 'Backend Lead',
-    },
-  ],
-  handoff_brief_markdown: `# Cloud Migration — Handoff Brief
-
-**Goal**: Migrate data ingestion pipeline to Azure serverless architecture.
-
-### Key Decisions
-- Deploy ingestion workers on Azure Functions Consumption tier (Teams Transcript 00:14:32).
-
-### Critical Blockers
-- Production service principal credentials awaiting Infosec signoff (Jira CAM-142).
-
-### Immediate Next Step
-- Escalate ticket CAM-142 for service principal credentials.`,
-};
 
 export const mockMemorySearchResponse: MemorySearchResponse = {
   query: 'session storage',
