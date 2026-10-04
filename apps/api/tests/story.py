@@ -22,15 +22,17 @@ Event times are the story clock's (snapshot 2026-10-04T11:40:00Z); tests pin the
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import asyncpg
 
-from tests.helpers import API_DIR, contract
+from tests.helpers import API_DIR, contract, database_url
 
 STORY_NOW = datetime(2026, 10, 4, 11, 40, tzinfo=UTC)
 DEMO = json.loads((API_DIR / "app/engine/fixtures/demo_tabs.json").read_text(encoding="utf-8"))
@@ -260,7 +262,23 @@ EXTRA_LEAVES = {   # project -> (branch label, tab, importance): closed tabs tha
                                                ("Sessions", tid(32), 0.2), ("JWT", tid(33), 0.15)],
     "p_10000000-0000-4000-8000-000000000002": [("Rules and submission", tid(30), 0.6)],
 }
-SCALING = ("p_10000000-0000-4000-8000-000000000099", "Backend Scaling")
+SCALING = ("p_10000000-0000-4000-8000-000000000099", "Backend Scaling")      # the contracts' ids ...
+OLD_CONTEXT = "s_60000000-0000-4000-8000-000000000003"                        # Backend Scaling, saved March 12
+
+
+def scaling_project_id(user_id: uuid.UUID) -> uuid.UUID:
+    """... but project and context ids are global primary keys, so each user gets its own copy of them.
+    The demo seed and every test user used to share the contracts' ids and collided (projects_pkey)."""
+    return uuid.uuid5(user_id, SCALING[0])
+
+
+def old_context_id(user_id: uuid.UUID) -> uuid.UUID:
+    return uuid.uuid5(user_id, OLD_CONTEXT)
+
+
+def contract_ids(user_id: uuid.UUID) -> dict[str, str]:
+    """This user's derived ids (as the API prints them) mapped back to the contracts' ids, for comparing."""
+    return {f"p_{scaling_project_id(user_id)}": SCALING[0], f"s_{old_context_id(user_id)}": OLD_CONTEXT}
 
 
 def _ts(value: str | None) -> datetime | None:
@@ -272,12 +290,76 @@ def _claim_cols(c: dict) -> tuple:
             bare(c["user_note_id"]) if c.get("user_note_id") else None, c.get("quote"))
 
 
+STORY_LOCK_KEY = 7_357_001
+
+
+class _StoryLock:
+    """Only one story user may exist in the shared database at a time: the four story projects keep the
+    contracts' ids (global primary keys), so a second run (CI beside a local run, or two CI runs) would
+    collide or delete the first one's rows. A Postgres advisory lock held on its own connection from
+    seed_intents to purge_intents makes later runs wait their turn; it is released if the process dies."""
+
+    def __init__(self) -> None:
+        self.count = 0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def acquire(self) -> None:
+        self.count += 1
+        if self.count > 1:
+            return                                    # this process already holds it
+        ready, failed = threading.Event(), []
+        self._stop = threading.Event()
+
+        async def hold() -> None:
+            conn = await asyncpg.connect(database_url(), timeout=30)
+            try:
+                await conn.execute("SELECT pg_advisory_lock($1)", STORY_LOCK_KEY)     # waits for the other run
+                ready.set()
+                while not self._stop.is_set():
+                    await asyncio.sleep(0.2)
+            finally:
+                await conn.close()
+
+        def run() -> None:
+            try:
+                asyncio.run(hold())
+            except Exception as exc:  # noqa: BLE001 - reported to the caller below
+                failed.append(exc)
+                ready.set()
+
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+        ready.wait(timeout=1800)
+        if failed:
+            self.count = 0
+            raise failed[0]
+
+    def release(self) -> None:
+        self.count = max(0, self.count - 1)
+        if self.count == 0 and self._thread is not None:
+            self._stop.set()
+            self._thread.join(timeout=30)
+            self._thread = None
+
+
+STORY_LOCK = _StoryLock()
+
+
 async def seed_intents(conn: asyncpg.Connection, user_id: uuid.UUID) -> None:
-    """Insert R's rows for the story user (tests only; R owns these tables)."""
+    """Insert R's rows for the story user (tests only; R owns these tables).
+
+    The four story projects keep the contracts' ids (the contract tests compare them), so a run that was
+    killed before its cleanup would leave them behind: they are removed first, with their trees (cascade).
+    Nobody else uses these ids; the Backend Scaling project is per user (see scaling_project_id).
+    Holds STORY_LOCK until purge_intents, so runs take turns."""
+    STORY_LOCK.acquire()
     async with conn.transaction():
-        for project_id, name in [(t["project_id"], t["name"]) for t in GROVE["trees"]] + [SCALING]:
+        trees = [(bare(t["project_id"]), t["name"]) for t in GROVE["trees"]]
+        await conn.execute("DELETE FROM projects WHERE id = ANY($1::uuid[])", [pid for pid, _ in trees])
+        for project_id, name in [*trees, (scaling_project_id(user_id), SCALING[1])]:
             await conn.execute("INSERT INTO projects (id, user_id, name) VALUES ($1, $2, $3)",
-                               bare(project_id), user_id, name)
+                               project_id, user_id, name)
         for tree in GROVE["trees"]:
             pid = bare(tree["project_id"])
             cid = uuid.uuid5(pid, "cluster")
@@ -323,15 +405,15 @@ async def seed_intents(conn: asyncpg.Connection, user_id: uuid.UUID) -> None:
                     q.get("recurrence", 1), q["status"], q.get("answer"), _ts(q.get("resolved_at")))
 
 
-OLD_CONTEXT = "s_60000000-0000-4000-8000-000000000003"   # Backend Scaling, saved March 12
-
-
-async def seed_old_context(conn: asyncpg.Connection, user_id: uuid.UUID) -> None:
+async def seed_old_context(conn: asyncpg.Connection, user_id: uuid.UUID, *, context_id: uuid.UUID | None = None,
+                           project_id: uuid.UUID | None = None) -> uuid.UUID:
     """The March 12 context, whose events are past retention: stored with the totals recorded at
-    save time, as the list example shows them."""
+    save time, as the list example shows them. Ids are this user's own unless given; returns the context id."""
+    context_id = context_id or old_context_id(user_id)
+    project_id = project_id or scaling_project_id(user_id)
     listed = next(e for e in CONTEXTS["examples"] if e["name"] == "list_contexts")["response"]["body"]["contexts"]
     row = next(c for c in listed if c["id"] == OLD_CONTEXT)
-    tabs = [{"tab_ref": str(uuid.uuid5(bare(OLD_CONTEXT), str(i))), "fallback_url": f"https://redis.io/docs/{i}",
+    tabs = [{"tab_ref": str(uuid.uuid5(context_id, str(i))), "fallback_url": f"https://redis.io/docs/{i}",
              "domain": "redis.io", "title": f"Redis docs {i}", "important": i < row["important_tab_count"],
              "excluded_reason": None} for i in range(row["total_tab_count"])]
     card = {"goal": {"text": row["goal_summary"]}, "next_action": None}
@@ -341,8 +423,8 @@ async def seed_old_context(conn: asyncpg.Connection, user_id: uuid.UUID) -> None
     await conn.execute(
         "INSERT INTO saved_contexts (id, user_id, project_id, title, kind, snapshot, saved_at) "
         "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) ON CONFLICT (id) DO NOTHING",
-        bare(OLD_CONTEXT), user_id, bare(row["project_id"]), row["title"], row["kind"], json.dumps(snapshot),
-        _ts(row["saved_at"]))
+        context_id, user_id, project_id, row["title"], row["kind"], json.dumps(snapshot), _ts(row["saved_at"]))
+    return context_id
 
 
 R_TABLES = ("user_notes", "suggested_actions", "decisions", "unresolved_questions", "cluster_tabs", "intent_branches",
@@ -350,9 +432,12 @@ R_TABLES = ("user_notes", "suggested_actions", "decisions", "unresolved_question
 
 
 async def purge_intents(conn: asyncpg.Connection, user_id: uuid.UUID) -> None:
-    async with conn.transaction():
-        for table in R_TABLES:
-            await conn.execute(f"DELETE FROM {table} WHERE user_id = $1", user_id)  # noqa: S608 - fixed names
+    try:
+        async with conn.transaction():
+            for table in R_TABLES:
+                await conn.execute(f"DELETE FROM {table} WHERE user_id = $1", user_id)  # noqa: S608 - fixed names
+    finally:
+        STORY_LOCK.release()
 
 
 async def refresh_attention(conn: asyncpg.Connection) -> None:
