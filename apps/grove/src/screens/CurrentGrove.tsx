@@ -132,7 +132,9 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
           {isGrowing ? 'Reading your open tabs…' : 'No grove yet.'}
         </p>
         <p className="mt-2 text-sm text-forest-400">
-          {isGrowing ? 'Your grove will start growing in a moment.' : 'Grow one from the tabs you have open.'}
+          {isGrowing
+            ? 'Your grove will start growing in a moment.'
+            : 'Open at least two tabs, then press “Grow grove”.'}
         </p>
       </div>
     );
