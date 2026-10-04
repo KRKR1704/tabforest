@@ -20,6 +20,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "openai>=1.50",
     "numpy>=2.0",
+    "scikit-learn>=1.5",
 ]
 
 [dependency-groups]
