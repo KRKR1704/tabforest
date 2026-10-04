@@ -233,6 +233,11 @@ describe('Signing in and out in the app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open my grove' }));
 
+    // A first-time user then gets the tour of what each thing in the grove means.
+    expect(screen.getByText('How to read your grove')).toBeInTheDocument();
+    expect(shell()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Skip the tour' }));
+
     expect(screen.getByRole('heading', { level: 1, name: 'Current Grove' })).toBeInTheDocument();
     expect(shell()).not.toBeNull();
   });

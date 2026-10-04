@@ -10,6 +10,7 @@ interface AppShellProps {
   hollowCount: number;
   userName?: string;
   onSignOut?: () => void;
+  onOpenGuide?: () => void;
   openQuestionCount: number;
   isGrowing?: boolean;
   onGrow?: () => void;
@@ -25,6 +26,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   hollowCount,
   userName,
   onSignOut,
+  onOpenGuide,
   openQuestionCount,
   isGrowing,
   onGrow,
@@ -39,6 +41,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       hollowCount={hollowCount}
       userName={userName}
       onSignOut={onSignOut}
+      onOpenGuide={onOpenGuide}
     />
     <div className="flex min-w-0 flex-1 flex-col">
       <TopBar

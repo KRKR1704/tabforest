@@ -6,6 +6,42 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S polish: grove motion layer and "How to read your grove" (S)
+
+Not a BUILD_TASKS.md row; extra polish on top of S-12 and S-13.
+
+### Added
+- `apps/grove/src/viz/groveMotion.ts`: a motion layer on top of what `renderGrove` draws.
+  - Depth: a ground shadow, darker and lighter canopy shading and bark lines for each tree, and a far tree line behind the grove.
+  - Idle life: the canopy sways, leaves flutter, fireflies wander, fog drifts, and a loose leaf drifts down from a dormant tree now and then.
+  - Change animations (`findChanges`, `playChanges`), played when the grove is edited: a new leaf unfurls, a new branch grows out, the trunk thickens, a mushroom pops up, an answered question blooms into a flower, a confirmed decision's stone is carved, a moved tab flies to its new tree, a closed tab falls and fades, a tree that goes dormant turns amber, thins and sheds, a tree that wakes turns green and regrows, and a new tree grows from the ground.
+- `apps/grove/src/viz/motionSwitch.ts`: one switch for the whole layer.
+- `apps/grove/src/screens/GroveGuide.tsx` and `src/lib/guideGrove.ts`: "How to read your grove", an 11-step tour on a small example grove drawn by the real canvas. Each step says what you did in your browser and what the grove does, the trees the step is not about are dimmed, and a key lists what a tree, leaf, thick trunk, mushroom, flower, stone and amber tree mean. It opens after onboarding for a first-time user and from "How to read your grove" in the left rail at any time.
+
+### Changed
+- `viz/GroveCanvas.tsx`: calls the motion layer in three places (decorate after drawing, play edits when no grow result arrived, stop on cleanup). A grow intro now plays only for a grow newer than the last one played, so a second canvas (the tour) never starts or resets it.
+- `App.tsx`, `shell/LeftRail.tsx`, `shell/AppShell.tsx`: the tour and its link.
+- `index.css`: the dimming rule for the tour.
+- `src/test/setup.ts`: the motion layer is off in tests unless a test turns it on.
+
+### How to go back to the plain grove
+- Build with `VITE_GROVE_MOTION=0`: nothing is added to the canvas and edits snap as before. The tour still works, as before-and-after stills.
+- Or remove it: delete `viz/groveMotion.ts` and `viz/motionSwitch.ts` and the three calls in `viz/GroveCanvas.tsx`. `render.ts`, `layout.ts` and `growAnimation.ts` were not touched.
+
+### Tests
+- `src/__tests__/groveMotion.test.tsx` (45): the switch, and that with it off the canvas is the plain drawing; `findChanges` for each of the 11 kinds of change, for an unchanged grove, for a neighbour that only moves over and for a listening tree; every change plays and ends exactly on the drawn grove; stopping midway; falling and shed leaves are not tabs and cannot be clicked; decoration cannot be clicked, focused or counted and leaves the canopy's own shapes alone; idle loops; stillness for reduced motion; the stray leaf timer stops; the canvas plays an edit and skips it for reduced motion; the tour's steps, focus, dimming, Back, Play again, Next, the key, Skip, the left-rail link and that it does not open by itself for a returning user.
+- Updated 1 existing test: a first-time user now gets the tour after onboarding.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 21 files, 482 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server, mock mode): the grove showed the depth layer after the grow; the tour opened from the left rail; on step 9 the Job search tree turned amber, loose leaves fell and three tab leaves came to rest on the ground; no console errors.
+- Not checked by eye: the other ten tour steps and the idle movement over time (covered by tests for start and end states only).
+
+### Notes
+- In the real grove these change animations play on edits (confirm a decision, resolve a question, move a tab, add a note). A new grow still replays the S-12 intro from the start, so a new tab or more attention is not animated as a change between two grows.
+- Falling and shed leaves that are not tabs are marked `motion-ghost` or `motion-decor`, ignore the pointer and are removed when the animation ends.
+- With reduced motion the depth layer still shows; nothing moves.
+- Chrome tab groups and the tabs panel discussed alongside this are not part of it.
 ## [2026-10-04] — Audit of P-7 to P-16: HEAD on /health, serialized CI (P)
 
 ### Changed

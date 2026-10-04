@@ -10,6 +10,8 @@ interface LeftRailProps {
   /** The signed-in user's name, shown above Sign out. */
   userName?: string;
   onSignOut?: () => void;
+  /** Opens the tour of what each thing in the grove means. */
+  onOpenGuide?: () => void;
 }
 
 function hollowLine(count: number): string {
@@ -24,6 +26,7 @@ export const LeftRail: React.FC<LeftRailProps> = ({
   hollowCount,
   userName,
   onSignOut,
+  onOpenGuide,
 }) => (
   <div className="flex w-60 shrink-0 flex-col border-r border-forest-800 bg-forest-900">
     <div className="flex h-14 items-center gap-2.5 border-b border-forest-800 px-5">
@@ -56,6 +59,16 @@ export const LeftRail: React.FC<LeftRailProps> = ({
         })}
       </ul>
     </nav>
+
+    {onOpenGuide && (
+      <button
+        type="button"
+        onClick={onOpenGuide}
+        className="border-t border-forest-800 px-5 py-3 text-left text-xs text-forest-300 underline-offset-4 hover:text-forest-50 hover:underline"
+      >
+        How to read your grove
+      </button>
+    )}
 
     <p className="border-t border-forest-800 px-5 py-4 text-xs leading-relaxed text-forest-400">
       {hollowLine(hollowCount)}

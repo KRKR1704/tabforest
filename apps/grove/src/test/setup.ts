@@ -1,5 +1,10 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
+import { setGroveMotion } from '../viz/motionSwitch';
+
+// The grove motion layer is off unless a test turns it on, so every other test
+// sees the plain drawing.
+setGroveMotion(false);
 
 // Polyfill window.open and other browser mocks for test runner
 if (typeof window !== 'undefined') {

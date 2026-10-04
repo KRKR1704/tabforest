@@ -85,6 +85,11 @@
     border-radius: 4px;
   }
 
+  /* The tour: trees a step is not about step back. */
+  .grove-canvas [data-guide-away='true'] {
+    opacity: 0.28;
+  }
+
   /* Where a dragged leaf would land. */
   .grove-canvas [data-drop-target='true'] {
     filter: brightness(1.4);

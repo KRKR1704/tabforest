@@ -14,6 +14,7 @@ import { Privacy } from './screens/Privacy';
 import { AskMemory } from './screens/AskMemory';
 import { SignIn } from './screens/SignIn';
 import { Onboarding } from './screens/Onboarding';
+import { GroveGuide } from './screens/GroveGuide';
 import { getAccount } from './adapters/me';
 import { clearLastGrove } from './lib/lastGrove';
 import { ResumeCard } from './components/ResumeCard';
@@ -49,6 +50,7 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
   const bridgeSignOut = useBridgeStore((state) => state.signOut);
   const setGrove = useGroveStore((state) => state.setGrove);
   const [onboarding, setOnboarding] = useState(false);
+  const [guide, setGuide] = useState(false);
   const signedOut = authChecked && !authState.signed_in;
 
   const [evidence, setEvidence] = useState<{ claim: EvidenceClaim; tabs: GroveTab[] } | null>(null);
@@ -125,6 +127,7 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
     setResumeNotice(null);
     setEvidence(null);
     setOnboarding(false);
+    setGuide(false);
     setActiveScreen('grove');
   }, [bridgeSignOut, setGrove, setResume, setActiveScreen]);
 
@@ -143,10 +146,15 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
     return (
       <Onboarding
         name={authState.display_name?.split(' ')[0]}
-        onDone={() => setOnboarding(false)}
+        onDone={() => {
+          setOnboarding(false);
+          // A first-time user goes on to the tour of what each thing in the grove means.
+          setGuide(true);
+        }}
       />
     );
   }
+  if (guide) return <GroveGuide onDone={() => setGuide(false)} />;
 
   return (
     <AppShell
@@ -158,6 +166,10 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
       hollowCount={hollowCount}
       userName={authState.display_name || authState.email}
       onSignOut={() => void signOut()}
+      onOpenGuide={() => {
+        setEvidence(null);
+        setGuide(true);
+      }}
       openQuestionCount={countOpenQuestions(grove)}
       isGrowing={isStreaming}
       onGrow={() => {
