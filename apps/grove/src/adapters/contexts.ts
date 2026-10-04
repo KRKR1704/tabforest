@@ -162,8 +162,20 @@ function standInSave(projectId: string, body: SaveContextBody): SavedContextRece
 function standInResume(id: string): ResumeResult | null {
   if (id === CONTRACT_RESUME.id) return CONTRACT_RESUME;
   const row = standInRows.find((item) => item.id === id);
+  if (!row) return null;
   const saved = standInSaved.get(id);
-  if (!row || !saved) return null;
+  if (!saved) {
+    // A contract row with no saved body (the March 12 context): the stand-in
+    // knows it exists and its totals, but holds no card or tabs for it.
+    return {
+      ...row,
+      last_resumed_at: new Date().toISOString(),
+      card: null,
+      important_tabs: [],
+      other_tabs: [],
+      restore_options: ['summary'],
+    };
+  }
   const toResume = (tab: ContextTab): ResumeTab => ({
     tab_ref: tab.tab_ref,
     fallback_url: tab.fallback_url,

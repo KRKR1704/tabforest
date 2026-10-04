@@ -37,6 +37,8 @@ export interface SelectionDescription {
   domain?: string;
   /** True for a tab in the Unclear patch, which can be given a goal. */
   inFog?: boolean;
+  /** Present for a firefly: the saved grove it leads to. */
+  contextId?: string;
 }
 
 function plural(count: number, noun: string): string {
@@ -160,6 +162,7 @@ function describeInTree(tree: TreeData, selection: GroveSelection, grove: GroveR
       label: 'Past research',
       text: connection.summary,
       detail: connection.past_project_title,
+      contextId: connection.saved_context_id ?? undefined,
     };
   }
 

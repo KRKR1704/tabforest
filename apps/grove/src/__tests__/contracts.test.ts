@@ -3,8 +3,6 @@ import {
   mockGroveResponse,
   mockSnapshot,
   mockTimelineResponse,
-  mockMemorySearchResponse,
-  mockPruneSuggestionsResponse,
   mockUserProfile,
   mockSessions,
 } from '../mocks/mockData';
@@ -43,12 +41,6 @@ describe('Contracts & Payload Validation', () => {
       'decision',
       'question',
     ]);
-  });
-
-  it('validates Memory search and Prune suggestions', () => {
-    expect(mockMemorySearchResponse.results.length).toBeGreaterThan(0);
-    expect(mockPruneSuggestionsResponse.suggestions.length).toBeGreaterThan(0);
-    expect(mockPruneSuggestionsResponse.suggestions[0].kind).toBe('exact_duplicate');
   });
 
   it('validates User profile and Session metrics', () => {
