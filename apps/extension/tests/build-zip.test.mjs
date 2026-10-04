@@ -10,11 +10,14 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 const goodManifest = () => ({
   version: '0.1.0', key: `${EXPECTED_ID_KEY_START}rest`, permissions: [...EXPECTED_PERMISSIONS],
   optional_permissions: ['tabGroups'], incognito: 'not_allowed',
+  icons: { 16: 'icons/16.png', 48: 'icons/48.png', 128: 'icons/128.png' },
 });
 function dist({ manifest = goodManifest(), grove = '<html>Grove app</html>', files = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tf-zip-'));
   dirs.push(dir);
   mkdirSync(join(dir, 'assets'));
+  mkdirSync(join(dir, 'icons'));
+  for (const size of [16, 48, 128]) writeFileSync(join(dir, 'icons', `${size}.png`), 'png');
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest));
   writeFileSync(join(dir, 'grove.html'), grove);
   writeFileSync(join(dir, 'assets', 'index.js'), `fetch("${DEFAULT_API_BASE}/api/events")`);
@@ -39,6 +42,20 @@ test.each([
   ['the local mock API', { files: { 'b.js': 'x="http://127.0.0.1:8001"' } }, /local mock/],
 ])('refuses %s', (_name, options, expected) => {
   expect(verifyDist(dist(options)).join('\n')).toMatch(expected);
+});
+
+test.each([
+  ['an icon that is not in the manifest', { manifest: { ...goodManifest(), icons: { 16: 'icons/16.png', 128: 'icons/128.png' } } }, /48 px icon/],
+  ['an icon file that is not in the build', { manifest: { ...goodManifest(), icons: { 16: 'icons/16.png', 48: 'icons/48.png', 128: 'icons/gone.png' } } }, /128 px icon/],
+])('refuses %s', (_name, options, expected) => {
+  expect(verifyDist(dist(options)).join('\n')).toMatch(expected);
+});
+
+test('the store build must not carry the manifest key, and is named -store', () => {
+  expect(verifyDist(dist(), { store: true }).join('\n')).toMatch(/must not contain a manifest key/);
+  const dir = dist({ manifest: { ...goodManifest(), key: undefined } });
+  expect(verifyDist(dir, { store: true })).toEqual([]);
+  expect(zipName(dir, { store: true })).toBe('tabforest-extension-0.1.0-store.zip');
 });
 
 test('refuses a build that was not made with the requested API base', () => {

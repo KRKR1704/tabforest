@@ -10,8 +10,18 @@ export default defineManifest({
     "service_worker": "src/background/index.ts",
     "type": "module"
   },
+  "icons": {
+    "16": "public/icons/icon-16.png",
+    "32": "public/icons/icon-32.png",
+    "48": "public/icons/icon-48.png",
+    "128": "public/icons/icon-128.png"
+  },
   "action": {
-    "default_title": "Open your Grove"
+    "default_title": "Open your Grove",
+    "default_icon": {
+      "16": "public/icons/icon-16.png",
+      "32": "public/icons/icon-32.png"
+    }
   },
   "permissions": [
     "tabs",
