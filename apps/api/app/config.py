@@ -46,10 +46,19 @@ class Settings(BaseSettings):
     @field_validator("allowed_extension_origin")
     @classmethod
     def _extension_origin(cls, value: str) -> str:
-        value = value.strip().rstrip("/")
-        if not re.fullmatch(r"chrome-extension://[a-p]{32}", value):
-            raise ValueError("must be chrome-extension://<32-letter extension id>")
-        return value
+        """One or more extension origins, comma-separated: the development ID and the Chrome Web Store ID differ."""
+        origins: list[str] = []
+        for item in value.split(","):
+            item = item.strip().rstrip("/")
+            if not re.fullmatch(r"chrome-extension://[a-p]{32}", item):
+                raise ValueError("each item must be chrome-extension://<32-letter extension id>, separated by commas")
+            if item not in origins:
+                origins.append(item)
+        return ",".join(origins)
+
+    @property
+    def allowed_extension_origins(self) -> list[str]:
+        return self.allowed_extension_origin.split(",")
 
     @model_validator(mode="after")
     def _database_uses_tls(self) -> Settings:

@@ -12,7 +12,8 @@ Copy-Item .env.example .env   # then fill in the values from the team password m
 ```
 
 `DATABASE_URL`, `ALLOWED_EXTENSION_ORIGIN` and `ENTRA_CLIENT_ID` are required; startup stops with
-the variable's name if one is missing. `AUTH_MODE=dev` accepts the `X-Dev-User: <uuid>` header and is
+the variable's name if one is missing. `ALLOWED_EXTENSION_ORIGIN` takes one or more
+`chrome-extension://<32-letter id>` origins separated by commas (the development ID and the Chrome Web Store ID). `AUTH_MODE=dev` accepts the `X-Dev-User: <uuid>` header and is
 for local runs and the H6.5 smoke test only.
 
 ## Run
