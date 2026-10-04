@@ -143,3 +143,6 @@ firebase-debug.log
 
 # Python bytecode
 __pycache__/
+
+# Extension zips (apps/extension/tabforest-extension-*.zip)
+tabforest-extension-*.zip

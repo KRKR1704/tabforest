@@ -38,6 +38,153 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - If two results arrive less than about a second apart after the intro, the first tree's reveal is cut short by the redraw for the second and shows complete at once.
 - Reduced motion could not be switched on in the test browser; it is covered by the automated tests only.
 - BUILD_TASKS.md: S-12 row ticked only.
+## [2026-10-04] — R-8.1: evidence quality (comparison refs, citation instructions, token budget) (R)
+
+### Added
+
+- Comparison refs: `features.to_data_block` gives each comparison a ref `c1..cN` with its source tab, the tabs on each side and the dwell split after it (`Comparison.side_tab_refs` is new).
+  - The `c*` ref maps back to the comparison id.
+  - `DataBlock.anchors` names where it is shown, because the API's evidence kinds have no "comparison": the source tab, else the search family of its query, else its most-read side tab.
+- `db/migrations/202_engine_tokens.sql`: `analysis_runs.tokens integer CHECK (tokens >= 0)`, nullable and idempotent (`ADD COLUMN IF NOT EXISTS`). Applied with `apply_r_migrations.py`.
+- `engine/scripts/evidence_report.py`: 3 live grows on the demo for a test user, measured the same way each time (downgrades, single-ref downgrades, fogged trees, goal provenance and refs, the Backend Auth direction, mushroom kinds and stones). It also prints a before/after comparison side by side, and cleans the user's rows before and after.
+
+### Changed
+
+- `validate.py`: a `c*` ref is one valid ref with source type "comparison". A `c*` and the page it was read from (its anchor) count once, never twice. Source types are taken from the refs as cited. The thresholds (≥ 2 refs, ≥ 0.60, the cap formula) are unchanged.
+- `infer.py` system prompt:
+  - Cite every DATA ref that supports a claim (tabs, families, comparisons, notes), not just the strongest. A one-ref claim is shown as "Maybe". Never invent refs.
+  - Direction is where the behaviour is heading (dwell, revisits, comparisons).
+  - In browser mode, decisions are stated (from an n* note) or inferred from ≥ 2 refs.
+  - Questions cite their q* or c* ref.
+- `grove.mushroom_kind()` overrides the model:
+  - a question citing an open-loop q* family is `repeated_search`;
+  - otherwise, one citing an unresolved c* is `unresolved_comparison`;
+  - otherwise the model's kind is kept.
+  - Recurrence comes from cited q* families only.
+- Daily budget is now tokens: `DAILY_TOKEN_BUDGET = 200,000` per user per UTC day, from `analysis_runs.tokens`. The LLM-call count (400) stays as a secondary cap. Tokens are stored per run.
+  - `persist.llm_calls_today` is replaced by `usage_today` + `budget_exceeded`.
+
+### Tests
+
+- `test_validate.py`:
+  - a `c*` ref is one ref, shown as its anchor with a "comparison:" reason;
+  - a `c*` plus its own page count once, whichever order they are cited in;
+  - an unknown or unanchored `c*` is dropped.
+- `test_grow.py`:
+  - a question citing the open-loop q1 becomes `repeated_search` (recurrence 4) even when the model says `unresolved_comparison`;
+  - citing only the unresolved c2 gives `unresolved_comparison`;
+  - citing only the resolved c1 keeps the model's kind.
+  - Token budget: 429 at 200,000 tokens, and at 400 calls.
+  - `budget_exceeded` rule.
+  - `usage_today` against the database: today only, NULL tokens add 0, other users 0.
+  - The fake embedder gives the refresh-token searches one vector, as real embeddings do (R-6).
+- `test_features.py`: the DATA block test expects `c1` with its anchor and sides.
+
+### Verification
+
+- `evidence_report.py`: 3 live grows each, user `…00dd`, 0 rows left after. Totals:
+  - downgrades 17 → 11;
+  - single-ref downgrades 17 → 11 (still every downgrade);
+  - fogged trees 2 → 0;
+  - goals inferred 13/15 → 15/15;
+  - mean goal refs 2.0–2.6 → 3.0–3.2.
+- Backend Auth direction: inferred in 2 of 3 runs before (2 refs) and 2 of 3 after (3 refs). Mushroom kind: `repeated_search` in 3 of 3 after, 1 of 3 before.
+- Tokens per run about 11.7k → 12.9k (+10 %). Latency 3.8–7.6 s → 6.0–8.2 s; both batches vary a lot.
+- Migration: first run "2 added" (the `tokens` column and its CHECK), second run "0 added, 0 removed".
+- `pytest app/engine/tests`: 206 passed, 2 xfailed (unchanged R-5 and R-6 GirlHacks xfails).
+
+### Notes
+
+- A first AFTER batch counted a `c*` and its own source tab as two refs. That let "prefer JWT over session" (`c1` + the Stack Overflow tab it came from) pass as an inferred stone, which in effect relaxed the ≥ 2 rule. This was fixed before the final batch; in the final runs that stone is a hypothesis when it cites only that pair.
+- The remaining downgrades are all claims with one valid ref (mostly next actions).
+- `db/migrations/README.md` (not R's file) does not list `202_engine_tokens.sql` yet.
+
+## [2026-10-04] — D-15 Extension test checklist and real-Chromium checks (D)
+
+### Added
+
+- `docs/extension-test-checklist.md`: 30 checks across capture, the Hollow, queue and offline, sign-in, Grove, restore (including after a Chrome restart) and release hygiene, each marked automated (with the script) or manual (with the steps), plus the gaps found.
+- `apps/extension/e2e/`: the real-Chromium Playwright checks used for review (`hollow`, `open`, `sync`, `bridge`, `signin`, `grove`, `workctx`, `restore`, `privacy`, `cors`) and a new `lifecycle.mjs` (API down so events queue, delivery once it is back, duplicate resend, incognito blocked), `variant.mjs` (manifest variants for the two checks that need a permission Chrome grants on a click), a README with the commands, and its own `package.json` (Playwright only; not part of `pnpm test`).
+
+### Verification
+
+- `lifecycle.mjs` 8 of 8, `hollow.mjs` 13 of 13 and `workctx.mjs` 14 of 14 re-run from the new location against a build of main.
+
+### Notes
+
+- A real service-worker stop cannot be forced from Playwright (closing the target does not stop it, and an extension reload disables a command-line-loaded extension), so that item is covered by `tests/lifecycle.test.mjs` plus a manual step in the checklist.
+
+## [2026-10-04] — D-13 Installable zip and demo profile runbook (D)
+
+### Added
+
+- `apps/extension/scripts/build-zip.mjs` (`pnpm build:zip`): builds the extension with the Grove bundled, checks the result and writes `tabforest-extension-<version>.zip`. It refuses to zip when the Grove build is missing, the Grove page is still the placeholder, the manifest key (extension ID) or the approved permission list changed, there are host permissions or content scripts, incognito is not blocked, sourcemaps would ship, or the API address is not the deployed one (override with `VITE_API_BASE`). `tests/build-zip.test.mjs`: 12 tests.
+- `apps/extension/scripts/serve-sample-docs.mjs`: serves the SAMPLE documents as web pages on `http://127.0.0.1:8765/` so they can be added to Work Context with the right-click menu (only the listed files, no path access).
+- `docs/demo-profile.md`: runbook for the clean demo profile: build and load the zip, the 28 demo tabs (generated from `demo_tabs.json`) to browse for real, the three Hollow sites, the sample pages into Work Context, and a ready checklist.
+- `.gitignore`: the zip.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (201 of 201), `pnpm typecheck` pass. `pnpm build:zip` run with a real Grove build: the zip unzips to a folder that loads in real Chromium with the Grove running on the real bridge (4 of 4 checks, no console errors, no failed requests).
+
+### Notes
+
+- Browsing the 28 tabs for real and the recording are people tasks; the runbook only removes the typing.
+- The Grove's `index.html` asks Google Fonts for a stylesheet (the Grove's own check-dist warns about it). That is a request from the user's browser to Google each time the Grove opens, which `docs/privacy.md` does not mention. Shriya to decide: bundle the fonts or accept and document.
+
+## [2026-10-04] — D-14 docs/privacy.md (D)
+
+### Added
+
+- `docs/privacy.md`: what leaves the device (field by field, from the events contract), what stays, what is never collected, the Hollow rules, user controls, a per-permission justification table, suggested Chrome Web Store text for the `tabs` warning, the Limited Use statement, and a list of known gaps.
+
+### Verification
+
+- Every claim was checked against `manifest.config.ts`, `hollow.ts`, `work-context.ts`, `privacy-sync.ts`, `contracts/events.example.json` and SPEC §5.2 and §6.
+
+### Notes
+
+- The retention and "no human reads user data" lines depend on the platform configuration; P should confirm before a Web Store submission.
+
+## [2026-10-04] — D-10 Privacy wiring: exclusions and pause synced (D)
+
+### Added
+
+- `apps/extension/src/background/privacy-sync.ts`: `EXCLUDE_DOMAIN` and `PAUSE` still change the local setting at once (the Hollow uses it immediately); the change is also remembered (`tf_privacy_pending`) and sent with `PATCH /api/privacy` (`excluded_domains_add`, `paused_until`, with the bearer token). Pause values map to the contract: a time becomes an ISO timestamp, "until resumed" becomes `9999-12-31T23:59:59Z`, resume sends `null`.
+- Anything that cannot be sent (no token, offline, 401, 404 while the endpoint is not deployed, 429, 5xx) stays waiting and is retried every 60 seconds and after sign-in. A 422 is dropped (the server will never accept it) and the local setting stays. A change made while a request is in flight is not lost.
+- After sign-in (and once per worker start with a token) `GET /api/privacy` is read: server exclusions are added to the local ones (never removed; invalid domains ignored), and a pause set on another device applies here when this device has no pause of its own and no unsent change.
+- `SIGN_IN` triggers the send and read right away; `SIGN_OUT` makes the next sign-in read again. Worker console helper `syncPrivacy()`.
+- `tests/privacy-sync.test.mjs`: 16 tests. The fake Chrome storage `get` now accepts a list of keys, like the real one.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (206 of 206), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo) against a stand-in API, 11 of 11: local settings apply at once; a 404 keeps both changes waiting; once the API answers, one PATCH carries both with the bearer token and nothing stays waiting; server exclusions are merged back; resume sends `null`; `WIPE_LOCAL` leaves no queue, URLs, work items, exclusions, pause or pending changes in local storage. Open (6), bridge (15), sync (13), Hollow (13) and sign-in (15) checks still pass.
+
+### Notes
+
+- `PATCH /api/privacy` is not on the deployed API yet (P-10); until it is, changes simply wait. There is no bridge message to remove an exclusion, so removal is not synced.
+- `WIPE_LOCAL` also clears the session token (the user is signed out) and the local pause/exclusions; the server copy of both survives until `DELETE /api/me`, and the next sign-in reads it back.
+## [2026-10-04] — D-8 Restore into a named tab group (D)
+
+### Changed
+
+- `RESTORE` (bridge) now opens every ref it can, brings only the first tab to the front and opens the rest quietly behind it, and answers `not_found` only when nothing could be opened (before, one bad ref stopped the whole restore). Tabs already open are reused, as before. URLs come from the local store in `chrome.storage.local` (so they survive a Chrome restart), else from `fallback_urls`; only http(s) is opened.
+- With `group_name`, the restored tabs of one window are put in one green group with that name, but only when the optional `tabGroups` permission is granted. If it was declined, or the group call fails, plain tabs stay open and the restore still succeeds.
+
+### Added
+
+- `public/tf-permissions.js`, added to `grove.html` by `scripts/bundle-grove.mjs` (once, also when run twice): the first time the user clicks a Restore button in the Grove, the click is held, Chrome asks for `tabGroups`, and the click is repeated. Chrome only shows that prompt for a click, and the service worker has no click. The Grove code is not edited.
+- Tests: 5 new (bridge: continue past a bad ref, grouping, declined permission, group failure, one window only, blank name; bundle: script added once).
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (195 of 195), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo): three pages captured, Chrome quit and reopened on the same profile, `RESTORE` with a group name reopened all three from the stored URLs; with `tabGroups` granted they are in one group named "Backend Authentication"; without it they are plain tabs; an unknown ref answers `not_found`. Open (6), bridge (15), sync (13) and Hollow (13) checks still pass.
+
+### Notes
+
+- The permission prompt itself cannot be driven by Playwright; try it once by hand in the Grove. Restored tabs may appear in reverse order in the tab strip (Chrome places background tabs next to the active one).
 
 ## [2026-10-03] — Lane S-11 Ask Memory and pruning (S)
 
@@ -73,6 +220,182 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - A tab on no tree (meadow, fog, sprout) cannot be saved as a reference, because `save-context` is per project; it is left open and the message says so.
 - Clicking a vine opens the full list of suggestions rather than only that vine's.
 - BUILD_TASKS.md: S-11 row ticked only.
+## [2026-10-04] — D-9 Work Context capture (D)
+
+### Added
+
+- `apps/extension/src/background/work-context.ts`: the right-click menu item "Add page to Work Context" (on a page or a selection). It reads only what the user hands over: the selected text, or the visible text of the page (an in-page function that skips form fields, editable regions, scripts, styles, hidden elements and prefers `main`/`article`). Nothing is read in the background.
+- The Hollow runs first: private, paused, incognito and non-web pages are refused before anything is read. A page that refuses script injection (Chrome Web Store, PDFs, built-in pages) is refused kindly. Feedback is a ✓ or ! badge on the toolbar icon for 3.5 seconds, with a tooltip.
+- Items: title (redacted, 300 characters), URL without query or fragment, text up to 12,000 characters, `source_type` (`selection` or `page_text`), `captured_at`. Same page again replaces the old item; the newest 20 are kept. Stored in `chrome.storage.local` on this device only.
+- Bridge: `GET_WORK_ITEMS` returns the stored items; `CLEAR_WORK_ITEMS` empties them. Worker console helper `addToWorkContext(selectionText?)`.
+- `tests/work-context.test.mjs`: 17 tests. The fake Chrome helper gained `action.setBadge*`, `contextMenus` and `scripting`.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (190 of 190), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo), 13 of 13: page text captured without any input, textarea, editable, hidden, script, style or option text; selection stored as typed; URL stripped; private host, empty page and `about:blank` refused with the ! badge; items only in local storage; clear works. Capture (hollow 13, open 6), bridge (15), sync (13) and sign-in (15) checks still pass.
+
+### Notes
+
+- Reading a page works through the `activeTab` permission, which Chrome grants when the user clicks the menu item. The worker console helper has no such click, so on real sites it is refused; use the menu.
+- Items are not sent to the server yet (D-10 decides what, if anything, is synced).
+## [2026-10-03] — R-7 + R-8: inference, evidence validator, grove assembly, grow endpoints (R)
+
+### Added
+
+- `engine/model_schema.py`: Pydantic models for the model output (§15) used as the strict Structured Outputs schema: project_name, goal, branches, current_direction, decisions, unresolved_questions, blockers, next_actions, redundant_groups, important_tab_refs, hypotheses. Every claim carries provenance, confidence and evidence `[{ref, why}]` with short refs only.
+- `engine/infer.py`:
+  - The system prompt follows §14 "Prompt shape". The DATA block goes into the user message as an embedded document, JSON-escaped, between `""" <documents>` and `</documents> """`, following Microsoft's document-embedding guidance for Prompt Shields indirect-attack detection (URL cited in the code).
+  - `infer_cluster()` makes one call per cluster. Invalid output gets one repair retry. Content filter, still-invalid output or Azure down yield a per-cluster fallback; the function never raises.
+  - `infer_all()` runs all clusters in parallel and yields results as they complete. At most 8 clusters per run get a model call; the largest 8 are chosen.
+  - `retrieve_prior_research()` returns the top 3 research insights (memory_embeddings `kind='insight'`) by cosine similarity to the cluster centroid.
+- `engine/validate.py` (deterministic):
+  - Unknown refs are dropped.
+  - `stated` requires an n* ref that maps to one of this user's notes. The note's own words are stored.
+  - `sourced` requires a quote verified with `normalize_for_match` on both sides; the source's original wording is stored. In browser mode, sourced always downgrades.
+  - Confidence = min(model, 0.35 + 0.15·refs + 0.10·types, 0.95).
+  - `inferred` needs ≥ 2 refs and ≥ 0.60, otherwise the claim becomes a hypothesis.
+  - Display wording is set by provenance ("Appears to be …", "Likely still open: …", "Likely next: …", "Maybe: …").
+  - Downgrades are recorded with reasons.
+- `engine/grove.py`: `GrowRun.stream()` runs the pipeline end to end:
+  1. Cluster (R-5) and emit the `clusters` line.
+  2. Features (R-6), notes and prior research per cluster.
+  3. Model calls, emitting each `tree` line as its result lands.
+  4. Fireflies.
+  5. Persist, then emit the `done` line.
+  - `assemble_tree()` builds the exact contract tree shape: leaves get importance from `finalize_importance` with validated evidence counts, and `fallen` = stale and not cited. Stones are carved iff stated or sourced. Mushrooms come from model questions plus open-loop families no question covers; recurrence comes from the family. Next actions carry `unblocks`. Exact vines come from dup_key and semantic vines from validated redundant groups. Also attention, canopy (amber at ≥ 3 days), fogged, and hypotheses.
+  - `fallback_tree()` builds the deterministic fogged tree, following `grove.degraded.example.json`.
+  - Every line and the full response are validated against `engine/schemas` before they leave.
+- `engine/persist.py`: one transaction per run.
+  - Rows written: analysis_runs (response jsonb, latency, llm_calls, downgraded_claims, fallback_used, degraded, hollow_count), projects (insert, or touch the matched one), intent_clusters, intent_branches, cluster_tabs, decisions, unresolved_questions (blockers as `kind='blocker'`) and suggested_actions.
+  - `cluster_tabs` uses `ON CONFLICT … WHERE assigned_by <> 'user'`, and pinned tabs are written as `assigned_by='user'`.
+  - P's `tabs.title_norm` / `source_type` are updated with UPDATE only, inside a savepoint; the update is skipped if the table or columns are missing.
+  - Also: `last_grove()` and `llm_calls_today()`.
+- `engine/metrics.py`: OpenTelemetry API instruments `grow_latency_ms`, `claims_downgraded`, `fallback_used`, `validation_failures`. They are no-ops when telemetry isn't configured. Logs carry ids and counts only, never titles.
+- `engine/routes.py`:
+  - `POST /api/grove/grow`: plain JSON, or NDJSON with `?stream=1`. The request model `GrowRequest` uses `extra="forbid"`: `open_tabs` ≤ 60 (422 beyond), `hollow_count`. User from `get_user_id`.
+  - `GET /api/grove`: last stored grove; 404 problem if none.
+  - Limits: grow 10/min per user (R's own slowapi limiter; 429 problem with Retry-After) and a daily budget (429 problem).
+- `engine/aoai.py`: `chat_structured_usage()` returns the parsed model plus total tokens. `chat_structured()` is unchanged and delegates to it.
+- `engine/scripts/print_grove.py` (human-readable grove) and `engine/scripts/grow_report.py` (3 back-to-back runs with the downgrade report and p50).
+
+### Changed
+
+- R-6 follow-up: `test_importance_ranking_after_finalize` is now a normal test asserting the behavior-based order the §3.4 formula produces: the GitHub example first (0.597), the official FastAPI docs second (0.407). This deviates from the plan's R-6 verify line ("importance ranks the official docs first"). The contract's importance values are illustrative.
+
+### Tests
+
+- `test_model_schema.py`: the generated schema (Pydantic's and the openai SDK's strict version) has `additionalProperties: false` and every field required on all 11 objects. Optional values are nullable, without defaults. No unsupported keywords.
+- `test_validate.py` (19): unknown ref dropped; fake stated downgraded (no note, or an unknown n*); a real stated claim keeps the note's words; sourced downgrades in browser mode; a quote is verified on normalized text and stored verbatim; confidence cap and clamping; < 2 refs or < 0.60 → hypothesis; display wording per provenance; injected text never shown raw; gerunds.
+- `test_grow.py` (12, mocked Azure OpenAI): DATA block escaping and delimiters; stream order (clusters → trees as they land → done); a content filter on one cluster fogs only that cluster; all failing → degraded with the Seedling banner; repair retry; invalid twice → that cluster only; > 8 clusters → 8 calls and 2 `llm_cap` trees; 61 tabs → 422, `user_id` in body → 422, no header → 401; 11th grow in a minute → 429 (per user); daily budget → 429; pinned tabs never overwritten (real database).
+- `test_grow_live.py` (4, real Azure + Tiger Cloud, user `…00cc`, all rows deleted at the end, asserts 0 left):
+  - standalone app: plain grow, response validates, rows persisted, GET returns the same run (other user → 404), firefly on Backend Auth only;
+  - P's app (`create_app`, AUTH_MODE=dev, X-Dev-User): streaming grow, every line validates, GET returns the run, no auth → 401;
+  - stream timestamps, with the clusters line before any tree;
+  - prior-research similarities.
+
+### Verification
+
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 196 passed, 2 xfailed. The xfails are R-5's 4-tree test and the R-6 STEP 0 experiment.
+- curl on the standalone app (port 8100), demo snapshot, user `…00cc`: HTTP 200 in 7.8 s, and the response validates.
+- Stream: clusters at +0.57 s, trees at +2.61 to +4.80 s, done at +5.31 s.
+- 3 back-to-back runs: latency 4444 / 5574 / 6023 ms (p50 5574 ms), 5 LLM calls each, about 11.7k tokens each; 3 / 5 / 6 downgraded claims.
+
+### Notes (deviations, and how the real grove compares to the contract story)
+
+**Inference and validation**
+
+- Model schema vs §15:
+  - The model does not choose `is_existing_project_id`; R-5 matches projects deterministically.
+  - `next_actions.unblocks_question` is an index, not the string `"unresolved_questions[0]"`.
+  - Decisions name their note in `user_note_ref` (a short ref).
+  - Every claim, including next actions and hypotheses, carries provenance.
+  - Ranges such as confidence in [0, 1] are enforced by the validator, because strict mode does not support min/max keywords.
+- Prompt Shields: Microsoft's guidance was fetched and applied. The DATA JSON is itself JSON-escaped inside the document tags.
+- Prior-research threshold 0.35 (provisional) instead of the plan's 0.78:
+  - Seeded "Backend Scaling, 2026-03-12" vs real R-5 centroids: Backend Auth 0.3614, Dinner 0.1090, GirlHacks 0.2812, Hypertables 0.2645, Job 0.2328.
+  - Thin margin; R-12 calibrates it properly.
+- `stated` claims keep confidence 1.0 (the user's own words) instead of the evidence formula. Distinct source types count tab leaf types plus "query" and "note".
+
+**Fallbacks and the grove response**
+
+- Fallback per cluster:
+  - A content filter, invalid output after the repair retry, or Azure down yields a deterministic fogged tree for that cluster only, with the reason in the banner text, the `fallback_used` metric and logs.
+  - The response's `degraded` is true only when every AI-eligible cluster fell back.
+  - The per-cluster reason is not persisted, because there is no column for it.
+- Clusters past the 8-call cap become fogged deterministic trees with no banner; R-9 refines this as Seedling mode.
+- Embedding failure during clustering is not yet handled (R-9: domain + opener + time).
+- Downgraded stones, mushrooms, actions and directions move into the tree's `hypotheses` and keep their own ids, so R-10 can find their rows.
+- Blockers are persisted but not in the grove response, because the contract's Tree has no blockers field.
+- Open-loop families that no model question covers become deterministic `repeated_search` mushrooms.
+
+**Endpoints and data**
+
+- Request: `hollow_count` is optional (default 0). An optional `snapshot_at` is honored only when AUTH_MODE=dev, so the demo fixtures replay at their own time; otherwise the server clock is used.
+- Daily budget counts LLM calls (400 per user per day) because `analysis_runs` has no token column; tokens per run are logged. A real token budget needs a `tokens` column (a 2xx migration, outside this task's paths).
+- The rate limit uses R's slowapi limiter storage, checked in the handler with the token-derived user id, so it works the same in the standalone app and in P's app.
+- New projects get a random uuid. Later runs match them by centroid; run 2 matched all 5.
+- P's `main.py` needs no change: it already mounts the router with `dependency_overrides[get_user_id] = current_user`. The venv was synced from P's `pyproject.toml` (slowapi, OpenTelemetry, PyJWT were missing locally); no new dependencies.
+
+**Real grove vs contract story (prompt not tuned)**
+
+- Goal: the model writes "implementing secure JWT authentication with refresh token management in FastAPI" rather than "Choose an authentication architecture".
+- JWT direction: the model gives the JWT preference as a decision with one ref, so it becomes a mossy stone or a hypothesis. When it gives a direction, the direction is often about refresh-token storage.
+- Carved stone: appears only once a real note exists. After run 1 a user note was added to the Backend Auth project, and runs 2–3 show "Not using OAuth providers for v1" as a carved, stated stone.
+- Refresh-token mushroom: appears with recurrence 4. The model often labels it `unresolved_comparison` (cookie vs localStorage) where the contract has `repeated_search`.
+- Next action: usually cites one ref and is downgraded to a hypothesis.
+- Every downgrade in the 3 runs is a claim with one valid ref.
+- GirlHacks still splits into two trees (R-5).
+- p50 5.6 s is above the 4 s target (R-17).
+
+## [2026-10-03] — D-11 Grove UI inside the extension (D)
+
+### Added
+
+- `apps/extension/scripts/bundle-grove.mjs` (and `pnpm bundle:grove`, `pnpm build:with-grove`): copies the Grove build (`apps/grove/dist`) into the extension build as `grove.html` plus its assets, skipping sourcemaps and removing their comment. The placeholder `grove.html` stays when the Grove build is missing. It refuses a Grove build with inline or remote scripts, an inline event handler, a reference to a file that is not in the build, or an asset name that already exists in the extension with different content, and writes nothing in those cases. Safe to run twice.
+- `tests/bundle-grove.test.mjs`: eight tests for the copy, the sourcemap handling, the fallback, the missing extension build, the refusals and running twice.
+- README section with the two build commands.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test`, `pnpm typecheck` and `pnpm build` pass (144 of 144 tests, 8 of them new). The earlier real-Chromium checks (capture, Hollow, sync, bridge) still pass with the bundled build. Grove built with `npm ci` and `npm run build` (its own `check-dist` step passes).
+- Real Chromium (Playwright, outside the repo) with the bundled build: `grove.html` loads inside the extension, shows the Grove with the extension runtime (the real bridge, not the stand-in), has no CSP violation, no script error and no failed request, and `GET_SNAPSHOT` from that page returns the three open tabs.
+
+### Notes
+
+- Shriya's code, `contracts/`, the manifest and the dependencies are unchanged; only `package.json` scripts were added.
+- The Grove shows its demo data until sign-in exists (D-6): `GET_TOKEN` is still `null`, so the page cannot call the API in production mode.
+- The Grove page loads Inter and Lora from Google Fonts (a remote stylesheet). The extension CSP only restricts scripts, so this works while online and falls back to system fonts offline.
+## [2026-10-03] — D-6 Sign-in: fallback login and Microsoft Entra ID (D)
+
+### Added
+
+- `src/background/auth.ts`: the token store (`chrome.storage.session` only, with a 30 s expiry margin), the fallback login (`POST /api/auth/login`) and the Microsoft Entra ID authorization code flow with PKCE (`launchWebAuthFlow`, S256 challenge, state check, code exchange). Only the public Entra client ID is in the bundle; `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_TENANT` and `VITE_ENTRA_SCOPE` can override the defaults.
+- `src/background/signin.ts` and `signin.html` with `src/signin.ts`: `SIGN_IN` opens a small sign-in window of the extension (email and password, or "Sign in with Microsoft"). The window talks to the worker with `AUTH_FALLBACK`, `AUTH_ENTRA` and `AUTH_CANCEL`, which are accepted only from that exact page and only while a sign-in is in progress. Closing the window or pressing Cancel ends `SIGN_IN` with `cancelled`.
+- Bridge: `SIGN_IN` returns the signed-in profile, `SIGN_OUT` clears the token and everything waiting to be sent (queue, last sent batch, sender state), `GET_AUTH_STATE` and `GET_TOKEN` answer from the stored token and return signed-out values once it expires. The sign-in messages are not queued behind each other, so waiting for the user does not hold up the rest of the bridge. The event sender now uses the token as `Authorization: Bearer`.
+- Worker globals `signIn()` for testing from the console.
+
+### Changed
+
+- `contracts/bridge.types.ts`: the reply of `SIGN_IN` is `AuthStateData` (it was an acknowledgement). Shriya's store already reads the profile from that reply. No other contract change.
+- `tests/fake-chrome.mjs` (helper): `storage.remove`, `windows.onRemoved/create/update` and `identity`; no existing assertion changed.
+- `vite.config.ts`: `signin.html` added as a page.
+
+### Tests
+
+- 29 new tests: `tests/auth.test.mjs` (token store, claims, fallback login results, PKCE test vector from RFC 7636, authorize URL, redirect parsing, code exchange, the whole Entra flow with a state mismatch and a closed window) and `tests/signin.test.mjs` (popup flow, shared window, wrong password then right one, cancel and window close, sender and state checks, sign-out, expiry, the password is never stored or logged, Microsoft sign-in, no auth service). A deliberate break of the sender check and of the expiry check was caught by these tests.
+
+### Verification
+
+- From `apps/extension/` with Node 20: 165 of 165 tests, typecheck and build pass. `contracts/` changes only as listed, `apps/grove`, the manifest permissions and dependencies are unchanged (the manifest already had `identity`).
+- Real Chromium (Playwright, outside the repo) against a stand-in API: 15 of 15 for the whole flow (401 and queued events before sign-in, the popup, a wrong then a right password, the profile, the token only in session storage, the Bearer token on the next send, sign-out clearing everything, capture still queuing locally, closing the window and the Cancel button). The capture, Hollow, sync and bridge checks still pass.
+
+### Notes
+
+- **The deployed API has the fallback login turned off** (`POST /api/auth/login` answers 404 because `FALLBACK_LOGIN` is false), so there only a Microsoft token (or the dev header) works. P has to turn the fallback on and create an account for the demo, or confirm Entra.
+- **The Microsoft path is not verified against a real tenant.** It follows the standard flow, but it needs the redirect URI `https://<extension id>.chromiumapp.org/` registered for the app and the scope `api://<client id>/user_impersonation` to match what the API expects; if the token request is refused for its origin, the registration type may have to change. Plan: try it with a real account; fall back to the email login if it does not work.
+- Sign-out follows SPEC §11.3 for the token and the queue, but capture keeps running locally and nothing is sent until the next sign-in (the spec says capture stops).
+- The Grove has no sign-in screen yet (S-13), so the entry points are the `SIGN_IN` message and the console helper `signIn()`.
 
 ## [2026-10-03] — Lane S-10 Privacy (S)
 
@@ -173,6 +496,29 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Saving references (`kind: "references"`) from the prune dialog is S-11; resuming one already works.
 - Restoring into a named tab group depends on the extension (`group_name` is sent).
 - BUILD_TASKS.md: S-8 row ticked only.
+## [2026-10-03] — D-7 Extension bridge handlers (D)
+
+### Added
+
+- Synchronously registered async onMessage router for all 16 bridge messages, own-extension sender validation, short error codes and message-type-only error logging.
+- Read-only snapshot, Hollow count, sender preview, stripped local URLs and auth/work-item stubs; snapshot metadata preserves the original OPEN timestamp across worker sleep and includes only opened, currently eligible tabs, sorted by recent access and capped at 60.
+- Local ref-based focus/reopen/close/restore actions, validated pause/domain settings and live local/session wipe; existing global helpers remain available.
+- Twelve new bridge and integration tests cover reply shapes, privacy filtering, tab actions, settings, live reset, synchronous registration and sender abort/drain during wipe.
+
+### Decisions
+
+- C6 permits null titles while the shared draft declares string, so the extension uses a local nullable snapshot type without changing contracts; old sessions lacking OPEN metadata are omitted rather than assigning invented opening times.
+- Epoch-millisecond pause values are accepted per C6 alongside the draft's string/null values; null removes the key, invalid values/domains return invalid_payload, and domain writes are serialized and deduplicated.
+- RESTORE fallback_urls uses positional matching, only when the local entry is missing; duplicate refs are processed once, reopen URLs must be HTTP(S), and group_name is validated but grouping waits for D-8.
+- RESTORE stops at the first unresolvable ref with not_found; earlier requested actions may already have completed.
+- GET_URLS additionally strips URL credentials; snapshot and other replies contain no Chrome IDs or raw URLs, with GET_URLS the explicit stripped-URL exception.
+- WIPE_LOCAL pauses sender triggers, aborts/drains the current request, waits for capture persistence, clears both stores and resets capture memory, then resumes normal operation; auth remains not_implemented until D-6 and work items remain empty until D-9.
+- Fake Chrome runtime gained id/onMessage support; no existing test assertion changed, no new dependencies or permissions, and no Grove or contract files edited.
+
+### Verification
+
+- All four Node 20 checkpoints passed; final pnpm test 136/136 tests, 13/13 files; pnpm typecheck exit 0; pnpm build exit 0 (14 modules, 168ms); git diff --check clean.
+- Real-Chromium verification remains with Claude/Deep; no new HTML or test page, commit or push.
 
 ## [2026-10-03] — Lane S-7 Timeline, and repair of a bad merge on main (S)
 

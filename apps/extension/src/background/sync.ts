@@ -13,6 +13,8 @@ export class EventSync {
   private inFlight: Promise<Receipt | null> | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private lastFlush = -Infinity;
+  private suspended = false;
+  private controller: AbortController | undefined;
 
   constructor(
     private readonly queue: EventQueue,
@@ -39,10 +41,25 @@ export class EventSync {
   flushNow(): Promise<Receipt | null> { return this.send(false); }
   resendLastBatch(): Promise<Receipt | null> { return this.send(true); }
 
+  async reset(work: () => Promise<void>): Promise<void> {
+    const running = this.timer !== undefined;
+    this.suspended = true;
+    this.stop();
+    this.controller?.abort();
+    try {
+      await this.inFlight;
+      await work();
+      this.lastFlush = -Infinity;
+    } finally {
+      this.suspended = false;
+      if (running) this.start();
+    }
+  }
+
   private send(resend: boolean, manual = true): Promise<Receipt | null> {
     // Both manual resend and automatic flush share one network slot.
-    if (this.inFlight) return Promise.resolve(null);
-    this.inFlight = this.perform(resend, manual).catch(() => null).finally(() => { this.inFlight = null; });
+    if (this.suspended || this.inFlight) return Promise.resolve(null);
+    this.inFlight = this.perform(resend, manual).catch(() => null).finally(() => { this.inFlight = null; this.controller = undefined; });
     return this.inFlight;
   }
 
@@ -77,10 +94,11 @@ export class EventSync {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (devUser) headers['X-Dev-User'] = devUser;
+    this.controller = new AbortController();
     let response: Response;
     try {
       response = await (this.options.fetch ?? fetch)(`${(this.options.apiBase ?? API_BASE).replace(/\/$/, '')}/api/events`, {
-        method: 'POST', headers, body: JSON.stringify({ events }),
+        method: 'POST', headers, body: JSON.stringify({ events }), signal: this.controller.signal,
       });
     } catch { await this.backoff(retry); return null; }
     if (response.status === 401) {

@@ -1,0 +1,7 @@
+{
+  "name": "@tabforest/extension-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Real-Chromium checks for the extension (Playwright). Not part of pnpm test; see README.md.",
+  "dependencies": { "playwright": "^1.63.0" }
+}
