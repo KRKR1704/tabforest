@@ -25,6 +25,9 @@ from app.limits import limiter, rate_limited
 from app.privacy import router as privacy_router
 from app.retention import retention_loop
 from app.routes import login_router, router
+from app.routes_contexts import router as contexts_router
+from app.routes_sessions import router as sessions_router
+from app.routes_timeline import router as timeline_router
 from app.telemetry import instrument, setup_telemetry
 
 log = logging.getLogger("tabforest")
@@ -104,6 +107,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(privacy_router)
     app.include_router(deletion_router)
+    app.include_router(sessions_router)
+    app.include_router(timeline_router)
+    app.include_router(contexts_router)
     if settings.fallback_login:
         app.include_router(login_router)
         log.warning("fallback login is on (POST /api/auth/login)")

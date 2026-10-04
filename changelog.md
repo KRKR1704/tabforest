@@ -29,6 +29,30 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - The delete_forest example omits `research_insights`; the response includes it (a forest's insights are deleted too), so its `deleted` has 11 keys.
 - Ingest does not reject events for a domain the user excluded; the extension filters them before sending.
 
+## [2026-10-04] — P-7 to P-9: sessions, timeline, saved contexts (P)
+
+### Added
+- `GET /api/sessions?range=24h|7d` and `GET /api/sessions/{id}` (`app/routes_sessions.py`): per session the event count, focused time (sum of BLUR `active_ms`), tab switches, intent switches, unassigned switches, time per project and unassigned time; the detail adds every tab focused in the session. A session reads as open (`ended_at` null) while its last event is under 30 minutes old.
+- `GET /api/projects/{id}/timeline?range=24h` (`app/routes_timeline.py`): one lane per branch of the project's current tree, `tab_attention_15m` re-bucketed to 30 minutes, switches per bucket as seen from the project, decision and question markers, totals. Project tabs with no branch go in a lane with `branch: null`.
+- `POST /api/projects/{id}/save-context`, `GET /api/contexts`, `POST /api/contexts/{id}/resume` (`app/routes_contexts.py`): the card and stripped URLs are stored as sent with the totals at save time; resume returns live totals across the project's sessions and the tabs ordered by R's current `cluster_tabs.importance`. `fallback_url` with a query string or fragment returns 422.
+- C12 reads in `app/adapters/intents.py` (current cluster per project, tab membership, tree, markers, open questions), `app/switches.py` (intent and unassigned classification at query time), `app/ids.py` (contract id prefixes), `app/clock.py` (injectable request clock).
+
+### Changed
+- 422 detail for a query literal reads "range must be 24h or 7d"; custom value errors carry their own wording ("tabs[0].fallback_url must not contain a query string or fragment").
+- A malformed or foreign id returns 404, never 422 or 403.
+
+### Tests
+- `tests/test_contracts_story.py` (11): the sessions, timeline and saved-context examples run against a rebuilt demo story (`tests/story.py`: 327 events, R's rows from `grove.example.json`).
+- Local: 33 more (units, reassigned leaf applies on the next read, tables absent, isolation, validation).
+
+### Verification
+- 196 passed with the database (18 committed, rest local); clean export without `.env`: 18 passed, 10 skipped; `ruff check` clean; R's `app/engine/tests` 138 passed, 22 skipped.
+
+### Notes
+- `sessions.example.json` gives the 08:52 session `intent_switches: 3`, but with that session's tabs the story has none (the timeline contract allows one switch that leaves via a tab shared with GirlHacks, counted from the project's side only). The test leaves that one field out; the contract is not edited (BUILD_TASKS 5.1).
+- A project's current tree is its newest `origin = 'browser'` cluster until R's persistence rules say otherwise (X2).
+- Not deployed yet at the time of this entry.
+
 ## [2026-10-04] — R-9 + R-10: Seedling fallback, claims, assign, notes, analyze; hypothesis cap (R)
 
 ### Fixed
