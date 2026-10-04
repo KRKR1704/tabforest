@@ -12,6 +12,17 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - Version 0.1.1 (`manifest.config.ts`, `package.json`): the first Chrome Web Store upload was 0.1.0, and the store only accepts an update with a higher version. It carries the Grove fixes since then: the stored grove shown on open (#63, #65) and kept when signing in on the page (#74). `pnpm build:zip` gives the team test build (with the development extension ID), `pnpm build:store` the store build (no manifest key).
 
+## [2026-10-04] — README: the landing page is at tabforest.nyc (S)
+
+### Changed
+- `README.md`: the "Try it" link is now `https://tabforest.nyc/`, and the Development line names the same address. It was `https://tabforest.azurewebsites.net/welcome/`, which still works.
+
+### Verification
+- `https://tabforest.nyc/` redirects to `/welcome/` and answers 200 with the landing page's title; its script and stylesheet load; the certificate is issued for `tabforest.nyc` and validates; `http://tabforest.nyc/` redirects to HTTPS.
+
+### Notes
+- `www.tabforest.nyc` does not work: it still points at the registrar's parking page and has no certificate. Only the bare name is published. For lane P to decide whether `www` should work.
+
 ## [2026-10-04] — README: where the landing page lives (S)
 
 ### Changed
