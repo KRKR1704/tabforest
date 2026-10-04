@@ -63,7 +63,6 @@ The Grove still looked blank after signing in, although `GET /api/grove` returne
 
 ### Notes
 - The cancelled run Deep mentioned (37195439618) was a pull-request run cancelled after 20 seconds, before any database test started: a pending run replaced by a newer one, not a run stopped midway. No test rows were left behind; the only rows with the contracts' ids belong to the demo account and are kept.
->>>>>>> 2f78cb7 (Changelog for the CI test id fix)
 
 ## [2026-10-04] — Lane S: empty-state wording and Prompt Shields removed from README and Devpost (S)
 
