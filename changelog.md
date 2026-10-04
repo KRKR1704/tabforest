@@ -6,6 +6,12 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Extension version 0.1.1 (D)
+
+### Changed
+
+- Version 0.1.1 (`manifest.config.ts`, `package.json`): the first Chrome Web Store upload was 0.1.0, and the store only accepts an update with a higher version. It carries the Grove fixes since then: the stored grove shown on open (#63, #65) and kept when signing in on the page (#74). `pnpm build:zip` gives the team test build (with the development extension ID), `pnpm build:store` the store build (no manifest key).
+
 ## [2026-10-04] — README: where the landing page lives (S)
 
 ### Changed
