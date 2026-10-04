@@ -123,9 +123,12 @@ describe('App shell', () => {
     useGroveStore.setState({ grove: mockGroveResponse, activeScreen: 'grove', isStreaming: false });
   });
 
-  it('opens on Current Grove with the contract trees', () => {
+  it('opens on Current Grove with the canvas, and lists the contract trees in Outline', () => {
     render(<App />);
     expect(screen.getByRole('heading', { level: 1, name: 'Current Grove' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Living Grove/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Outline' }));
     for (const tree of mockGroveResponse.trees) {
       expect(screen.getByRole('heading', { level: 2, name: tree.project.name })).toBeInTheDocument();
     }
@@ -162,6 +165,7 @@ describe('App shell', () => {
     expect(screen.queryByRole('complementary', { name: 'Evidence' })).not.toBeInTheDocument();
 
     const goal = mockGroveResponse.trees[0].goal;
+    fireEvent.click(screen.getByRole('button', { name: 'Outline' }));
     fireEvent.click(screen.getAllByRole('button', { name: /Inferred/ })[0]);
     const drawer = screen.getByRole('complementary', { name: 'Evidence' });
     expect(within(drawer).getByText(goal.text)).toBeInTheDocument();

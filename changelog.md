@@ -6,6 +6,119 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-4 Forest elements (S)
+
+### Added
+- `apps/grove/src/viz/layout.ts`: geometry for mushrooms (cap radius from recurrence), flowers (resolved questions), stones (carved or mossy), fallen leaves, vines per redundant group, hypothesis wisps and fireflies above the crown, tree fog, and a faint vine joining the two leaves of a tab shared by two trees. Questions stand left of the trunk, decisions right, stale tabs beyond them; the tree's footprint widens to fit.
+- `apps/grove/src/viz/render.ts`: draws each element with its own shape and a `<title>` naming its kind (for example "Open question · … · came up 4 times"). Carved stones have a solid edge and chisel marks, mossy stones a dashed edge and a moss cap; exact-duplicate vines are thicker than semantic ones. Every element is clickable and reports `{kind, id, treeId}`; empty ground clears the selection.
+- `apps/grove/src/viz/selection.ts`: `describeSelection` turns a click into a label, text and, for claims, the evidence to show.
+- Fog density = 1 − confidence (`fogOpacityFor`): used for hypothesis wisps and for mist over a tree whose goal is fogged or below 0.60 (every tree in the degraded example).
+
+### Changed
+- `apps/grove/src/viz/GroveCanvas.tsx`: takes `selected` and `onSelect`; marks the selected element without redrawing, so zoom and pan are kept.
+- `apps/grove/src/screens/CurrentGrove.tsx`: clicking a tree, stone, mushroom, flower or hypothesis opens the existing evidence drawer; clicking anything else shows a caption (kind, text, detail) at the bottom left and closes the drawer. `App.tsx` passes the close handler.
+- Fallen tabs now lie on the ground under their tree instead of hanging on a branch (S-3 drew them as ordinary leaves). Canvas is 60 px taller to make room above the crowns.
+- `apps/grove/src/viz/palette.ts`, `src/index.css`: element colors from the moodboard; a brightness highlight for the selected element.
+
+### Tests
+- `src/__tests__/forestElements.test.tsx` (37): layout of each element (mushroom size vs recurrence, flower, carved vs mossy, vines, fallen leaves, ground spacing, firefly, shared vine, fog density, degraded grove), canvas counts per kind, stone and vine differences by shape, a tooltip on every clickable element, tooltip wording per kind, one click report per element, selection marking, zoom kept on selection, hostile text, `describeSelection`, and drawer / caption behavior through `App`.
+- Updated 2 S-3 tests for fallen leaves moving to the ground.
+
+### Verification
+- `npm test`: 9 files, 126 tests passing. `npm run build`: passes with zero TypeScript errors.
+- Manual (dev server): all eight element kinds visible on the contract grove; no overlapping labels (bounding boxes); clicking the mushroom opened its evidence and clicking the canopy opened the goal; zoom and pan still work.
+
+### Notes
+- Fireflies are static; the drifting animation belongs to the wow animation (S-12).
+- The Unclear patch keeps a fixed mist: the contract gives its tabs a reason but no confidence.
+- Clicks only select and explain. Opening tabs, Confirm / Mark resolved, the prune dialog and Tree Detail are S-5 and S-11.
+- Keyboard access to canvas elements is not added here (S-13).
+- BUILD_TASKS.md: S-4 row ticked only.
+## [2026-10-03] — R-4: embedding cache in memory_embeddings (R)
+
+### Added
+
+- `apps/api/app/engine/embeddings.py`:
+  - `tab_embedding_text()` = `"{title_clean} | {domain} | {source_type}"` (document types mapped with `leaf_source_type`, capped at 1,000 chars); `content_hash()` = SHA-256 hex of the exact UTF-8 string.
+  - `embed_texts(user_id, kind, items, pool)`: dedupes identical texts, one cache lookup (`WHERE user_id = $1 AND content_hash = ANY($2)`), misses embedded in batches of ≤ 64 per Azure call, then one `INSERT … ON CONFLICT (user_id, content_hash) DO NOTHING` (safe for concurrent grows). Nothing is written until every batch succeeded. Azure errors propagate. Vectors returned as numpy `float32`.
+  - Without a pool, or when `memory_embeddings` is missing, an in-process LRU cache (4,096 entries) is used with one warning.
+  - `embed_tabs()` (`kind='tab'`, `source_id = tab_ref`) also sets P's `tabs.embedding_hash` with UPDATE only (never INSERT); skipped with one debug log if the table or column is missing. `embed_queries()` (`kind='query'`) for R-6 query families.
+  - `EmbedStats` per call: `texts_requested`, `unique_texts`, `cache_hits`, `api_calls`, `inserted`, `store`, `tabs_hash_updated`.
+
+### Tests
+
+- `engine/tests/test_embeddings.py` (9, no network): dedupe, 150 texts → 3 calls (64/64/22), cache hit → 0 calls, a failed second batch writes nothing, LRU fallback without a pool (one warning), LRU fallback when the table is missing, no cache sharing between users, embedding text/hash, pgvector text round trip.
+- `engine/tests/test_embeddings_live.py` (2, real Azure + Tiger Cloud, test user `…00bb`, rows deleted before and after): 28 demo tabs twice and the 3 search queries twice; a similarity preview of the demo groups.
+
+### Verification
+
+- Live run 1: 28 texts, 27 unique (tabs 01/02 are the same page), 1 API call, 27 inserted, 1072 ms. Run 2: 0 API calls, 27 cache hits, 116 ms; run 1 vs run 2 cosine ≥ 0.9999999. Queries: 1 call, then 0. 0 rows left for the test user.
+- Similarity preview: Backend Authentication intra-group mean 0.478 vs 0.137 to Weeknight Dinner.
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 116 passed.
+
+### Notes
+
+- New dependency installed into `apps/api/.venv` for P's `pyproject.toml`: `numpy` (2.5.3).
+- P's `tabs` table exists with `embedding_hash`; the test user has no rows there, so `tabs_hash_updated` was 0.
+
+## [2026-10-03] — Lane S-3 D3 Living Grove, and grove realigned to R's contract (S)
+
+### Added
+- `apps/grove/src/viz/layout.ts`: pure grove geometry. d3-hierarchy (`hierarchy` + `cluster`) fans each tree's branches and leaves; trunk width from attention minutes and leaf length from dwell (sqrt scales); amber canopy when dormant 3+ days; sprouts at the left edge, then trees, the Wildflower Meadow and the Unclear fog patch; branch labels nudged apart so they never overlap.
+- `apps/grove/src/viz/render.ts`: D3 draws into the `<svg>` (ground, three-blob canopy, trunk, branches, twigs, teardrop leaves, patches, fog banks, labels) and wires d3-zoom for wheel zoom and drag pan. All text set with `.text()`.
+- `apps/grove/src/viz/GroveCanvas.tsx`: React owns the panel and the Zoom in / Zoom out / Reset view buttons; D3 owns the `<svg>`. `viz/palette.ts`: SVG colors mirroring the Tailwind tokens.
+- `apps/grove/src/adapters/groveContract.ts`: converts the wire format of `contracts/grove.example.json` and `grove.stream.example.ndjson` (C3) into the app's grove types; meadow, fog and sprout tabs are named from the open-tab snapshot.
+
+### Changed
+- `apps/grove/src/mocks/mockData.ts`: the hand-written grove mock (3 trees, S-1 shape) is replaced by the real `contracts/grove.example.json` read through the adapter (4 trees, meadow, fog, sprout, firefly). R's contract drafts (PRE-C1) had made the old mock stale.
+- `apps/grove/src/adapters/grove.ts`: live `getGrove`, `growGrove`, `analyzeProject` and stream lines now pass through the contract adapter instead of being cast to the internal types.
+- `apps/grove/src/types/grove.ts`: optional fields added only (`ref_kind`, `display_text`, `stone_kind`, `fallen`, `days_since_active`, `canopy`, `fogged`, `shared_tab_refs`, `fog`, `banner_text`; wider `SourceType`; `age_minutes` now optional).
+- `apps/grove/src/screens/CurrentGrove.tsx`: shows the canvas, with a Grove / Outline switch. The S-2 text list moved to `screens/GroveOutline.tsx`; it now shows the server's `display_text` wording and skips an empty direction.
+- `apps/grove/src/components/EvidenceDrawer.tsx`: evidence sources are labelled from the contract's `ref_kind` (falls back to the short-ref prefix).
+- `apps/grove/vite.config.ts`: dev server may read the repo-level `contracts/` folder.
+
+### Tests
+- `src/__tests__/groveContract.test.ts` (11): loads the real contract files; mock equals contract; tree identity, dormancy, leaves per branch, stones and mushrooms, claim provenance and evidence kinds, loose-tab titles from the snapshot, fireflies, the degraded example, the stream example.
+- `src/__tests__/groveCanvas.test.tsx` (18): layout (4 trees, one leaf per tab, trunk vs attention, leaf vs dwell, amber rule and fallbacks, no overlap, sprouts at the edge, empty patches) and canvas (4 trees / meadow / fog / sprouts in the DOM, dormancy in words, open vs closed leaves, zoom in / out / reset / limit, hostile titles as text, redraw).
+- Updated 3 existing tests for the new contract ids and the canvas being the default view; added 1 drawer test for `ref_kind`; the no-HTML source scan now also rejects D3 `.html(`.
+
+### Verification
+- `npm test`: 8 files, 89 tests passing. `npm run build`: passes with zero TypeScript errors.
+- Manual (dev server, 1440×820): 4 trees with the Job Search canopy amber, sprout, meadow and fog visible; no overlapping labels (checked by bounding boxes); zoom buttons and drag pan work; no console errors.
+
+### Notes
+- `contracts/` was not edited. The mismatch was fixed in S's adapter (BUILD_TASKS.md §2 rule 3).
+- Branch length uses branch status (active longer than explored): SPEC §9.1 maps it to recency, which the grove contract does not send.
+- Not in S-3: mushrooms, stones, vines, fallen leaves, fireflies and fog density (S-4); click actions and Tree Detail (S-5). Fallen tabs are drawn as ordinary leaves for now.
+- Still on the S-1 shape and to be realigned when their tasks start: the snapshot / bridge mock (`{tabs}` vs the contract's `{open_tabs}`, needed for S-6), timeline, saved contexts, work context, memory, prune, privacy.
+- BUILD_TASKS.md: S-3 row ticked only.
+
+## [2026-10-03] — R-3: R's migrations on Tiger Cloud (R)
+
+### Added
+
+- `db/migrations/200_engine_core.sql`: `projects`, `analysis_runs` (normal table, not a hypertable), `intent_clusters` (goal claim, direction, hypotheses, vines, query families, important tabs, fogged, run), `intent_branches`, `cluster_tabs` (PK `(cluster_id, tab_ref)`, importance, `assigned_by` ai/user, fallen), `decisions`, `unresolved_questions`, `suggested_actions`, `user_notes`, `research_insights`. Every table has `user_id uuid NOT NULL` and an index leading with `user_id`; no foreign keys to P's tables (`user_id`, `tab_ref`, `saved_context_id` are plain uuids); foreign keys only between R's tables (cascade where a child cannot outlive its parent). CHECK constraints on every enum-like column, on confidences (0..1), stated → `user_note_id`, sourced → `quote`, and resolved → `resolved_at`.
+- `db/migrations/201_engine_memory.sql`: `memory_embeddings` (`kind` insight/context/tab/query, `vector(1536)`, `content_hash` SHA-256), DiskANN index (`vector_cosine_ops`, pgvectorscale) and `(user_id, kind)` btree; fails with a clear message if `vector`/`vectorscale` are missing (it does not create extensions).
+- `db/migrations/README.md`: R's files (no README existed).
+- `apps/api/app/engine/scripts/apply_r_migrations.py`: applies only `2xx_*.sql`, each file in one transaction, then prints R's tables (column counts), indexes and CHECK constraints, and the schema diff. Never drops anything.
+
+### Tests
+
+- `engine/tests/test_schema.py` (live, only with `DATABASE_URL`): every persisted contract field maps to an existing column, or is listed as DERIVED or held in P's tables (mapping table printed with `-s`); in ONE rolled-back transaction: the Backend Authentication tree round-trips unchanged (project, cluster, 3 branches, 10 cluster_tabs, carved + mossy stones, the mushroom, the next action, the user note), 51 vectors with the known one nearest under a `user_id` filter (EXPLAIN printed), bad provenance and bad status rejected by CHECK, per-user delete across all R tables leaves 0 rows; 0 rows for the test user after rollback.
+
+### Verification
+
+- `apply_r_migrations.py` run twice: first run 316 schema items added; second run "0 added, 0 removed".
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 105 passed, both schema tests ran against Tiger Cloud.
+- Secret check before starting: commit `328d7a8` adds only `apps/api/.env.example` with empty values, placeholders and public identifiers; no other commit adds a key or a postgres URL with a password; `apps/api/.env` was never committed.
+
+### Notes
+
+- `memory_embeddings` uses `UNIQUE (user_id, content_hash)` instead of a global `UNIQUE (content_hash)`: a global key would stop a second user from caching the same tab string and would reveal, through the conflict, that another user embedded it.
+- Work Context results reuse the claim tables: `decisions`/`unresolved_questions`/`suggested_actions` have `quote`, `source`, `source_timestamp` (+ `speaker` on decisions); blockers are `unresolved_questions.kind = 'blocker'`; owners are `suggested_actions.kind = 'ownership'` with `owner` and `task`; `intent_clusters.origin` and `goal_quote/source/source_timestamp` cover the Work Context goal. Document text is never stored; the full response is kept in `analysis_runs.response`.
+- Ids are plain uuids; the API adds the contract prefixes (`p_`, `dec_`, `q_`, `a_`, `n_`, `g_`, `r_`). `user_note_id` is not a foreign key so notes survive cluster re-analysis.
+- At 51 rows the planner uses the `(user_id, kind)` index or a seq scan plus sort, not DiskANN; that is expected at this size (proposal §16: exact scan over one user's rows).
+- Leaf title, domain and source_type are not in R's tables: they come from P's `browser_events` and `tabs` (`tabs.title_norm`, `source_type`, `embedding_hash` are R-written columns that P's migration must create, §4.5).
 ## [2026-10-03] — D-4 The Hollow (D)
 
 ### Added
