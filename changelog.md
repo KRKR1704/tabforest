@@ -6,6 +6,20 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — D-14 docs/privacy.md (D)
+
+### Added
+
+- `docs/privacy.md`: what leaves the device (field by field, from the events contract), what stays, what is never collected, the Hollow rules, user controls, a per-permission justification table, suggested Chrome Web Store text for the `tabs` warning, the Limited Use statement, and a list of known gaps.
+
+### Verification
+
+- Every claim was checked against `manifest.config.ts`, `hollow.ts`, `work-context.ts`, `privacy-sync.ts`, `contracts/events.example.json` and SPEC §5.2 and §6.
+
+### Notes
+
+- The retention and "no human reads user data" lines depend on the platform configuration; P should confirm before a Web Store submission.
+
 ## [2026-10-04] — D-9 Work Context capture (D)
 
 ### Added
