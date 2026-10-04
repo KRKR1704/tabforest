@@ -6,6 +6,8 @@ import { GroveCanvas } from '../viz/GroveCanvas';
 interface GroveGuideProps {
   /** Finished or skipped. */
   onDone: () => void;
+  /** The last step's button. In the app it opens the grove; elsewhere it only closes the tour. */
+  doneLabel?: string;
 }
 
 /** How long the "before" picture is held, so the eye finds the tree before it changes. */
@@ -59,7 +61,7 @@ export const KeyIcon: React.FC<{ id: (typeof GUIDE_KEY)[number]['id'] }> = ({ id
  * "How to read your grove": a walk through what each thing in the grove means,
  * one change at a time, on a small example grove drawn by the real canvas.
  */
-export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
+export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone, doneLabel = 'Open my grove' }) => {
   const [index, setIndex] = useState(0);
   const [run, setRun] = useState(0);
   const [changed, setChanged] = useState(false);
@@ -111,13 +113,13 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
     // A centred dialog over the app: about 58% of a desktop screen, nearly all of a phone's.
     <div
       data-kind="guide-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-forest-950/85 p-3 font-sans text-forest-50 sm:p-6"
+      className="grove-guide-backdrop fixed inset-0 z-50 flex items-center justify-center bg-forest-950/80 p-3 font-sans text-forest-50 sm:p-6"
     >
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="guide-title"
-      className="grove-guide flex max-h-[92vh] w-[94vw] max-w-[1040px] flex-col overflow-y-auto rounded-lg border border-forest-700 bg-forest-900 md:w-[80vw] lg:w-[58vw]"
+      className="grove-guide flex max-h-[92vh] w-[94vw] max-w-[1040px] flex-col overflow-y-auto rounded-lg border border-forest-700 bg-forest-900/95 backdrop-blur-md md:w-[80vw] lg:w-[58vw]"
     >
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-forest-800 px-5 py-3">
         <div className="flex items-center gap-2.5">
@@ -169,19 +171,22 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
               {GUIDE_STEPS.map((item, at) => (
                 <li
                   key={item.id}
-                  className={`h-1.5 w-4 rounded-full ${at <= index ? 'bg-forest-400' : 'bg-forest-700'}`}
+                  className={`h-1.5 w-4 rounded-full transition-colors duration-200 ${
+                    at === index ? 'bg-forest-300' : at < index ? 'bg-forest-500' : 'bg-forest-700'
+                  }`}
                 />
               ))}
             </ol>
           </div>
           <h1
+            key={step.id}
             ref={heading}
             tabIndex={-1}
-            className="mt-1.5 font-serif text-2xl font-semibold leading-tight focus:outline-none"
+            className="grove-guide-step mt-1.5 font-serif text-2xl font-semibold leading-tight focus:outline-none"
           >
             {step.title}
           </h1>
-          <dl className="mt-3 grid max-w-3xl grid-cols-1 gap-x-4 gap-y-1.5 text-[15px] leading-relaxed sm:grid-cols-[9.5em_1fr]">
+          <dl key={`${step.id}-words`} className="grove-guide-step mt-3 grid max-w-3xl grid-cols-1 gap-x-4 gap-y-1.5 text-[15px] leading-relaxed sm:grid-cols-[9.5em_1fr]">
             <dt className="font-medium text-forest-400">In your browser</dt>
             <dd className="text-forest-50">{step.browser}</dd>
             <dt className="font-medium text-forest-400">In your grove</dt>
@@ -198,7 +203,7 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
           </button>
           {last ? (
             <button type="button" className={primary} onClick={onDone}>
-              Open my grove
+              {doneLabel}
             </button>
           ) : (
             <button type="button" className={primary} onClick={() => go(index + 1)}>
