@@ -6,6 +6,35 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-7 Timeline, and repair of a bad merge on main (S)
+
+### Added
+- `apps/grove/src/screens/Timeline.tsx`: the Timeline screen. A goal picker (one button per tree), the day's totals, the chart, and "How it unfolded": an ordered list of when each path was picked up, when a decision was made and when a question first appeared. States for loading, "Memory is reconnecting…" (retries on its own after the server's `Retry-After`, plus "Try again now"), no timeline for this goal (404), nothing recorded, and no grove.
+- `apps/grove/src/components/TimelineChart.tsx`: one lane per branch with its total minutes and status in words; one bar per 30-minute bucket, taller for more attention, labelled in minutes; a time axis trimmed to the part of the day with activity; markers with a mushroom glyph and dotted line for a question and a stone glyph and dashed line for a decision; tab switches per bucket; hover or keyboard focus on a bar lists its tabs and minutes.
+- `apps/grove/src/lib/timeline.ts`: `bucketMs`, `minutesLabel`, `formatClock`, `activeSpan`, `storyBeats`.
+
+### Changed
+- Timeline types, mock and adapter realigned to P's `contracts/timeline.example.json` (lanes, points, switches, markers, totals, `active_ms`). The mock is the contract's `story_24h` example; other projects get an empty day. `getTimeline` now returns `ok`, `reconnecting` (503) or `not-found` (404), and falls back to the stand-in only when the API cannot be reached.
+- `App.tsx` shows the Timeline screen for the Timeline rail item.
+
+### Fixed
+- Merge damage on `main` from "Merge branch 'main' into feat/grow-orchestration": `apps/grove/src/viz/render.ts` had two stray import lines (the Grove app did not compile, 5 test files could not load) and had lost the drag argument for leaves; `forestElements.test.tsx` had two tests reverted to their S-4 form. Both files restored to the S-6 commit (`50d8fa6`).
+- BUILD_TASKS.md: removed the duplicate, unticked S-5 and S-6 rows the same merge left behind.
+
+### Tests
+- `src/__tests__/timeline.test.tsx` (27): helpers; adapter in mock and live mode (contract request, 503 with and without `Retry-After`, 404, unreachable API); chart lanes, bars, bar heights, axis labels, markers and their two encodings, hover and focus detail, switches, a lane with no branch, hostile titles; screen totals and story order, goal picker, empty and no-grove states, reconnecting with timed retries, retry button, 404; opening from the left rail.
+- Updated 2 tests for the timeline shape.
+
+### Verification
+- `npm test`: 13 files, 229 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): Timeline for Backend Authentication showed 3 lanes, 7 bars, both markers, switches and the five story beats; no overlapping chart labels (bounding boxes).
+
+### Notes
+- Clock times are shown in the reader's own time zone. The contract's story clock is UTC (09:30 to 11:30), so in US Eastern the demo data reads 5:30 AM to 7:30 AM.
+- Buckets are 30 minutes, as P's contract defines (SPEC §8.5 shows 20).
+- Only `range=24h` is requested; the contract rejects anything else.
+- BUILD_TASKS.md: S-7 row ticked; duplicate rows removed (see Fixed).
+
 ## [2026-10-03] — R-6: per-cluster features, query families, importance, DATA block (R)
 
 ### Added

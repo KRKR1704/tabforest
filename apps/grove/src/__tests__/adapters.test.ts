@@ -73,8 +73,8 @@ describe('Adapters Suite (C3–C7)', () => {
     const sessions = await getSessions();
     expect(sessions.length).toBeGreaterThan(0);
 
-    const timeline = await getTimeline('p-backend-auth', '24h');
-    expect(timeline.buckets.length).toBeGreaterThan(0);
+    const timeline = await getTimeline('p_10000000-0000-4000-8000-000000000001', '24h');
+    expect(timeline.status).toBe('ok');
 
     const contexts = await getContexts();
     expect(contexts.length).toBeGreaterThan(0);
