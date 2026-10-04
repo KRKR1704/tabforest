@@ -21,6 +21,43 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - Found and fixed along the way: R-15 (engine used fixture events) and the Restore click that could stay held (separate PRs).
 
+## [2026-10-04] — R-15 The engine reads the real events (R)
+
+### Fixed
+
+- `apps/api/app/engine/adapters/stats.py`: `get_stats_source(pool)` now returns `DbStats`, which reads the signed-in user's rows of `browser_events` (session id, previous tab, dwell) for events, the query-family window and per-tab attention. Until now every grow read the fixture events, so on real browsing every tree showed "0 min", there were no open questions and no query families, while the timeline (which reads the database) showed the real attention. `grove.py`, `features.py` and `prune.py` pass their pool.
+- Every query filters on `user_id`; refs that are not UUIDs match nothing and never reach the SQL. If the table is missing or a query fails, the fixture answers instead (logged); if nothing is stored for the asked tabs and they are all demo tabs, the demo replays from fixtures, so the demo snapshot still works against a database without the demo user's events. A real user with no events gets empty answers, never demo data.
+- `tests/test_stats_db.py`: 9 tests (mapping, user isolation, attention sums, every fallback, and the real SQL against a database when `DATABASE_URL` is set).
+
+### Verification
+
+- Full flow with the real extension in Chromium, the real API, Postgres and the deployed Azure OpenAI model, 28 demo tabs browsed over about five simulated hours: before the change every tree showed 0 min and 0 open questions; after it the trees show 90, 85, 31, 27 and 18 minutes (the timeline's 90 minutes for the authentication tree agrees) and the grove finds the real open question about refresh-token storage.
+- `pytest app/engine/tests tests`: all pass; the real-SQL test passes against a throwaway Postgres.
+
+### Notes
+
+- Saved contexts (`adapters/contexts.py`, C13) still read their fixture; they belong to R-12.
+
+## [2026-10-04] — Retention test no longer runs the real job on a shared database (P)
+
+### Fixed
+
+- `tests/test_privacy_deletion.py`: one retention test called `run_retention(pool)` without a user filter, which on a database with real users (the CI database, when `DATABASE_URL` is set) would delete real users' expired events as the nightly job does. It now passes `only_users=[its own user]`, like the other retention tests.
+
+## [2026-10-04] — Restore click can no longer be held forever (D)
+
+### Fixed
+
+- `public/tf-permissions.js`: the click on a "Restore ..." button is held while Chrome asks for the optional `tabGroups` permission. If the question is never answered (a prompt that does not show, an automated browser) the click stayed held and the button was dead. It now goes through after 15 seconds; a late "yes" applies to the next restore.
+
+### Added
+
+- `apps/extension/e2e/restore-click.mjs`: in real Chromium, the click is held, goes through once after 15 seconds, and later clicks go straight through (3 of 3).
+
+### Notes
+
+- Found by a full end-to-end run in headless Chromium, where nobody can answer the permission prompt.
+
 ## [2026-10-04] — P-12 to P-14: isolation suite, hardening, CI/CD (P)
 
 ### Added

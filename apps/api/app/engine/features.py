@@ -388,7 +388,7 @@ async def compute_features(user_id: UUID, tab_refs: Sequence[str], snapshot_tabs
                            snapshot_at: str | datetime, pool: Any, *, stats: StatsSource | None = None,
                            client: Any = None, threshold: float = QUERY_FAMILY_THRESHOLD) -> ClusterFeatures:
     """Events through adapters/stats.py, query embeddings through the R-4 cache, then build_features()."""
-    stats = stats or get_stats_source()
+    stats = stats or get_stats_source(pool)
     by_ref = {t["tab_ref"]: t for t in snapshot_tabs}
     snapshot_at = _ts(snapshot_at)
     history = await stats.events(user_id, set(tab_refs))

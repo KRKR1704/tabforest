@@ -21,6 +21,7 @@ EXT=../dist node hollow.mjs                # Node 20; EXT is the folder with man
 | `workctx.mjs` | Work Context privacy (no inputs, hidden text, scripts), Hollow first | variant build: `node variant.mjs ../dist /tmp/wc --host "http://localhost/*"`, 14 |
 | `restore.mjs` | RESTORE after quitting and reopening Chrome | plain build: no group. Variant `--tabgroups` plus `EXPECT_GROUP=1`: grouped, 5 |
 | `lifecycle.mjs` | Offline queueing, delivery after the API returns, duplicate resend, incognito blocked | port 8001, 8 |
+| `restore-click.mjs` | A Restore click is held for the `tabGroups` question, then goes through after 15 s if nobody answers | needs the Grove bundled (`pnpm build:zip`), takes 20 s, 3 |
 | `privacy.mjs` | Pause/exclude sync, 404 keeps waiting, read back, WIPE_LOCAL | port 8001, 11 |
 | `cors.mjs` | Deployed API answers the extension origin | needs the network |
 
