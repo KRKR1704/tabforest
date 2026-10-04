@@ -340,7 +340,7 @@ async def seed_old_context(conn: asyncpg.Connection, user_id: uuid.UUID) -> None
     snapshot = {"project_name": row["project_name"], "card": card, "tabs": tabs, "totals": totals}
     await conn.execute(
         "INSERT INTO saved_contexts (id, user_id, project_id, title, kind, snapshot, saved_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)",
+        "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) ON CONFLICT (id) DO NOTHING",
         bare(OLD_CONTEXT), user_id, bare(row["project_id"]), row["title"], row["kind"], json.dumps(snapshot),
         _ts(row["saved_at"]))
 
