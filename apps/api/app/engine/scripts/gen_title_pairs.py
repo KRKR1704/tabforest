@@ -90,6 +90,16 @@ TABS = [
     ("recipes", "curry", "Easy Chickpea Curry Recipe", "www.allrecipes.com"),
     ("recipes", "curry", "Quick Chickpea Curry in 20 Minutes", "www.allrecipes.com"),
     ("recipes", "carbonara", "Classic Spaghetti Carbonara Recipe", "www.allrecipes.com"),
+    # live finding (a deployed grow): chickpea, curry and hummus recipes were labelled "says the same as another source";
+    # each of these is its own recipe (related, never redundant)
+    ("recipes", "coconut_chickpea_curry", "Creamy Coconut Chickpea Curry (Vegan) Recipe", "www.bbcgoodfood.com"),
+    ("recipes", "thai_green_curry", "Thai Green Curry with Chicken Recipe", "www.simplyrecipes.com"),
+    ("recipes", "tikka_masala", "Chicken Tikka Masala Curry Recipe", "cooking.nytimes.com"),
+    ("recipes", "dal", "Red Lentil Dal Recipe", "cooking.nytimes.com"),
+    ("recipes", "hummus", "Creamy Homemade Hummus Recipe", "www.simplyrecipes.com"),
+    ("recipes", "pepper_hummus", "Roasted Red Pepper Hummus Recipe", "www.bbcgoodfood.com"),
+    ("recipes", "chickpea_salad", "Mediterranean Chickpea Salad Recipe", "www.allrecipes.com"),
+    ("recipes", "roasted_chickpeas", "Crispy Oven-Roasted Chickpeas Recipe", "cooking.nytimes.com"),
     # --- discussions
     ("discussion", "rust_vs_go", "Rust vs Go for a small CLI tool?", "www.reddit.com"),
     ("discussion", "rust_vs_go", "Go or Rust for a command line tool?", "www.reddit.com"),

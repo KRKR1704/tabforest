@@ -40,16 +40,22 @@ class ClusterParams:
     w_opener: float = 0.20
     w_temporal: float = 0.15
     temporal_window_s: int = 180
+    # The temporal bonus only counts for a pair whose CALIBRATED cosine is at least this (live finding: a burst of
+    # unrelated tabs opened within the window must not be glued together by time alone). 0 = always. Chosen by the grid
+    # below, over all four snapshots, together with lo: floor 0.30 to 0.70 alone lifts the burst snapshot only from
+    # ARI 0.296 to 0.678 (two Wikipedia topics still merge), a floor anywhere from 0.45 to 0.80 with lo 0.20 reaches 1.0 (0.40 does not); 0.60 is the middle.
+    temporal_floor: float = 0.60
     # Calibration (scripts/calibrate_cluster.py). "fixed": clip((cos − lo)/(hi − lo), 0, 1);
     # "snapshot": the same with lo/hi = percentiles of this snapshot's cosines; "raw": cos as is.
-    # Chosen by the grid over demo + 2 labeled snapshots (max of the minimum ARI): fixed 0.05/0.50
-    # beat per-snapshot percentiles and raw cosine. NOT the plan: the plan uses raw cosine, which
-    # scores ARI 0.18 on all three snapshots.
+    # Chosen by the grid over demo + 2 labeled snapshots + the burst snapshot (max of the minimum ARI, among the sets
+    # that keep the demo's 4 trees + 1 sprout): fixed 0.20/0.50, floor 0.60, threshold 0.65 gives ARI 0.822 / 0.815 / 1.0 / 1.0
+    # (before the burst: 0.05/0.50 gave 0.886 / 0.905 / 1.0 and 0.296 on the burst). NOT the plan: the plan uses raw
+    # cosine, which scores ARI 0.18 on three of the four snapshots.
     calibration: Literal["fixed", "snapshot", "raw"] = "fixed"
-    lo: float = 0.05
+    lo: float = 0.20
     hi: float = 0.50
     # Average-linkage merge distance (1 − affinity). Plan: 0.45, which splits real goals with this
-    # calibration (min ARI 0.70). 0.65 gives min ARI 0.886 (demo 0.886, others 0.905 and 1.0).
+    # calibration. 0.65 gives min ARI 0.815 over the four snapshots.
     threshold: float = 0.65
     # Sprouts (proposal §5): younger than 30 min and fewer than 3 tabs.
     sprout_age_min: int = 30
@@ -70,7 +76,7 @@ PARAMS = ClusterParams()
 # the tabs' title terms. Related titles share few terms (Jaccard 0.1-0.3), so 0.15 is already "strong".
 # Measured on the demo snapshot: ARI 0.693 (3 trees, 14 tabs in the meadow) vs 0.886 with embeddings;
 # hi 0.12-0.20 gives the same result, 0.25 drops to 0.383.
-JACCARD_PARAMS = replace(PARAMS, lo=0.0, hi=0.15)
+JACCARD_PARAMS = replace(PARAMS, lo=0.0, hi=0.15, temporal_floor=0.0)  # Jaccard is sparse: no floor
 
 
 @dataclass(frozen=True)
@@ -183,7 +189,8 @@ def affinity_matrix(tabs: Sequence[ClusterTab], vectors: np.ndarray, params: Clu
         if j is not None and j != i:
             opener[i, j] = opener[j, i] = 1.0
     stamps = np.array([t.opened_at.timestamp() for t in tabs])
-    temporal = (np.abs(stamps[:, None] - stamps[None, :]) <= params.temporal_window_s).astype(float)
+    temporal = ((np.abs(stamps[:, None] - stamps[None, :]) <= params.temporal_window_s)
+                & (cal >= params.temporal_floor)).astype(float)
     aff = np.clip(params.w_cos * cal + params.w_opener * opener + params.w_temporal * temporal, 0.0, 1.0)
     np.fill_diagonal(aff, 1.0)
     off = ~np.eye(len(tabs), dtype=bool)

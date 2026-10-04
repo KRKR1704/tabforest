@@ -1,11 +1,11 @@
-r"""Calibrate R-5 clustering on three hand-labeled snapshots (demo + 2 calibration sets).
+r"""Calibrate R-5 clustering on four hand-labeled snapshots (demo + 2 calibration sets + a burst of unrelated tabs).
 
 Run from apps/api:
     .venv\Scripts\python app\engine\scripts\calibrate_cluster.py
 
 Embeds the snapshots with the R-4 cache under a calibration user (rows deleted at the end),
 then grid-searches the cosine calibration and the merge threshold, ranking by the MINIMUM
-ARI across the three snapshots (then the mean, then closeness to the plan's threshold 0.45).
+ARI across the snapshots (then the mean, then closeness to the plan's threshold 0.45).
 
 Selection rule: the best minimum ARI over all three snapshots. The ranking restricted to sets
 that keep the demo's narrated shape (4 trees + 1 sprout, proposal §21) is printed too: it costs
@@ -31,6 +31,7 @@ from app.engine.normalize import normalize_tab  # noqa: E402
 
 CAL_USER = UUID("00000000-0000-4000-8000-0000000000ee")
 THRESHOLDS = [round(0.30 + 0.05 * i, 2) for i in range(11)]  # 0.30 .. 0.80
+FLOORS = (0.0, 0.10, 0.20, 0.30, 0.40, 0.45, 0.50, 0.60, 0.70, 0.80)  # temporal bonus only if calibrated cosine >= floor
 
 
 def grid() -> list[ClusterParams]:
@@ -41,7 +42,7 @@ def grid() -> list[ClusterParams]:
         out.append(replace(PARAMS, calibration="snapshot", lo=plo, hi=phi, threshold=thr))
     for i in range(19):
         out.append(replace(PARAMS, calibration="raw", lo=0.0, hi=1.0, threshold=round(0.50 + 0.025 * i, 3)))
-    return out
+    return [replace(p, temporal_floor=f) for p in out for f in FLOORS]
 
 
 async def embed_all(snapshots: dict) -> dict:
@@ -72,10 +73,10 @@ def demo_shape_ok(params: ClusterParams, snapshots: dict, vectors: dict) -> bool
 
 def describe(p: ClusterParams) -> str:
     if p.calibration == "fixed":
-        return f"fixed lo={p.lo:.2f} hi={p.hi:.2f}"
+        return f"fixed lo={p.lo:.2f} hi={p.hi:.2f} floor={p.temporal_floor:.2f}"
     if p.calibration == "snapshot":
-        return f"snapshot p{p.lo:.0f}/p{p.hi:.0f}"
-    return "raw"
+        return f"snapshot p{p.lo:.0f}/p{p.hi:.0f} floor={p.temporal_floor:.2f}"
+    return f"raw floor={p.temporal_floor:.2f}"
 
 
 def main() -> None:
@@ -111,9 +112,22 @@ def main() -> None:
               f"per snapshot {[round(s, 3) for s in scores]}")
     plan = replace(PARAMS, calibration="raw", lo=0.0, hi=1.0, threshold=0.45)
     print(f"\nplan as written (raw cosine, threshold 0.45): ARI {[round(s, 3) for s in evaluate(plan, snapshots, vectors)]}")
-    best = rows[0][3]
-    print(f"\nchosen: calibration={best.calibration} lo={best.lo} hi={best.hi} threshold={best.threshold}")
-    print(f"current PARAMS: calibration={PARAMS.calibration} lo={PARAMS.lo} hi={PARAMS.hi} threshold={PARAMS.threshold}"
+    best = constrained[0][3] if constrained else rows[0][3]  # best minimum ARI among the sets that keep 4 trees + 1 sprout
+    print(f"(unconstrained best: {describe(rows[0][3])} threshold {rows[0][3].threshold}; chosen below keeps the demo shape)")
+    print(f"\nchosen: calibration={best.calibration} lo={best.lo} hi={best.hi} threshold={best.threshold} "
+          f"temporal_floor={best.temporal_floor}")
+    top = constrained[0] if constrained else rows[0]
+    tied = [r for r in (constrained or rows) if abs(r[0] - top[0]) < 1e-9 and abs(r[1] - top[1]) < 1e-9]
+    now = evaluate(PARAMS, snapshots, vectors)
+    print(f"{len(tied)} parameter sets tie with it on (min ARI, mean ARI) = ({top[0]:.3f}, {top[1]:.3f}); the shipped PARAMS "
+          f"score min {min(now):.3f}, mean {sum(now) / len(now):.3f}: it is one of them ({'yes' if min(now) >= top[0] - 1e-9 and sum(now) / len(now) >= top[1] - 1e-9 else 'NO'}); "
+          "among the ties the shipped one keeps threshold 0.65 and sits in the middle of a wide floor plateau (below)")
+    print("\nthe CURRENT calibration (PARAMS) at each floor; the plateau is the safe range:")
+    for f in FLOORS:
+        sc = evaluate(replace(PARAMS, temporal_floor=f), snapshots, vectors)
+        print(f"  floor {f:.2f}: ARI {[round(x, 3) for x in sc]}  min {min(sc):.3f}")
+    print(f"current PARAMS: calibration={PARAMS.calibration} lo={PARAMS.lo} hi={PARAMS.hi} threshold={PARAMS.threshold} "
+          f"floor={PARAMS.temporal_floor}"
           f" -> ARI {[round(s, 3) for s in evaluate(PARAMS, snapshots, vectors)]}")
 
     # Leave one snapshot out: choose on the other two, score the held-out one.

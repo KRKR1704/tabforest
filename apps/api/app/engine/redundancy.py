@@ -10,7 +10,9 @@ Why the rule has three parts (measured on fixtures/title_pairs.json, scripts/cal
 - same branch: the model already decided they belong together;
 - the cosine bar, 0.66, is the best F1 on 28 redundant against 250 related and unrelated same-type pairs.
 The keeper is the official page (docs of the vendor or project) of the branch when it is close enough to the group,
-else the highest-importance tab of the group. Prune's own gate (SIMILARITY_MIN, 0.55) stays as a second check.
+else the highest-importance tab of the group. Prune's gate on the model's own groups is stricter than the old 0.55: a tab
+must be SEMANTIC_VINE_THRESHOLD close to another tab of its group AND share MIN_SHARED_TERMS distinctive title terms
+with it (prune._says_the_same); the keeper floor (SIMILARITY_MIN, 0.55) stays.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from typing import Any
 import numpy as np
 
 from .features import ClusterFeatures
+from .labels import title_terms
 
 # Best F1 of scripts/calibrate_redundancy.py on 65 labeled titles (278 same-type pairs, 28 of them redundant):
 # precision 0.885, recall 0.821, F1 0.852 at 0.66. The demo's two redundant JWT articles score 0.744.
@@ -29,6 +32,30 @@ SEMANTIC_VINE_THRESHOLD = 0.66
 # checks the same thing again at suggestion time (a test keeps them equal).
 KEEPER_MIN_COSINE = 0.55
 NEVER_COMPARED = frozenset({"search"})  # a search page is a step in a research path, not a page that duplicates another
+# Two pages say the same thing only if their titles also share this many DISTINCTIVE terms (live finding: Chickpea
+# Curry, Hummus and a second curry share "recipe"-ish embedding mass but no subject).
+MIN_SHARED_TERMS = 2
+# Words that name the kind of page or pad a title; they never count as shared subject matter. The leaf's own type word
+# (docs, article, ...) is dropped on top of these.
+GENERIC_TERMS = frozenset({
+    "docs", "doc", "documentation", "guide", "tutorial", "tutorials", "article", "blog", "post", "code", "example",
+    "examples", "recipe", "recipes", "overview", "introduction", "beginner", "beginners", "complete", "practical",
+    "quick", "simple", "basic", "basics", "minutes", "review", "reviews", "comparison", "classic", "homemade", "page",
+})
+
+
+def _plain(term: str) -> str:
+    return term[:-1] if len(term) > 4 and term.endswith("s") and not term.endswith(("ss", "us", "is")) else term
+
+
+def distinctive_terms(title: str, source_type: str = "") -> frozenset[str]:
+    """Title terms that carry the subject: no stopwords, no site suffix, no page-kind words, no leaf type word."""
+    drop = {_plain(t) for t in GENERIC_TERMS} | {_plain(source_type.lower())}
+    return frozenset(t for t in map(_plain, title_terms(title)) if t not in drop)
+
+
+def shared_distinctive_terms(title_a: str, type_a: str, title_b: str, type_b: str) -> frozenset[str]:
+    return distinctive_terms(title_a, type_a) & distinctive_terms(title_b, type_b)
 
 
 def cosine(a: np.ndarray, b: np.ndarray) -> float:

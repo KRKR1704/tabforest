@@ -33,6 +33,7 @@ from .embeddings import embed_texts, tab_embedding_text
 from .features import DISTRACTION_MS, STALE_AFTER
 from .normalize import normalize_tab
 from .persist import last_grove
+from .redundancy import MIN_SHARED_TERMS, SEMANTIC_VINE_THRESHOLD, shared_distinctive_terms
 from .schemas.prune import PruneRequest, PruneResponse
 
 log = logging.getLogger("tabforest.engine.prune")
@@ -104,6 +105,20 @@ def exact_duplicates(grove: Mapping[str, Any], wanted: set[str],
     return out
 
 
+def _says_the_same(ref: str, group: Sequence[str], vectors: Mapping[str, np.ndarray],
+                   leaves: Mapping[str, Mapping[str, Any]]) -> bool:
+    """The model proposed this tab as redundant; keep it only if some other tab of the group (the keeper or a fellow
+    member) is at least SEMANTIC_VINE_THRESHOLD close AND shares MIN_SHARED_TERMS distinctive title terms with it.
+    The keeper check (SIMILARITY_MIN) stays separate: an official page is a looser keeper than a peer (as in
+    redundancy.py), so the demo's two JWT articles (0.60 and 0.64 to the docs, 0.74 to each other) still qualify."""
+    mine = leaves[ref]
+    return any(other != ref
+               and _cosine(vectors[ref], vectors[other]) >= SEMANTIC_VINE_THRESHOLD
+               and len(shared_distinctive_terms(mine["title"], mine["source_type"], leaves[other]["title"],
+                                                leaves[other]["source_type"])) >= MIN_SHARED_TERMS
+               for other in group)
+
+
 async def semantic_redundant(grove: Mapping[str, Any], wanted: set[str], leaves: Mapping[str, Mapping[str, Any]],
                              embed: Embed, taken: set[frozenset[str]]) -> list[dict[str, Any]]:
     candidates = []
@@ -126,7 +141,8 @@ async def semantic_redundant(grove: Mapping[str, Any], wanted: set[str], leaves:
         return []
     out = []
     for vine, members, keep in candidates:
-        similar = [r for r in members if _cosine(vectors[r], vectors[keep]) >= SIMILARITY_MIN]
+        similar = [r for r in members if _cosine(vectors[r], vectors[keep]) >= SIMILARITY_MIN
+                   and _says_the_same(r, [keep, *members], vectors, leaves)]
         if not similar or frozenset(similar) in taken:
             continue
         refs = ([keep] if keep in vine["tab_refs"] else []) + similar

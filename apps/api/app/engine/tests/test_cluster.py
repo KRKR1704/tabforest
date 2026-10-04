@@ -65,9 +65,42 @@ def test_affinity_opener_and_temporal_components() -> None:
     tabs = [tab("x", 100), tab("y", 99, opener="x"), tab("z", 50)]
     vecs = np.stack([basis(0), basis(1), basis(2)])  # cosine 0 everywhere
     aff, _, _ = affinity_matrix(tabs, vecs, PARAMS)
-    assert aff[0, 1] == pytest.approx(PARAMS.w_opener + PARAMS.w_temporal)  # opener + opened 1 min apart
+    assert aff[0, 1] == pytest.approx(PARAMS.w_opener)  # opener; unrelated tabs get no temporal bonus (below the floor)
     assert aff[0, 2] == pytest.approx(0.0)
     assert aff[1, 0] == aff[0, 1]
+    always = replace(PARAMS, temporal_floor=0.0)
+    assert affinity_matrix(tabs, vecs, always)[0][0, 1] == pytest.approx(PARAMS.w_opener + PARAMS.w_temporal)
+
+
+def test_temporal_bonus_needs_calibrated_cosine_at_the_floor() -> None:
+    tabs = [tab("x", 100), tab("y", 99)]  # opened one minute apart, no opener
+    for cos, bonus in ((0.0, False), (0.3, False), (0.9, True)):  # calibrated: 0, 0.33, 1 (floor 0.6)
+        vecs = np.stack([basis(0), cos * basis(0) + np.sqrt(1 - cos**2) * basis(1)])
+        aff = affinity_matrix(tabs, vecs, PARAMS)[0][0, 1]
+        cal = min(max((cos - PARAMS.lo) / (PARAMS.hi - PARAMS.lo), 0.0), 1.0)
+        assert aff == pytest.approx(min(1.0, PARAMS.w_cos * cal + (PARAMS.w_temporal if bonus else 0.0)))
+
+
+def burst():
+    """Four unrelated topics, 3 tabs each, opened round-robin within 100 s; unrelated tabs still share a little
+    embedding mass (cosine 0.32, calibrated 0.4), the way real titles do."""
+    tabs, vecs = [], {}
+    for n in range(12):
+        g, ref = n % 4, f"g{n % 4}t{n // 4}"
+        tabs.append(ClusterTab(ref, f"topic {g} page {n // 4}", None,
+                               SNAP - timedelta(minutes=30) + timedelta(seconds=9 * n), False))
+        vecs[ref] = np.sqrt(0.68) * basis(g) + np.sqrt(0.32) * basis(15)
+    return tabs, vecs
+
+
+def test_burst_of_unrelated_tabs_is_not_merged_by_time_alone() -> None:
+    tabs, vecs = burst()
+    result = cluster(tabs, vecs, SNAP)
+    for g in range(4):
+        group = {f"g{g}t{i}" for i in range(3)}
+        assert members(result, f"g{g}t0") == group
+    glued = cluster(tabs, vecs, SNAP, params=replace(PARAMS, temporal_floor=0.0))  # the old behavior
+    assert members(glued, "g0t0") != {f"g0t{i}" for i in range(3)}
 
 
 # --- clustering, search tabs, sprouts ----------------------------------------------------------
@@ -116,7 +149,7 @@ def test_sprout_rule() -> None:
 def test_fog_when_ambiguous_meadow_otherwise() -> None:
     tabs, vecs = two_groups()
     tabs += [tab("between", 500), tab("lonely", 600)]
-    vecs["between"] = unit(0.27 * basis(0) + 0.27 * basis(1) + 0.924 * basis(5))
+    vecs["between"] = unit(0.35 * basis(0) + 0.35 * basis(1) + 0.869 * basis(5))
     vecs["lonely"] = basis(9)
     r = cluster(tabs, vecs, SNAP)
     assert [s.tab_ref for s in r.fog] == ["between"]
