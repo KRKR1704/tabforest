@@ -12,7 +12,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-import test_grow as tg  # the tests directory is on sys.path (conftest.py)
+from app.engine.tests import test_grow as tg  # FakeClient, demo_result, DEMO, SNAP
 from app.engine import db, routes
 from app.engine import grove as grove_mod
 from app.engine.aoai import ContentFilteredError, StructuredOutputError
