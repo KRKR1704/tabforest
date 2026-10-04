@@ -23,10 +23,10 @@ from .normalize import _MATCH_TRANSLATE
 
 Kind = Literal["goal", "direction", "decision", "question", "blocker", "action", "hypothesis"]
 RANK = {"hypothesis": 0, "inferred": 1, "sourced": 2, "stated": 3}
-REF_KIND = {"t": "tab", "q": "query", "n": "note", "d": "doc"}
+REF_KIND = {"t": "tab", "q": "query", "n": "note", "d": "doc", "c": "comparison"}
 CAP_BASE, CAP_PER_REF, CAP_PER_TYPE, CAP_MAX = 0.35, 0.15, 0.10, 0.95
 INFERRED_MIN_REFS, INFERRED_MIN_CONFIDENCE = 2, 0.60
-_SHORT_REF = re.compile(r"^[tqnd]\d+$")
+_SHORT_REF = re.compile(r"^[tqndc]\d+$")
 
 
 @dataclass
@@ -36,6 +36,7 @@ class ValidationContext:
     notes: Mapping[str, str]                # real note id ("n_<uuid>") -> text, this user's notes only
     documents: Sequence[str] = ()           # supplied text (Work Context); empty in browser mode
     mode: Literal["browser", "work_context"] = "browser"
+    anchors: Mapping[str, tuple[str, str]] = field(default_factory=dict)  # comparison id -> shown (kind, id)
 
 
 @dataclass
@@ -51,6 +52,7 @@ class ValidatedClaim:
     model_provenance: str = ""
     model_confidence: float = 0.0
     reasons: list[str] = field(default_factory=list)  # why it was downgraded or refs dropped
+    short_refs: list[str] = field(default_factory=list)  # every valid ref as cited (incl. ones counted once)
 
     @property
     def downgraded(self) -> bool:
@@ -150,29 +152,43 @@ def display_text(kind: Kind, provenance: str, text: str) -> str:
 # Claims
 # ---------------------------------------------------------------------------------------
 
-def _map_evidence(evidence: Sequence[Any], ctx: ValidationContext, reasons: list[str]) -> list[dict[str, str]]:
-    out, seen = [], set()
+def _map_evidence(evidence: Sequence[Any], ctx: ValidationContext, reasons: list[str]
+                  ) -> tuple[list[dict[str, str]], list[str]]:
+    """Valid evidence in the API's shape (one entry per distinct page or family), plus every valid
+    short ref cited. A c* ref is one valid ref, shown as its anchor (the API's evidence kinds have no
+    "comparison"); a c* and the page it was read from count once, never twice."""
+    out, shorts, shown = [], [], {}
     for ev in evidence:
         ref = (getattr(ev, "ref", None) or "").strip()
         why = (getattr(ev, "why", None) or "").strip()[:200]
         real = ctx.refs.get(ref) if _SHORT_REF.match(ref) else None
-        if real is None:
+        if real is None or (ref[0] == "c" and real not in ctx.anchors):
             reasons.append(f"dropped unknown ref {ref[:20]!r}")
             continue
-        if real in seen:
+        if ref in shorts:
             continue
-        seen.add(real)
-        out.append({"ref_kind": REF_KIND[ref[0]], "ref": real, "why": why})
-    return out
-
-
-def evidence_cap(evidence: Sequence[Mapping[str, str]], ctx: ValidationContext) -> float:
-    types = set()
-    for ev in evidence:
-        if ev["ref_kind"] == "tab":
-            types.add(ctx.tab_types.get(ev["ref"], "other"))
+        shorts.append(ref)
+        if ref[0] == "c":
+            kind, target = ctx.anchors[real]
+            why = ("comparison: " + why)[:200]
         else:
-            types.add(ev["ref_kind"])
+            kind, target = REF_KIND[ref[0]], real
+        if (kind, target) in shown:
+            reasons.append(f"{ref} and {shown[(kind, target)]} are the same page; counted once")
+            continue
+        shown[(kind, target)] = ref
+        out.append({"ref_kind": kind, "ref": target, "why": why})
+    return out, shorts
+
+
+def evidence_cap(evidence: Sequence[Mapping[str, str]], ctx: ValidationContext,
+                 short_refs: Sequence[str] | None = None) -> float:
+    """0.35 + 0.15 per valid ref + 0.10 per distinct source type (tab leaf types, query, note, doc,
+    comparison), at most 0.95."""
+    if short_refs is None:
+        types = {ctx.tab_types.get(e["ref"], "other") if e["ref_kind"] == "tab" else e["ref_kind"] for e in evidence}
+    else:  # types of the refs as cited: a c* is a "comparison", not its anchor tab's type
+        types = {ctx.tab_types.get(ctx.refs.get(r, ""), "other") if r[0] == "t" else REF_KIND[r[0]] for r in short_refs}
     return min(CAP_BASE + CAP_PER_REF * len(evidence) + CAP_PER_TYPE * len(types), CAP_MAX)
 
 
@@ -180,11 +196,11 @@ def validate_claim(kind: Kind, text: str, provenance: str, confidence: float, ev
                    ctx: ValidationContext, *, user_note_ref: str | None = None,
                    quote: str | None = None) -> ValidatedClaim:
     reasons: list[str] = []
-    ev = _map_evidence(evidence, ctx, reasons)
+    ev, shorts = _map_evidence(evidence, ctx, reasons)
     model_conf = min(max(float(confidence or 0.0), 0.0), 1.0)
     final = provenance if kind != "hypothesis" and provenance in RANK else "hypothesis"
     claim = ValidatedClaim(kind, text.strip(), final, model_conf, "", ev, model_provenance=final,
-                           model_confidence=model_conf, reasons=reasons)
+                           model_confidence=model_conf, reasons=reasons, short_refs=shorts)
 
     if final == "stated":
         candidates = [user_note_ref] if user_note_ref else []
@@ -198,6 +214,7 @@ def validate_claim(kind: Kind, text: str, provenance: str, confidence: float, ev
             claim.text = ctx.notes[note_id]
             if not any(e["ref"] == note_id for e in ev):
                 ev.insert(0, {"ref_kind": "note", "ref": note_id, "why": "user note"})
+                shorts.insert(0, next(r for r in candidates if ctx.refs.get(r) == note_id))
             claim.provenance, claim.confidence = "stated", 1.0
             claim.display_text = display_text(kind, "stated", claim.text)
             return claim
@@ -211,7 +228,7 @@ def validate_claim(kind: Kind, text: str, provenance: str, confidence: float, ev
         else:
             claim.quote = original
 
-    cap = evidence_cap(ev, ctx)
+    cap = evidence_cap(ev, ctx, shorts)
     claim.confidence = round(min(model_conf, cap), 2)
     if final == "sourced":
         claim.provenance = "sourced"
