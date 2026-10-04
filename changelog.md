@@ -6,6 +6,22 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Live check: the product against the deployed API with a real sign-in (D)
+
+### Added
+
+- `apps/extension/e2e/full-stack/live-check.mjs` and a README section: a visible Chromium with the real extension against the deployed API and the real Azure OpenAI model. One Microsoft sign-in by a person, then automatic: 12 real pages and 3 searches with tab switching, a private page skipped by the Hollow, Grow grove, tree detail, Save context, Resume and Restore, Timeline, prune, Work Context (paste and upload), Ask Memory, privacy. It never deletes anything. It writes `report.md`, `report.json` and a screenshot per screen. The README has setup commands (Playwright, the live build) and a section for an AI agent that runs it for someone.
+- `TOPIC_GAP_MIN` waits between topics while browsing, because the engine merges topics that are opened within minutes of each other.
+
+### Verification
+
+- First live run (before this wording was added): 15 of 18 checks passed against the deployed API. Sign-in, events, Grow with the real model (13.6 s, not degraded), tree detail, Save context, Restore (10 to 13 tabs), prune, Work Context (sourced, 8 s) and privacy all worked. The three failures were the known Grove sign-in race (401 before sign-in), a Timeline that was empty for a 9-second-per-tab session, and the single tree described below; the script now reports the first two as KNOWN.
+
+### Notes
+
+- Findings for the engine owners: tabs opened in a burst (about 2.5 minutes) were merged into one tree, including a branch the model named "Unrelated Wikipedia topics" (the 3-minute temporal bonus); the open-loop threshold of 0.80 is above the measured similarity of real rephrased searches (0.67 to 0.84), so the open question is found only sometimes; prune labelled three related food pages as "says the same".
+- The `TOPIC_GAP_MIN` path has been syntax-checked but not run to completion.
+
 ## [2026-10-04] — Audit fixes for R-10, R-11, R-13 and R-14, and the semantic-redundancy threshold (R)
 
 Seven fixes from the audit of D's R-11, R-13 and R-14 work, and the R-10 notes leak. Only `apps/api/app/engine/**` and this file changed.
