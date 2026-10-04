@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
@@ -26,7 +26,7 @@ import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
 from .embeddings import embed_tabs
-from .labels import top_terms
+from .labels import title_terms, top_terms
 from .normalize import SourceType, normalize_tab
 
 MAX_TABS = 60
@@ -66,6 +66,11 @@ class ClusterParams:
 
 
 PARAMS = ClusterParams()
+# Seedling clustering (embeddings unavailable, R-9): the cosine term is replaced by the Jaccard overlap of
+# the tabs' title terms. Related titles share few terms (Jaccard 0.1-0.3), so 0.15 is already "strong".
+# Measured on the demo snapshot: ARI 0.693 (3 trees, 14 tabs in the meadow) vs 0.886 with embeddings;
+# hi 0.12-0.20 gives the same result, 0.25 drops to 0.383.
+JACCARD_PARAMS = replace(PARAMS, lo=0.0, hi=0.15)
 
 
 @dataclass(frozen=True)
@@ -147,10 +152,29 @@ def calibrate(cos: np.ndarray, params: ClusterParams) -> tuple[np.ndarray, float
     return np.clip((cos - lo) / (hi - lo), 0.0, 1.0), lo, hi
 
 
-def affinity_matrix(tabs: Sequence[ClusterTab], vectors: np.ndarray, params: ClusterParams
+def _stem(term: str) -> str:
+    return term.rstrip("s")[:7]
+
+
+def jaccard_matrix(tabs: Sequence[ClusterTab]) -> np.ndarray:
+    """Jaccard overlap of the normalized title terms (labels.title_terms, crude stems) of every tab pair."""
+    sets = [frozenset(_stem(t) for t in title_terms(tab.title)) for tab in tabs]
+    out = np.eye(len(tabs))
+    for i in range(len(tabs)):
+        for j in range(i + 1, len(tabs)):
+            union = len(sets[i] | sets[j])
+            out[i, j] = out[j, i] = len(sets[i] & sets[j]) / union if union else 0.0
+    return out
+
+
+def affinity_matrix(tabs: Sequence[ClusterTab], vectors: np.ndarray, params: ClusterParams, *,
+                    similarity: Literal["cosine", "jaccard"] = "cosine"
                     ) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
-    unit = vectors / np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), 1e-12)
-    cos = np.clip(unit @ unit.T, -1.0, 1.0)
+    if similarity == "jaccard":
+        cos = jaccard_matrix(tabs)
+    else:
+        unit = vectors / np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), 1e-12)
+        cos = np.clip(unit @ unit.T, -1.0, 1.0)
     cal, lo, hi = calibrate(cos, params)
     index = {t.tab_ref: i for i, t in enumerate(tabs)}
     opener = np.zeros_like(cos)
@@ -190,9 +214,12 @@ def _stable_id(refs: Sequence[str]) -> str:
 
 def cluster(tabs: Sequence[ClusterTab], vectors: Mapping[str, np.ndarray], snapshot_at: str | datetime, *,
             pins: Mapping[str, str] | None = None, existing_projects: Mapping[str, np.ndarray] | None = None,
-            next_focus: Mapping[str, str] | None = None, params: ClusterParams = PARAMS) -> ClusterResult:
+            next_focus: Mapping[str, str] | None = None, params: ClusterParams = PARAMS,
+            similarity: Literal["cosine", "jaccard"] = "cosine") -> ClusterResult:
     """Pure clustering. pins: tab_ref → project id (user assignments). existing_projects:
-    project id → centroid. next_focus: search tab_ref → tab focused right after it."""
+    project id → centroid. next_focus: search tab_ref → tab focused right after it.
+    similarity="jaccard" (Seedling, no embeddings): vectors may be None; clusters get no centroid
+    and are not matched to existing projects."""
     if len(tabs) > MAX_TABS:
         raise ValueError(f"at most {MAX_TABS} tabs per snapshot")
     if not tabs:
@@ -202,8 +229,9 @@ def cluster(tabs: Sequence[ClusterTab], vectors: Mapping[str, np.ndarray], snaps
     snapshot_at = _ts(snapshot_at)
     refs = [t.tab_ref for t in tabs]
     index = {ref: i for i, ref in enumerate(refs)}
-    matrix = np.stack([np.asarray(vectors[ref], dtype=np.float64) for ref in refs])
-    aff, cos, stats = affinity_matrix(tabs, matrix, params)
+    no_vectors = similarity == "jaccard" and vectors is None
+    matrix = np.zeros((len(refs), 1)) if no_vectors else         np.stack([np.asarray(vectors[ref], dtype=np.float64) for ref in refs])
+    aff, cos, stats = affinity_matrix(tabs, matrix, params, similarity=similarity)
 
     # 1. Agglomerative clustering of the core: not search, not pinned.
     core = [i for i, t in enumerate(tabs) if not t.is_search and t.tab_ref not in pins]
@@ -248,9 +276,9 @@ def cluster(tabs: Sequence[ClusterTab], vectors: Mapping[str, np.ndarray], snaps
         c = matrix[list(members)].mean(axis=0)
         return c / max(np.linalg.norm(c), 1e-12)
 
-    centroids = {g: centroid(m) for g, m in multi.items()}
+    centroids = {} if no_vectors else {g: centroid(m) for g, m in multi.items()}
     matched: dict[int, str] = {}
-    if existing_projects:
+    if existing_projects and not no_vectors:
         proj = {pid: np.asarray(c, dtype=np.float64) / max(np.linalg.norm(c), 1e-12)
                 for pid, c in existing_projects.items()}
         pairs = sorted(((float(centroids[g] @ pc), g, pid) for g in multi for pid, pc in proj.items()),
@@ -315,7 +343,7 @@ def cluster(tabs: Sequence[ClusterTab], vectors: Mapping[str, np.ndarray], snaps
         members = c["members"]
         return Cluster(id=cid, tab_refs=[refs[i] for i in sorted(set(members) | set(extra[cid]))],
                        label=label_of(members),
-                       centroid=[round(float(x), 6) for x in centroid(members)],
+                       centroid=[] if no_vectors else [round(float(x), 6) for x in centroid(members)],
                        pinned_tab_refs=sorted(c["pinned"]), is_existing_project_id=c["project"],
                        earliest_opened_at=min(tabs[i].opened_at for i in members).isoformat())
 
@@ -373,3 +401,14 @@ async def cluster_snapshot(user_id: UUID, snapshot_tabs: Sequence[Mapping[str, A
     existing = await load_project_centroids(pool, user_id) if pool is not None else {}
     return cluster(make_cluster_tabs(snapshot_tabs), vectors, snapshot_at, pins=pins,
                    existing_projects=existing, next_focus=next_focus, params=params)
+
+
+async def cluster_snapshot_no_embeddings(user_id: UUID, snapshot_tabs: Sequence[Mapping[str, Any]], pool: Any,
+                                         snapshot_at: str | datetime, *, pins: Mapping[str, str] | None = None,
+                                         next_focus: Mapping[str, str] | None = None) -> ClusterResult:
+    """Seedling clustering (R-9) when embeddings fail: opener + temporal + title-term Jaccard. Pins still
+    apply; clusters are not matched to existing projects (that needs embeddings)."""
+    if pins is None:
+        pins = await load_pins(pool, user_id, [t["tab_ref"] for t in snapshot_tabs]) if pool is not None else {}
+    return cluster(make_cluster_tabs(snapshot_tabs), None, snapshot_at, pins=pins, existing_projects=None,
+                   next_focus=next_focus, params=JACCARD_PARAMS, similarity="jaccard")

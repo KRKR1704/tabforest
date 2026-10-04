@@ -9,6 +9,7 @@ Numbers that differ from the plan are in the constants block with the reason.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from collections.abc import Mapping, Sequence
@@ -22,7 +23,10 @@ import numpy as np
 from .adapters.stats import StatsSource, TabEvent, get_stats_source
 from .embeddings import embed_queries
 from .labels import STOPWORDS as STOPWORDS_FOR_TERMS
+from .labels import title_terms
 from .normalize import leaf_source_type, normalize_tab
+
+log = logging.getLogger("tabforest.engine.features")
 
 # Query families (§3.3). Plan: cosine ≥ 0.80. scripts/calibrate_queries.py on 36 labeled queries
 # (630 pairs): rephrasings 0.59–0.87, related-but-different 0.19–0.70, unrelated ≤ 0.39; 0.80 has
@@ -171,6 +175,22 @@ def visits_from(events: Sequence[TabEvent]) -> list[Visit]:
         elif e.type == "BLUR" and e.tab_ref in open_focus:
             f = open_focus.pop(e.tab_ref)
             out.append(Visit(e.tab_ref, f.ts, int(e.active_ms or 0), f.session_id))
+    return out
+
+
+def bow_vectors(texts: Sequence[str]) -> dict[str, np.ndarray]:
+    """Term-overlap stand-ins for query embeddings (R-9, when embeddings are down): one-hot vectors over
+    the stems of the queries' terms. Rephrasings share few terms, so fewer families form than with embeddings."""
+    stems = {t: [w.rstrip("s")[:7] for w in title_terms(t)] for t in texts}
+    vocab = {w: i for i, w in enumerate(sorted({w for ws in stems.values() for w in ws}))}
+    out = {}
+    for text, ws in stems.items():
+        v = np.zeros(max(len(vocab), 1))
+        for w in ws:
+            v[vocab[w]] = 1.0
+        if not v.any():
+            v[0] = 1e-6  # no content terms: still a valid vector, similar to nothing
+        out[text] = v
     return out
 
 
@@ -375,7 +395,13 @@ async def compute_features(user_id: UUID, tab_refs: Sequence[str], snapshot_tabs
     window = await stats.events_since(user_id, snapshot_at - QUERY_LOOKBACK)
     queries = sorted({normalize_tab(by_ref[r]).search_query for r in tab_refs} - {None}
                      | {e.search_query for e in window if e.search_query})
-    vectors = (await embed_queries(user_id, queries, pool, client=client)).vectors if queries else {}
+    vectors: Mapping[str, np.ndarray] = {}
+    if queries:
+        try:
+            vectors = (await embed_queries(user_id, queries, pool, client=client)).vectors
+        except Exception as exc:  # noqa: BLE001 - embeddings down (R-9): term-overlap vectors instead
+            log.warning("query embeddings unavailable (%s); grouping queries by term overlap", type(exc).__name__)
+            vectors = bow_vectors(queries)
     return build_features(tab_refs, by_ref, history, window, vectors, snapshot_at, threshold=threshold)
 
 
@@ -424,7 +450,7 @@ class DataBlock:
 
 
 def to_data_block(features: ClusterFeatures, notes: Sequence[Mapping[str, Any]] = (),
-                  prior_research: Sequence[Mapping[str, Any]] = ()) -> DataBlock:
+                  prior_research: Sequence[Mapping[str, Any]] = (), dismissed: Sequence[str] = ()) -> DataBlock:
     """Short refs only (t1.., q1.., c1.., n1..); the model never sees a real id."""
     t = {r: f"t{i}" for i, r in enumerate(features.tab_refs, 1)}
     q = {f.id: f"q{i}" for i, f in enumerate(features.families, 1)}
@@ -446,6 +472,8 @@ def to_data_block(features: ClusterFeatures, notes: Sequence[Mapping[str, Any]] 
         "user_notes": [{"ref": n[str(note["id"])], "text": note["text"]} for note in notes],
         "prior_research": [dict(p) for p in prior_research],
     }
+    if dismissed:  # claims the user dismissed for this project: the model must not repeat them
+        payload["dismissed_by_user"] = [str(d)[:200] for d in dismissed[:20]]
     text = json.dumps(payload, ensure_ascii=False)
     if UUID_RE.search(text):
         raise ValueError("DATA block contains a real id")
