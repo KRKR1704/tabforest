@@ -22,6 +22,41 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Findings for the engine owners: tabs opened in a burst (about 2.5 minutes) were merged into one tree, including a branch the model named "Unrelated Wikipedia topics" (the 3-minute temporal bonus); the open-loop threshold of 0.80 is above the measured similarity of real rephrased searches (0.67 to 0.84), so the open question is found only sometimes; prune labelled three related food pages as "says the same".
 - The `TOPIC_GAP_MIN` path has been syntax-checked but not run to completion.
 
+## [2026-10-04] — R-12: research memory (R)
+
+Insight writer, 5-minute dormancy pass with an advisory lock, `GET /api/memory/search`, and one calibrated similarity threshold shared by the search and the firefly. Only `apps/api/app/engine/**` and this file changed. No migration (`research_insights` and `memory_embeddings` already exist).
+
+### Added
+
+- `engine/memory.py`. `write_insight(user, project)` builds a `research_insights` row from validated rows only: compared options = the project's explored branches; conclusion = the latest non-dismissed `stated` decision that has its user note (else none); rejected options = dismissed decisions that carry evidence; open questions = open questions that carry evidence; period from the tab events (else project dates). The summary is deterministic text, no model call. It is embedded as kind `insight`, source_id = insight id. One insight per project per dormancy period: an insight created at or after `projects.last_active_at` covers the period, so a second call returns `exists` (and links a saved context if the insight lacked one). A project with nothing validated writes nothing. If the embedding fails the row is removed so the next pass retries.
+- `run_memory_pass()`: (a) projects dormant for 30 minutes (last focus from `adapters/stats`) with no insight since their last activity; (b) projects with a `saved_contexts` row from the last day, read through `adapters/contexts` (C13). Held by `pg_try_advisory_lock`; a worker that does not get it does nothing. `memory_loop()` repeats it every 5 minutes, first pass after one interval. `run_memory_pass(user_id=...)` limits it to one user.
+- `GET /api/memory/search?q=` (rate limit 10/min), as `contracts/memory-search.example.json`: the query is embedded (kind `query`, cached), the nearest insights and saved contexts of this user only, joined per project, at or above the threshold, at most 3. `attention_min` from P's aggregate through `stats.attention_ms` (new on the adapter; raw events when the aggregate has not been refreshed behind its watermark), `date` from `period_end`, `conclusion` only for a real stated decision (the key is omitted otherwise). Nothing found is `200 {found:false, matches:[], message:"No related research found"}`; another user's data is never an error or a 404.
+- `POST /api/_memory/run`: dev only (`AUTH_MODE=dev`, 404 otherwise), one pass for the caller.
+- `adapters/contexts.DbContexts` (reads P's `saved_contexts`, joins the project name; the fixture answers on any failure) and `ContextsSource.recent()`; `adapters/stats.attention_ms()`.
+- `scripts/gen_memory_set.py` and `fixtures/memory_set.json` (14 insights, 57 labeled queries: 30 relevant, 15 same-topic-but-different, 12 unrelated), `scripts/calibrate_memory.py`, `scripts/seed_memory.py <user>` (per-user ids, idempotent, skips when the user already has a "Backend Scaling" insight, `delete()` for cleanup).
+
+### Changed
+
+- `PRIOR_RESEARCH_THRESHOLD` 0.35 → **0.34**, one constant for the firefly (`retrieve_prior_research`) and for search. The plan's 0.78 is unreachable: relevant queries peak at 0.68. Plain cosine F1 over the set: 0.806 at 0.25, 0.892 at 0.34 (precision 0.83, recall 0.97), 0.918 at 0.37 (best), 0.824 at 0.50, 0.000 at 0.78. The seeded insight reaches the Backend Auth centroid at 0.345 and the next cluster (Tailspin) at 0.260, so 0.37 would drop the firefly; 0.34 is the highest value where both work. Margin on the Backend Auth side is thin (0.005): if the embedding model or the insight wording changes, re-run `calibrate_memory.py` and the firefly check.
+- Hybrid score (cosine + 0.4 × share of query terms found in the summary): F1 0.984 at threshold 0.58, a real gain for search alone. **Not adopted**: a cluster centroid has no query terms, and its cosine to the insight tops out near 0.36, far below 0.58, so one constant could not serve the firefly. Search stays plain cosine.
+- `schemas/memory.py`: `MemoryMatch.conclusion` is optional (omitted from the JSON when there is no stated decision). The contract example round trip still passes.
+- `standalone.py` starts and stops the memory loop in its lifespan.
+
+### Tests
+
+- `tests/test_memory.py` (19, no network): summary rules, validated-only writer, no conclusion without a stated decision, nothing-to-say, idempotence, embedding failure removes the row, the lock (locked out writes nothing, unlock + release otherwise), dormancy check, saved-context trigger, search output equal to both contract examples, threshold, at most 3, context merge, user B gets an empty result, contract drift rejected.
+- `tests/test_memory_live.py` (5, real Azure OpenAI + Tiger Cloud, user …00f5): seed twice, "session storage" and "redis vs postgres sessions" find Backend Scaling (100 min, stated conclusion, saved context), "recipe", "jwt refresh token storage" and "tokyo itinerary" find nothing, another user finds nothing, the grow puts the firefly on Backend Auth only, the pass writes a dormant project's insight once and search finds it, the dev route is closed outside dev, 0 rows left.
+
+### Verification
+
+Calibration, live search outputs, the grow summary and the cleanup counts are in the R-12 report. `check_contracts.py`: PASS (34 checks). Ruff is not installed in this venv, so lint was not run.
+
+### Notes
+
+- **For P:** nothing starts the memory loop under `app.main` (router lifespans do not run when the router is included). To run it there, add to the lifespan in `main.py`: `from app.engine.memory import memory_loop`, then `task = asyncio.create_task(memory_loop())` before the `yield` and `task.cancel()` after it. Until then `POST /api/_memory/run` (dev) or the standalone app runs it.
+- P's P-15 seed already creates "Backend Scaling" with fixed ids; `seed_memory.py` is per-user and does nothing for a user that has it.
+- The pass reads `projects.last_active_at`; a project that is active again gets a new insight after its next dormancy.
+
 ## [2026-10-04] — Audit fixes for R-10, R-11, R-13 and R-14, and the semantic-redundancy threshold (R)
 
 Seven fixes from the audit of D's R-11, R-13 and R-14 work, and the R-10 notes leak. Only `apps/api/app/engine/**` and this file changed.

@@ -14,7 +14,7 @@ class MemoryMatch(Strict):
     similarity: Confidence
     attention_min: int
     compared: list[str]
-    conclusion: Claim
+    conclusion: Claim | None = None  # only a real stated decision; omitted from the JSON otherwise (memory.payload)
     saved_context_id: str | None
 
 
