@@ -5,6 +5,6 @@ import '../index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Landing />
+    <Landing tourOnOpen />
   </React.StrictMode>
 );

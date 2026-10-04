@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Trees } from 'lucide-react';
+import { Trees, X } from 'lucide-react';
 import { GUIDE_KEY, GUIDE_STEPS } from '../lib/guideGrove';
 import { GroveCanvas } from '../viz/GroveCanvas';
 
 interface GroveGuideProps {
   /** Finished or skipped. */
   onDone: () => void;
+  /** The last step's button. In the app it opens the grove; elsewhere it only closes the tour. */
+  doneLabel?: string;
 }
 
 /** How long the "before" picture is held, so the eye finds the tree before it changes. */
@@ -59,7 +61,7 @@ export const KeyIcon: React.FC<{ id: (typeof GUIDE_KEY)[number]['id'] }> = ({ id
  * "How to read your grove": a walk through what each thing in the grove means,
  * one change at a time, on a small example grove drawn by the real canvas.
  */
-export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
+export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone, doneLabel = 'Open my grove' }) => {
   const [index, setIndex] = useState(0);
   const [run, setRun] = useState(0);
   const [changed, setChanged] = useState(false);
@@ -78,6 +80,15 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
   useEffect(() => {
     heading.current?.focus();
   }, [index]);
+
+  // Escape closes the tour, like its close button.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onDone();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onDone]);
 
   // The trees this step is not about step back, so it is clear where to look.
   useEffect(() => {
@@ -99,49 +110,83 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
   };
 
   return (
-    <main className="flex min-h-screen flex-col bg-forest-950 font-sans text-forest-50">
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-forest-800 px-6 py-3">
+    // A centred dialog over the app: about 58% of a desktop screen, nearly all of a phone's.
+    <div
+      data-kind="guide-backdrop"
+      className="grove-guide-backdrop fixed inset-0 z-50 flex items-center justify-center bg-forest-950/80 p-3 font-sans text-forest-50 sm:p-6"
+    >
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="guide-title"
+      className="grove-guide flex max-h-[92vh] w-[94vw] max-w-[1040px] flex-col overflow-y-auto rounded-lg border border-forest-700 bg-forest-900/95 backdrop-blur-md md:w-[80vw] lg:w-[58vw]"
+    >
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-forest-800 px-5 py-3">
         <div className="flex items-center gap-2.5">
           <Trees className="h-5 w-5 text-forest-400" aria-hidden="true" />
-          <span className="font-serif text-lg font-semibold">How to read your grove</span>
+          <span id="guide-title" className="font-serif text-lg font-semibold">How to read your grove</span>
         </div>
-        <button
-          type="button"
-          className="text-sm text-forest-300 underline-offset-4 hover:text-forest-50 hover:underline"
-          onClick={onDone}
-        >
-          Skip the tour
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            className="text-sm text-forest-300 underline-offset-4 hover:text-forest-50 hover:underline"
+            onClick={onDone}
+          >
+            Skip the tour
+          </button>
+          <button
+            type="button"
+            aria-label="Close the tour"
+            onClick={onDone}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-forest-700 text-forest-200 hover:border-forest-400 hover:text-forest-50"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </header>
 
-      <p className="shrink-0 px-6 pt-3 text-xs text-forest-400">
+      <p className="shrink-0 px-5 pt-3 text-xs text-forest-400">
         This is an example grove, not your own tabs.
       </p>
 
-      <div ref={stage} className="h-[44vh] min-h-[280px] shrink-0">
+      <div ref={stage} className="h-[34vh] min-h-[220px] shrink-0 bg-forest-950">
         <GroveCanvas
           key={`${index}-${run}`}
           grove={changed ? step.after : step.before}
           growTimeScale={1.35}
+          fit="scale"
         />
       </div>
 
       <section
         aria-label="Tour step"
-        className="flex shrink-0 flex-wrap items-end justify-between gap-x-10 gap-y-5 border-t border-forest-800 px-6 py-5"
+        className="flex shrink-0 flex-wrap items-end justify-between gap-x-10 gap-y-5 border-t border-forest-800 px-5 py-5"
       >
-        <div className="min-w-0 flex-1 basis-[420px]">
-          <p className="text-xs font-semibold uppercase tracking-wider text-forest-400">
-            Step {index + 1} of {GUIDE_STEPS.length}
-          </p>
+        <div className="min-w-0 flex-1 basis-[320px]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-forest-400">
+              Step {index + 1} of {GUIDE_STEPS.length}
+            </p>
+            <ol aria-hidden="true" data-kind="guide-progress" className="flex gap-1.5">
+              {GUIDE_STEPS.map((item, at) => (
+                <li
+                  key={item.id}
+                  className={`h-1.5 w-4 rounded-full transition-colors duration-200 ${
+                    at === index ? 'bg-forest-300' : at < index ? 'bg-forest-500' : 'bg-forest-700'
+                  }`}
+                />
+              ))}
+            </ol>
+          </div>
           <h1
+            key={step.id}
             ref={heading}
             tabIndex={-1}
-            className="mt-1.5 font-serif text-2xl font-semibold leading-tight focus:outline-none"
+            className="grove-guide-step mt-1.5 font-serif text-2xl font-semibold leading-tight focus:outline-none"
           >
             {step.title}
           </h1>
-          <dl className="mt-3 grid max-w-3xl grid-cols-1 gap-x-4 gap-y-1.5 text-[15px] leading-relaxed sm:grid-cols-[9.5em_1fr]">
+          <dl key={`${step.id}-words`} className="grove-guide-step mt-3 grid max-w-3xl grid-cols-1 gap-x-4 gap-y-1.5 text-[15px] leading-relaxed sm:grid-cols-[9.5em_1fr]">
             <dt className="font-medium text-forest-400">In your browser</dt>
             <dd className="text-forest-50">{step.browser}</dd>
             <dt className="font-medium text-forest-400">In your grove</dt>
@@ -158,7 +203,7 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
           </button>
           {last ? (
             <button type="button" className={primary} onClick={onDone}>
-              Open my grove
+              {doneLabel}
             </button>
           ) : (
             <button type="button" className={primary} onClick={() => go(index + 1)}>
@@ -168,7 +213,7 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
         </div>
       </section>
 
-      <section aria-label="What each thing means" className="border-t border-forest-800 px-6 py-5">
+      <section aria-label="What each thing means" className="border-t border-forest-800 px-5 py-5">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-forest-400">
           What each thing means
         </h2>
@@ -183,6 +228,7 @@ export const GroveGuide: React.FC<GroveGuideProps> = ({ onDone }) => {
           ))}
         </ul>
       </section>
-    </main>
+    </div>
+    </div>
   );
 };

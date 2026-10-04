@@ -451,7 +451,7 @@ export function playChanges(
     const old = before.get(change.id);
 
     if (change.grown || !old) {
-      growTree(group);
+      growTree(group, tree.groundY);
       continue;
     }
 
@@ -538,7 +538,7 @@ export function playChanges(
     change.lost.forEach((was, index) => {
       const fill = was.fallen ? PALETTE.fallenLeaf : was.wasDormant ? leafAmber : leafGreen;
       const ghost = ghostLeaf(was.length, fill, 'motion-ghost');
-      fallGhost(ghost, was, { x: was.x + (noise(index, 6) - 0.5) * 70, y: next.groundY - 3, angle: -6 }, 250 + index * 200, 1900, index + 11);
+      fallGhost(ghost, was, { x: was.x + (noise(index, 6) - 0.5) * 70, y: tree.groundY - 3, angle: -6 }, 250 + index * 200, 1900, index + 11);
       ghost.attr('opacity', 1);
     });
 
@@ -609,7 +609,7 @@ export function playChanges(
           angle: noise(i, 23) * 360,
         };
         const ghost = ghostLeaf(11, leafAmber, 'motion-decor');
-        fallGhost(ghost, from, { x: from.x + (noise(i, 24) - 0.5) * 80, y: next.groundY - 3, angle: 0 }, 600 + i * 260, 2200, i + 31);
+        fallGhost(ghost, from, { x: from.x + (noise(i, 24) - 0.5) * 80, y: tree.groundY - 3, angle: 0 }, 600 + i * 260, 2200, i + 31);
       }
     }
 
@@ -716,8 +716,7 @@ export function playChanges(
   }
 
   /** A tree that was not there before: the trunk rises, the canopy opens, the leaves come out. */
-  function growTree(group: Any) {
-    const ground = next.groundY;
+  function growTree(group: Any, ground: number) {
     group.selectAll<SVGPathElement, unknown>('[data-kind="trunk"]').each(function () {
       keeper.hold(this, 'transform');
       select(this)
@@ -809,9 +808,7 @@ export function decorateGrove(
   const svg = select(svgElement);
   const root = svg.select<SVGGElement>('[data-kind="grove-root"]');
   if (root.empty()) return { stop: () => undefined };
-  const ground = layout.groundY;
-
-  // A far line of trees and a low hill behind the grove.
+  // A far line of trees and a low hill behind each row of the grove.
   const far = root
     .insert('g', ':first-child')
     .attr('data-kind', 'decor')
@@ -819,19 +816,23 @@ export function decorateGrove(
     .attr('aria-hidden', 'true')
     .attr('pointer-events', 'none');
   const w = layout.width;
-  far
-    .append('path')
-    .attr('fill', DEPTH.hill)
-    .attr('d', `M${-w},${ground}C${w * 0.1},${ground - 70} ${w * 0.3},${ground - 28} ${w * 0.45},${ground - 60}S${w * 0.8},${ground - 20} ${w * 2},${ground - 72}V${ground}Z`);
-  const count = Math.max(4, Math.round(w / 260));
-  for (let i = 0; i < count; i++) {
-    const x = ((i + 0.5) / count) * w + (noise(i, 41) - 0.5) * 90;
-    const s = 0.7 + noise(i, 42) * 0.4;
-    far.append('rect').attr('fill', DEPTH.far).attr('x', x - 3 * s).attr('y', ground - 110 * s).attr('width', 6 * s).attr('height', 110 * s);
-    far.append('circle').attr('fill', DEPTH.far).attr('cx', x).attr('cy', ground - 128 * s).attr('r', 44 * s);
-    far.append('circle').attr('fill', DEPTH.far).attr('cx', x - 26 * s).attr('cy', ground - 108 * s).attr('r', 30 * s);
-    far.append('circle').attr('fill', DEPTH.far).attr('cx', x + 26 * s).attr('cy', ground - 108 * s).attr('r', 30 * s);
-  }
+  layout.rows.forEach((row, rowIndex) => {
+    const ground = row.groundY;
+    far
+      .append('path')
+      .attr('fill', DEPTH.hill)
+      .attr('d', `M${-w},${ground}C${w * 0.1},${ground - 70} ${w * 0.3},${ground - 28} ${w * 0.45},${ground - 60}S${w * 0.8},${ground - 20} ${w * 2},${ground - 72}V${ground}Z`);
+    const count = Math.max(3, Math.round(w / 260));
+    for (let i = 0; i < count; i++) {
+      const seed = i + rowIndex * 17;
+      const x = ((i + 0.5) / count) * w + (noise(seed, 41) - 0.5) * 90;
+      const s = 0.7 + noise(seed, 42) * 0.4;
+      far.append('rect').attr('fill', DEPTH.far).attr('x', x - 3 * s).attr('y', ground - 110 * s).attr('width', 6 * s).attr('height', 110 * s);
+      far.append('circle').attr('fill', DEPTH.far).attr('cx', x).attr('cy', ground - 128 * s).attr('r', 44 * s);
+      far.append('circle').attr('fill', DEPTH.far).attr('cx', x - 26 * s).attr('cy', ground - 108 * s).attr('r', 30 * s);
+      far.append('circle').attr('fill', DEPTH.far).attr('cx', x + 26 * s).attr('cy', ground - 108 * s).attr('r', 30 * s);
+    }
+  });
 
   const byId = new Map(layout.trees.map((tree) => [tree.id, tree]));
   root.selectAll<SVGGElement, unknown>('[data-kind="tree"]').each(function (_, treeIndex) {
@@ -839,6 +840,7 @@ export function decorateGrove(
     if (!tree) return;
     const group = select(this);
     const top = tree.canopy[0];
+    const ground = tree.groundY;
 
     // Under the canopy: a soft shadow on the ground and a darker mass behind the leaves.
     const under = group
@@ -920,7 +922,7 @@ export function decorateGrove(
         y: top.cy + (noise(tick, 62) - 0.5) * top.r,
         angle: noise(tick, 63) * 360,
       };
-      const to = { x: from.x + (noise(tick, 64) - 0.5) * 70, y: ground - 3, angle: 0 };
+      const to = { x: from.x + (noise(tick, 64) - 0.5) * 70, y: tree.groundY - 3, angle: 0 };
       const seed = tick;
       root
         .append('path')

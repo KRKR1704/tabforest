@@ -40,14 +40,15 @@ describe('computeGroveLayout', () => {
     }
   });
 
-  it('makes a leaf longer the longer its tab was read', () => {
-    const leaves = layout.trees
-      .flatMap((tree) => tree.branches.flatMap((branch) => branch.leaves))
-      .sort((a, b) => a.dwellMinutes - b.dwellMinutes);
-    for (let i = 1; i < leaves.length; i++) {
-      expect(leaves[i].length).toBeGreaterThanOrEqual(leaves[i - 1].length);
-    }
-    expect(leaves[leaves.length - 1].length).toBeGreaterThan(leaves[0].length);
+  it('draws every leaf the same size, however long its tab was read', () => {
+    const leaves = [
+      ...layout.trees.flatMap((tree) => [...tree.branches.flatMap((branch) => branch.leaves), ...tree.fallenLeaves]),
+      ...layout.sprouts.flatMap((sprout) => sprout.leaves),
+      ...(layout.meadow?.leaves ?? []),
+      ...(layout.fog?.leaves ?? []),
+    ];
+    expect(new Set(leaves.map((leaf) => leaf.dwellMinutes)).size).toBeGreaterThan(1);
+    expect(new Set(leaves.map((leaf) => leaf.length))).toEqual(new Set([leaves[0].length]));
   });
 
   it('turns the canopy amber only for trees dormant 3+ days', () => {
@@ -208,7 +209,11 @@ describe('GroveCanvas', () => {
       />
     );
     expect(container.querySelector('img')).toBeNull();
-    expect(screen.getByText(hostile)).toBeInTheDocument();
+    // A name this long is written on two lines; read together they are still the text itself.
+    const written = [...container.querySelectorAll('[data-kind="tree"] > text:not([data-kind])')]
+      .map((node) => node.textContent)
+      .join(' ');
+    expect(written).toContain(hostile);
   });
 
   it('redraws when the grove changes', () => {

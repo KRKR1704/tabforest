@@ -1,7 +1,7 @@
 // D3 owns everything inside the <svg>. All text goes through .text(), never
 // markup (SPEC §12): titles and labels come from web pages and the model.
 import { drag, pointer, select, zoom, zoomIdentity, zoomTransform, type Selection } from 'd3';
-import { resolveDrop } from './layout';
+import { NAME_LINE_HEIGHT, resolveDrop } from './layout';
 import type {
   DropTarget,
   FireflyLayout,
@@ -39,6 +39,11 @@ export interface GroveHandlers {
   onSelect?: SelectHandler;
   /** A leaf was dragged onto another tree or onto the new-tree zone. */
   onDropLeaf?: (drop: LeafDrop) => void;
+  /**
+   * False when the grove is stacked in rows and the page scrolls: the wheel and
+   * dragging are left to the page, and the zoom buttons still work.
+   */
+  gestures?: boolean;
 }
 
 /** What the leaf drag needs from the canvas it runs in. */
@@ -497,14 +502,15 @@ function drawTree(
     selectable(vineGroup, onSelect, 'vine', vine.id, tree.id);
   }
 
-  // Branch labels sit over the canopy, so they are drawn after it with a dark halo.
+  // Each path's label is written outside the canopy, in the direction its branch
+  // grows, with a dark halo in case it crosses a neighbour's leaves.
   for (const branch of tree.branches) {
-    group
+    const text = group
       .append('text')
       .attr('data-kind', 'branch-label')
       .attr('x', branch.labelAt.x)
-      .attr('y', branch.labelAt.y + 4)
-      .attr('text-anchor', 'middle')
+      .attr('y', branch.labelAt.y)
+      .attr('text-anchor', branch.labelAnchor)
       .attr('font-family', FONT.sans)
       .attr('font-size', 12.5)
       .attr('font-weight', 500)
@@ -513,8 +519,18 @@ function drawTree(
       .attr('stroke-width', 3)
       .attr('stroke-linejoin', 'round')
       .attr('paint-order', 'stroke')
-      .attr('pointer-events', 'none')
-      .text(branch.label);
+      .attr('pointer-events', 'none');
+    if (branch.labelLines.length <= 1) {
+      text.text(branch.label);
+    } else {
+      branch.labelLines.forEach((line, index) => {
+        text
+          .append('tspan')
+          .attr('x', branch.labelAt.x)
+          .attr('dy', index === 0 ? 0 : 15)
+          .text(line);
+      });
+    }
   }
 
   const fallen = group
@@ -537,8 +553,11 @@ function drawTree(
   for (const hypothesis of tree.hypotheses) drawHypothesis(group, hypothesis, onSelect, tree.id);
   for (const firefly of tree.fireflies) drawFirefly(group, firefly, onSelect, tree.id);
 
-  label(group, tree.x, groundY + 30, tree.name, 'name');
-  label(group, tree.x, groundY + 50, treeMeta(tree), 'meta');
+  // A long name is written on more than one line, so it never runs into the next tree.
+  const nameLines = tree.nameLines.length > 0 ? tree.nameLines : [tree.name];
+  if (nameLines.length === 1) label(group, tree.x, groundY + 30, tree.name, 'name');
+  else nameLines.forEach((line, index) => label(group, tree.x, groundY + 30 + index * NAME_LINE_HEIGHT, line, 'name'));
+  label(group, tree.x, groundY + 50 + (nameLines.length - 1) * NAME_LINE_HEIGHT, treeMeta(tree), 'meta');
 }
 
 function drawStems(group: Group, patch: PatchLayout): void {
@@ -592,37 +611,40 @@ export function renderGrove(
 
   const root = svg.append('g').attr('data-kind', 'grove-root');
 
-  // The forest floor runs well past the grove so panning never shows an edge.
-  root
-    .append('rect')
-    .attr('data-kind', 'ground')
-    .attr('x', -layout.width * 2)
-    .attr('y', layout.groundY)
-    .attr('width', layout.width * 5)
-    .attr('height', layout.height * 3)
-    .attr('fill', PALETTE.ground)
-    .attr('fill-opacity', 0.35);
-  root
-    .append('line')
-    .attr('x1', -layout.width * 2)
-    .attr('x2', layout.width * 3)
-    .attr('y1', layout.groundY)
-    .attr('y2', layout.groundY)
-    .attr('stroke', PALETTE.groundLine)
-    .attr('stroke-width', 1.5);
+  // The forest floor of each row runs well past the grove, so panning never shows an edge.
+  layout.rows.forEach((row, index) => {
+    const last = index === layout.rows.length - 1;
+    root
+      .append('rect')
+      .attr('data-kind', 'ground')
+      .attr('x', -layout.width * 2)
+      .attr('y', row.groundY)
+      .attr('width', layout.width * 5)
+      .attr('height', last ? layout.height * 3 : row.bottom - row.groundY)
+      .attr('fill', PALETTE.ground)
+      .attr('fill-opacity', 0.35);
+    root
+      .append('line')
+      .attr('x1', -layout.width * 2)
+      .attr('x2', layout.width * 3)
+      .attr('y1', row.groundY)
+      .attr('y2', row.groundY)
+      .attr('stroke', PALETTE.groundLine)
+      .attr('stroke-width', 1.5);
+  });
 
   for (const sprout of layout.sprouts) {
     const group = drawPatch(
       root,
       sprout,
-      layout.groundY,
+      sprout.groundY,
       'sprout',
       sprout.ref,
       PALETTE.sproutLeaf,
       onSelect
     );
     group.attr('data-sprout-ref', sprout.ref);
-    label(group, sprout.x, layout.groundY + 50, `sprout · ${plural(sprout.leaves.length, 'tab')}`, 'meta');
+    label(group, sprout.x, sprout.groundY + 50, `sprout · ${plural(sprout.leaves.length, 'tab')}`, 'meta');
   }
 
   // Shown only while a leaf is being dragged.
@@ -650,7 +672,7 @@ export function renderGrove(
     onDropLeaf: (drop) => handlers.onDropLeaf?.(drop),
   };
 
-  for (const tree of layout.trees) drawTree(root, tree, layout.groundY, onSelect, dragContext);
+  for (const tree of layout.trees) drawTree(root, tree, tree.groundY, onSelect, dragContext);
 
   // Drawn after the trees so the vine crosses over both canopies it joins.
   for (const vine of layout.sharedVines) {
@@ -667,18 +689,18 @@ export function renderGrove(
     const group = drawPatch(
       root,
       layout.meadow,
-      layout.groundY,
+      layout.meadow.groundY,
       'meadow',
       'meadow',
       PALETTE.meadowLeaf,
       onSelect
     );
-    label(group, layout.meadow.x, layout.groundY + 50, plural(layout.meadow.leaves.length, 'tab'), 'meta');
+    label(group, layout.meadow.x, layout.meadow.groundY + 50, plural(layout.meadow.leaves.length, 'tab'), 'meta');
   }
 
   if (layout.fog) {
     const fog = layout.fog;
-    const group = drawPatch(root, fog, layout.groundY, 'fog', 'fog', PALETTE.fogLeaf, onSelect);
+    const group = drawPatch(root, fog, fog.groundY, 'fog', 'fog', PALETTE.fogLeaf, onSelect);
     // Three overlapping banks of mist over the tabs the grove could not place.
     const banks = [
       { dx: -0.3, dy: -30, rx: 0.62, ry: 22 },
@@ -691,14 +713,14 @@ export function renderGrove(
       .join('ellipse')
       .attr('data-kind', 'fog-bank')
       .attr('cx', (bank) => fog.x + bank.dx * fog.halfWidth)
-      .attr('cy', (bank) => layout.groundY + bank.dy)
+      .attr('cy', (bank) => fog.groundY + bank.dy)
       .attr('rx', (bank) => bank.rx * fog.halfWidth)
       .attr('ry', (bank) => bank.ry)
       .attr('fill', PALETTE.fog)
       .attr('fill-opacity', 0.16)
       // The mist must not swallow clicks meant for the tabs inside it.
       .attr('pointer-events', 'none');
-    label(group, fog.x, layout.groundY + 50, plural(fog.leaves.length, 'tab'), 'meta');
+    label(group, fog.x, fog.groundY + 50, plural(fog.leaves.length, 'tab'), 'meta');
   }
 
   const zoomBehavior = zoom<SVGSVGElement, unknown>()
@@ -717,6 +739,7 @@ export function renderGrove(
       root.attr('transform', event.transform.toString());
     });
 
+  if (handlers.gestures === false) zoomBehavior.filter(() => false);
   svg.call(zoomBehavior);
   // d3-zoom keeps its transform on the <svg>, which outlives a redraw. Applying
   // it here means an edit to the grove does not throw away the user's view.
@@ -739,7 +762,7 @@ export function renderGrove(
         1,
         Math.min(SCALE_EXTENT[1], layout.width / (tree.halfWidth * 2 + 160), 2.4)
       );
-      const centerY = layout.groundY - 150;
+      const centerY = tree.groundY - 150;
       svg.call(
         zoomBehavior.transform,
         zoomIdentity

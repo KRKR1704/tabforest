@@ -437,7 +437,9 @@ describe('How to read your grove', () => {
       render(<App />);
       fireEvent.click(screen.getByRole('button', { name: 'How to read your grove' }));
       expect(screen.getByText('Step 1 of 11')).toBeInTheDocument();
-      expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
+      // It opens over the app as a dialog; the app stays where it was underneath.
+      expect(screen.getByRole('dialog', { name: 'How to read your grove' })).toHaveAttribute('aria-modal', 'true');
+      expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Skip the tour' }));
       expect(screen.getByRole('heading', { level: 1, name: 'Current Grove' })).toBeInTheDocument();

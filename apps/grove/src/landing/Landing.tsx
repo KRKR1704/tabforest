@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Trees } from 'lucide-react';
 import { GUIDE_KEY, GUIDE_SHOWCASE, GUIDE_STEPS } from '../lib/guideGrove';
 import { countGroveTabs } from '../lib/grove';
-import { GUIDE_PAUSE_MS, KeyIcon } from '../screens/GroveGuide';
+import { GUIDE_PAUSE_MS, GroveGuide, KeyIcon } from '../screens/GroveGuide';
 import { GroveCanvas } from '../viz/GroveCanvas';
+import { EnchantedBackdrop } from './EnchantedBackdrop';
 import {
   DEMO_ACTIONS,
   EXTENSION_ZIP_URL,
@@ -22,7 +23,7 @@ const heading = 'mt-2 max-w-[22ch] font-serif text-3xl font-semibold leading-tig
 const primary =
   'inline-block rounded-md bg-forest-600 px-5 py-3 text-[15px] font-medium text-forest-50 no-underline hover:bg-forest-500';
 const quiet =
-  'inline-block rounded-md border border-forest-700 px-5 py-3 text-[15px] font-medium text-forest-50 hover:border-forest-400';
+  'inline-block rounded-md border border-forest-700 bg-forest-950/70 px-5 py-3 text-[15px] font-medium text-forest-50 hover:border-forest-400';
 const section = 'border-t border-forest-800 py-14';
 const wrap = 'mx-auto max-w-[1120px] px-6';
 
@@ -42,8 +43,36 @@ function mixedTabs(): Array<{ ref: string; title: string }> {
  * The public landing page: what TabForest is, a demo on an example grove, what
  * each thing in the grove means, the privacy statement, and how to install it.
  */
-export const Landing: React.FC = () => {
+interface LandingProps {
+  /** Open the tour as soon as the page opens, once per visit. */
+  tourOnOpen?: boolean;
+}
+
+const TOUR_SEEN = 'tabforest:landing-tour-seen';
+/** Long enough for the page to arrive at the section before the tour covers it. */
+export const TOUR_AFTER_SCROLL_MS = 350;
+
+/** Whether the tour was already closed in this visit. Storage can be unavailable; then it just shows. */
+function tourSeen(): boolean {
+  try {
+    return sessionStorage.getItem(TOUR_SEEN) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export const Landing: React.FC<LandingProps> = ({ tourOnOpen = false }) => {
   const [growKey, setGrowKey] = useState(0);
+  // The tour of what each thing in the grove means: shown as the page opens, and again on request.
+  const [tour, setTour] = useState(() => tourOnOpen && !tourSeen());
+  const closeTour = () => {
+    setTour(false);
+    try {
+      sessionStorage.setItem(TOUR_SEEN, '1');
+    } catch {
+      // Nothing to remember it in; the tour simply shows again next time.
+    }
+  };
   const tabs = useMemo(mixedTabs, []);
   // A fresh copy for each replay: the canvas starts its grow when it is handed a new grove.
   const grove = useMemo(() => ({ ...GUIDE_SHOWCASE }), [growKey]);
@@ -68,7 +97,9 @@ export const Landing: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-forest-950 font-sans text-[15px] leading-relaxed text-forest-50">
+    <div className="relative min-h-screen bg-forest-950 font-sans text-[15px] leading-relaxed text-forest-50">
+      <EnchantedBackdrop />
+      <div className="relative z-10">
       <header>
         <div className={`${wrap} flex flex-wrap items-center gap-x-7 gap-y-3 py-5`}>
           <div className="flex items-center gap-2.5 font-serif text-xl font-semibold">
@@ -76,10 +107,20 @@ export const Landing: React.FC = () => {
             TabForest
           </div>
           <nav aria-label="Page" className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-forest-300">
-            <a className="no-underline hover:text-forest-50" href="#how">How it works</a>
+            {/* Goes to the section, then opens the tour over it, every time. */}
+            <a
+              className="no-underline hover:text-forest-50"
+              href="#how"
+              onClick={() => window.setTimeout(() => setTour(true), TOUR_AFTER_SCROLL_MS)}
+            >
+              How it works
+            </a>
             <a className="no-underline hover:text-forest-50" href="#key">What it shows</a>
             <a className="no-underline hover:text-forest-50" href="#privacy">Privacy</a>
             <a className="no-underline hover:text-forest-50" href="#install">Install</a>
+            <button type="button" className="hover:text-forest-50" onClick={() => setTour(true)}>
+              Take the tour
+            </button>
           </nav>
           <a href="#install" className="ml-auto rounded-md bg-forest-600 px-4 py-2 text-sm font-medium text-forest-50 no-underline hover:bg-forest-500">
             Get TabForest for Chrome
@@ -106,7 +147,7 @@ export const Landing: React.FC = () => {
               <span className="text-[13px] text-forest-300">Free. Tested in Google Chrome.</span>
             </div>
 
-            <div id="demo" className="mt-9 overflow-hidden rounded-lg border border-forest-700">
+            <div id="demo" className="mt-9 overflow-hidden rounded-lg border border-forest-700 bg-forest-950">
               <div
                 aria-hidden="true"
                 data-sorted={growKey > 0 ? 'true' : 'false'}
@@ -132,9 +173,10 @@ export const Landing: React.FC = () => {
                     grove={changed ? step.after : step.before}
                     growKey={growKey}
                     growTimeScale={1.25}
+                    fit="scale"
                   />
                 ) : (
-                  <GroveCanvas key="showcase" grove={grove} growKey={growKey} />
+                  <GroveCanvas key="showcase" grove={grove} growKey={growKey} fit="scale" />
                 )}
               </div>
 
@@ -306,6 +348,8 @@ export const Landing: React.FC = () => {
       <footer className="border-t border-forest-800 pb-10 pt-6 text-[13px] text-forest-300">
         <div className={wrap}>TabForest · built at GirlHacks 2026</div>
       </footer>
+      </div>
+      {tour && <GroveGuide onDone={closeTour} doneLabel="Got it" />}
     </div>
   );
 };

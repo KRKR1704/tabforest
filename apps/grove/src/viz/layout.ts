@@ -25,8 +25,14 @@ export interface BranchLayout {
   label: string;
   status: GroveBranch['status'];
   tip: Point;
-  /** Centre of the branch label, nudged so labels on one tree never overlap. */
+  /** Direction the branch grows in, in degrees (-90 = straight up). */
+  angle: number;
+  /** Where the first line of the label is written: outside the canopy, clear of the leaves. */
   labelAt: Point;
+  /** The label wrapped into lines; nothing is cut off. */
+  labelLines: string[];
+  /** Which way the label reads from labelAt, so it grows away from the tree. */
+  labelAnchor: 'start' | 'middle' | 'end';
   path: string;
   leaves: LeafLayout[];
 }
@@ -34,8 +40,16 @@ export interface BranchLayout {
 export interface TreeLayout {
   id: string;
   name: string;
+  /** The name wrapped into lines, so a long name does not run into its neighbours. */
+  nameLines: string[];
   /** Trunk centre. */
   x: number;
+  /** The ground line of the row this tree stands in. */
+  groundY: number;
+  /** The highest point anything on this tree reaches. */
+  top: number;
+  /** How far left or right of the trunk anything on this tree reaches. */
+  reach: number;
   halfWidth: number;
   crown: Point;
   attentionMinutes: number;
@@ -107,6 +121,8 @@ export interface SharedVineLayout {
 
 export interface PatchLayout {
   x: number;
+  /** The ground line of the row this patch stands in. */
+  groundY: number;
   halfWidth: number;
   label: string;
   leaves: Array<LeafLayout & { stemBase: Point; reason?: string }>;
@@ -116,10 +132,19 @@ export interface SproutLayout extends PatchLayout {
   ref: string;
 }
 
+/** One line of the grove. A wide screen has one; a narrow one stacks several. */
+export interface GroveRow {
+  top: number;
+  groundY: number;
+  bottom: number;
+}
+
 export interface GroveLayout {
   width: number;
   height: number;
+  /** The first row's ground line. Each tree and patch carries its own. */
   groundY: number;
+  rows: GroveRow[];
   trees: TreeLayout[];
   sprouts: SproutLayout[];
   meadow: PatchLayout | null;
@@ -149,23 +174,32 @@ export interface RootsAnchor {
   id?: string;
 }
 
-const GROUND_Y = 432;
-const HEIGHT = 512;
+// A row is at least this tall above its ground line and this deep below it, so a
+// grove of small trees still has sky above it and room for names under it. Rows
+// that are stacked need less sky each than a grove standing in a single row.
+const MIN_ABOVE = 432;
+const MIN_ABOVE_STACKED = 130;
+const MIN_BELOW = 80;
 const EDGE_PADDING = 28;
 const GAP = 14;
 const DORMANT_AFTER_DAYS = 3;
 
-const LEAF_LENGTH: [number, number] = [11, 30];
+// Every leaf is one size: the tree grows with its tabs, the leaves do not.
+const LEAF_SIZE = 20;
 const TRUNK_WIDTH: [number, number] = [12, 40];
-const SMALL_LEAF = 13;
 
 // Rough text widths, enough to reserve room for a label and to keep labels apart.
 const NAME_CHAR_WIDTH = 10.4;
 const PATCH_CHAR_WIDTH = 7.6;
 const BRANCH_CHAR_WIDTH = 6.9;
-const BRANCH_LABEL_HEIGHT = 16;
+const BRANCH_LINE_HEIGHT = 15;
+const BRANCH_LINE_CHARS = 22;
+const META_CHAR_WIDTH = 6.8;
+const NAME_LINE_CHARS = 24;
+export const NAME_LINE_HEIGHT = 26;
 
-const crownRadiusFor = (leafCount: number) => clamp(64 + 7 * leafCount, 80, 135);
+// A tree is bigger the more tabs it holds, between a smallest and a largest size.
+const crownRadiusFor = (leafCount: number) => clamp(60 + 6 * leafCount, 84, 180);
 const fanFor = (leafCount: number) => clamp(50 + 13 * leafCount, 70, 165);
 
 const LOW_CONFIDENCE = 0.6;
@@ -181,6 +215,22 @@ export const fogOpacityFor = (confidence: number) =>
 
 const mushroomRadius = (recurrence: number) => 7 + 2 * clamp(recurrence, 1, 6);
 const round = (value: number) => Math.round(value * 10) / 10;
+
+/** Breaks text into lines of about `max` characters, at spaces. No word is dropped or cut. */
+export function wrapText(text: string, max: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && (line + ' ' + word).length > max) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 function polar(origin: Point, angleDeg: number, radius: number): Point {
   const rad = (angleDeg * Math.PI) / 180;
@@ -201,9 +251,9 @@ type HierarchyDatum =
 function layoutTree(
   tree: TreeData,
   x: number,
+  groundY: number,
   halfWidth: number,
   ground: GroundPlan,
-  leafLength: (dwell: number) => number,
   width: number,
   fireflyTexts: Array<{ id: string; text: string }>
 ): TreeLayout {
@@ -214,7 +264,7 @@ function layoutTree(
   const crownRadius = crownRadiusFor(leafCount);
   const fan = fanFor(leafCount);
   const trunkHeight = 110 + crownRadius * 0.45;
-  const crown: Point = { x, y: GROUND_Y - trunkHeight };
+  const crown: Point = { x, y: groundY - trunkHeight };
 
   const root = hierarchy<HierarchyDatum>(
     {
@@ -264,7 +314,7 @@ function layoutTree(
         x: round(position.x),
         y: round(position.y),
         angle: round(leafAngle),
-        length: round(leafLength(tab.dwell_minutes)),
+        length: LEAF_SIZE,
       };
     });
 
@@ -272,23 +322,26 @@ function layoutTree(
       ref: datum.branch.branch_ref,
       label: datum.branch.label,
       status: datum.branch.status,
+      angle,
       tip: { x: round(tip.x), y: round(tip.y) },
       labelAt: { x: round(tip.x), y: round(tip.y) },
+      labelLines: [],
+      labelAnchor: 'middle' as const,
       path: `M${round(crown.x)},${round(crown.y)}Q${round(control.x)},${round(control.y)} ${round(tip.x)},${round(tip.y)}`,
       leaves,
     };
   });
 
-  separateLabels(branches);
+  const labelBox = placeBranchLabels(branches, crown, crownRadius);
 
   const half = width / 2;
   const neck = width * 0.3;
-  const waistY = round(GROUND_Y - trunkHeight * 0.3);
+  const waistY = round(groundY - trunkHeight * 0.3);
   const trunkPath =
-    `M${round(x - half - 4)},${GROUND_Y}` +
+    `M${round(x - half - 4)},${groundY}` +
     `Q${round(x - neck)},${waistY} ${round(x - neck)},${round(crown.y)}` +
     `L${round(x + neck)},${round(crown.y)}` +
-    `Q${round(x + neck)},${waistY} ${round(x + half + 4)},${GROUND_Y}Z`;
+    `Q${round(x + neck)},${waistY} ${round(x + half + 4)},${groundY}Z`;
 
   const canopy = [
     { ...polar(crown, -90, crownRadius * 0.6), r: crownRadius * 0.74 },
@@ -303,7 +356,7 @@ function layoutTree(
     dwellMinutes: tab.dwell_minutes,
     isOpen: tab.is_open,
     x: round(x + dx),
-    y: GROUND_Y - 3,
+    y: groundY - 3,
     angle: -6,
     length,
   }));
@@ -313,12 +366,21 @@ function layoutTree(
     leafAt.set(leaf.tabRef, leaf);
   }
 
+  // A vine ties copies that hang together. It never runs from the canopy down to a
+  // leaf lying on the ground: the copies up in the tree get one vine, the ones on
+  // the ground another.
+  const onGround = new Set(fallenLeaves.map((leaf) => leaf.tabRef));
   const vines: VineLayout[] = tree.redundant_groups.flatMap((group, index) => {
     const refs = [...new Set([...group.tab_refs, group.keep_ref])];
-    const points = refs
-      .map((ref) => leafAt.get(ref))
-      .filter((point): point is Point => point !== undefined)
-      .sort((a, b) => a.x - b.x);
+    const pointsOf = (fallen: boolean) =>
+      refs
+        .filter((ref) => onGround.has(ref) === fallen)
+        .map((ref) => leafAt.get(ref))
+        .filter((point): point is Point => point !== undefined)
+        .sort((a, b) => a.x - b.x);
+    const hanging = pointsOf(false);
+    const lying = pointsOf(true);
+    const points = hanging.length >= 2 ? hanging : lying.length >= 2 ? lying : [];
     if (points.length < 2) return [];
     return [
       {
@@ -326,13 +388,13 @@ function layoutTree(
         exact: group.is_exact_dup === true,
         reason: group.reason,
         tabRefs: refs,
-        path: vinePath(points, 12),
+        path: vinePath(points, points === hanging ? 12 : 4),
       },
     ];
   });
 
   // Hypotheses and fireflies float just above the crown, clear of the leaves.
-  const aboveCrown = crown.y - crownRadius * 1.04 - LEAF_LENGTH[1] - 18;
+  const aboveCrown = Math.min(crown.y - crownRadius * 1.04 - LEAF_SIZE - 18, labelBox.top - 18);
   const hypotheses: HypothesisLayout[] = tree.hypotheses.map((hypothesis, index) => ({
     id: hypothesis.id ?? `${tree.cluster_ref}:h${index + 1}`,
     text: hypothesis.display_text ?? `Maybe: ${hypothesis.text}`,
@@ -355,10 +417,44 @@ function layoutTree(
   // A tree that is still listening has no goal yet, which is not the same as an unsure one.
   const fogged = !tree.pending && (tree.fogged === true || tree.goal.confidence < LOW_CONFIDENCE);
 
+  // How far the tree reaches, for giving it room in its row.
+  const nameLines = wrapText(tree.project.name, NAME_LINE_CHARS);
+  const textReach = Math.max(
+    ...nameLines.map((line) => (line.length * NAME_CHAR_WIDTH) / 2),
+    (metaLength(tree) * META_CHAR_WIDTH) / 2
+  );
+  const floating = [
+    ...hypotheses.map((item) => ({ left: item.x - 26, right: item.x + 26 })),
+    ...fireflies.map((item) => ({ left: item.x - 10, right: item.x + 36 })),
+  ];
+  const leafReach = Math.max(
+    0,
+    ...branches.flatMap((branch) => branch.leaves.map((leaf) => Math.abs(leaf.x - x) + LEAF_SIZE))
+  );
+  const reach = Math.max(
+    textReach,
+    leafReach,
+    ground.extent,
+    x - labelBox.left,
+    labelBox.right - x,
+    ...canopy.map((blob) => Math.abs(blob.cx - x) + blob.r),
+    ...floating.map((item) => Math.max(x - item.left, item.right - x))
+  );
+  const floats = hypotheses.length + fireflies.length > 0;
+  const top = Math.min(
+    labelBox.top - 6,
+    ...canopy.map((blob) => blob.cy - blob.r),
+    floats ? aboveCrown - 22 : Infinity
+  );
+
   return {
     id: tree.cluster_ref,
     name: tree.project.name,
+    nameLines,
     x,
+    groundY,
+    top: round(top),
+    reach: round(reach),
     halfWidth,
     mushrooms: ground.mushrooms.map(({ dx, question, capRadius }) => ({
       id: question.id,
@@ -367,7 +463,7 @@ function layoutTree(
       recurrence: question.recurrence_count ?? 1,
       capRadius,
       x: round(x + dx),
-      y: GROUND_Y,
+      y: groundY,
     })),
     stones: ground.stones.map(({ dx, decision }) => ({
       id: decision.id,
@@ -376,7 +472,7 @@ function layoutTree(
         decision.stone_kind ??
         (decision.provenance === 'stated' || decision.provenance === 'sourced' ? 'carved' : 'mossy'),
       x: round(x + dx),
-      y: GROUND_Y,
+      y: groundY,
     })),
     fallenLeaves,
     vines,
@@ -397,22 +493,79 @@ function layoutTree(
   };
 }
 
-/** Moves a label down until it clears every label placed before it. */
-function separateLabels(branches: BranchLayout[]): void {
-  const placed: Array<{ at: Point; width: number }> = [];
-  for (const branch of [...branches].sort((a, b) => a.labelAt.y - b.labelAt.y)) {
-    const width = branch.label.length * BRANCH_CHAR_WIDTH;
-    const collides = (at: Point) =>
-      placed.some(
-        (other) =>
-          Math.abs(other.at.x - at.x) < (other.width + width) / 2 + 4 &&
-          Math.abs(other.at.y - at.y) < BRANCH_LABEL_HEIGHT
-      );
-    while (collides(branch.labelAt)) {
-      branch.labelAt = { x: branch.labelAt.x, y: round(branch.labelAt.y + BRANCH_LABEL_HEIGHT) };
-    }
-    placed.push({ at: branch.labelAt, width });
+/** The line under a tree's name, as render.ts writes it; only its length matters here. */
+function metaLength(tree: TreeData): number {
+  const tabs = `${tree.tabs.length} tabs`;
+  if (tree.pending) return `listening… · ${tabs}`.length;
+  const base = `${Math.round(tree.attention_minutes)} min · ${tabs}`;
+  return isDormant(tree) ? `${base} · dormant ${tree.days_since_active ?? 0} days`.length : base.length;
+}
+
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function labelBoxOf(branch: BranchLayout): Box {
+  const width = Math.max(0, ...branch.labelLines.map((line) => line.length)) * BRANCH_CHAR_WIDTH;
+  const left =
+    branch.labelAnchor === 'start'
+      ? branch.labelAt.x
+      : branch.labelAnchor === 'end'
+        ? branch.labelAt.x - width
+        : branch.labelAt.x - width / 2;
+  const top = branch.labelAt.y - 11;
+  return { left, right: left + width, top, bottom: top + branch.labelLines.length * BRANCH_LINE_HEIGHT };
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.left < b.right + 6 && b.left < a.right + 6 && a.top < b.bottom + 2 && b.top < a.bottom + 2;
+
+/**
+ * Writes each path's label outside the canopy, in the direction its branch
+ * grows, so no label sits on a leaf. A label on the left reads leftwards, one on
+ * the right reads rightwards, one on top is centred. Long labels wrap; labels
+ * that would touch are moved apart. Returns the box around all of them.
+ */
+function placeBranchLabels(branches: BranchLayout[], crown: Point, crownRadius: number): Box {
+  const out = crownRadius * 1.04 + LEAF_SIZE + 12;
+  for (const branch of branches) {
+    branch.labelLines = wrapText(branch.label, BRANCH_LINE_CHARS);
+    const lean = Math.cos((branch.angle * Math.PI) / 180);
+    branch.labelAnchor = lean < -0.3 ? 'end' : lean > 0.3 ? 'start' : 'middle';
+    const at = polar(crown, branch.angle, out);
+    const extra = (branch.labelLines.length - 1) * BRANCH_LINE_HEIGHT;
+    // A label on top grows upwards from its point; one at the side is centred on it.
+    branch.labelAt = {
+      x: round(at.x),
+      y: round(branch.labelAnchor === 'middle' ? at.y - extra : at.y - extra / 2 + 4),
+    };
   }
+
+  const placed: Box[] = [];
+  const labelled = branches.filter((branch) => branch.labelLines.length > 0);
+  // Side labels settle downwards from the top; top labels then stack upwards.
+  const sides = labelled.filter((b) => b.labelAnchor !== 'middle').sort((a, b) => a.labelAt.y - b.labelAt.y);
+  const tops = labelled.filter((b) => b.labelAnchor === 'middle').sort((a, b) => b.labelAt.y - a.labelAt.y);
+  for (const branch of [...sides, ...tops]) {
+    const step = branch.labelAnchor === 'middle' ? -BRANCH_LINE_HEIGHT : BRANCH_LINE_HEIGHT;
+    for (let tries = 0; tries < 40 && placed.some((box) => overlaps(box, labelBoxOf(branch))); tries++) {
+      branch.labelAt = { x: branch.labelAt.x, y: round(branch.labelAt.y + step) };
+    }
+    placed.push(labelBoxOf(branch));
+  }
+
+  if (placed.length === 0) {
+    return { left: crown.x, right: crown.x, top: crown.y - crownRadius * 1.34, bottom: crown.y };
+  }
+  return {
+    left: Math.min(...placed.map((box) => box.left)),
+    right: Math.max(...placed.map((box) => box.right)),
+    top: Math.min(...placed.map((box) => box.top)),
+    bottom: Math.max(...placed.map((box) => box.bottom)),
+  };
 }
 
 interface GroundPlan {
@@ -427,11 +580,7 @@ interface GroundPlan {
  * Everything standing or lying at the base of a tree: questions to the left of
  * the trunk, decisions to the right, stale tabs beyond them under their branch.
  */
-function planGround(
-  tree: TreeData,
-  trunkWidth: number,
-  leafLength: (dwell: number) => number
-): GroundPlan {
+function planGround(tree: TreeData, trunkWidth: number): GroundPlan {
   let left = trunkWidth / 2 + 14;
   let right = trunkWidth / 2 + 14;
 
@@ -455,7 +604,7 @@ function planGround(
     for (const ref of branch.tab_refs) {
       const tab = tabsByRef.get(ref);
       if (!tab?.fallen) continue;
-      const length = round(leafLength(tab.dwell_minutes));
+      const length = LEAF_SIZE;
       if (onLeft) {
         fallen.push({ dx: round(-(left + length)), tab, length });
         left += length + GROUND_ITEM_GAP;
@@ -467,14 +616,6 @@ function planGround(
   });
 
   return { mushrooms, stones, fallen, extent: Math.max(left, right) };
-}
-
-function treeHalfWidth(tree: TreeData, ground: GroundPlan): number {
-  const leafCount = tree.tabs.length;
-  const fanHalf = ((fanFor(leafCount) / 2) * Math.PI) / 180;
-  const crownExtent = crownRadiusFor(leafCount) * 1.04 * Math.sin(fanHalf) + LEAF_LENGTH[1];
-  const labelExtent = (tree.project.name.length * NAME_CHAR_WIDTH) / 2;
-  return round(Math.max(crownExtent, labelExtent, ground.extent) + 6);
 }
 
 /** A loose curve through the given points, sagging between each pair. */
@@ -499,6 +640,7 @@ function patchHalfWidth(label: string, tabCount: number): number {
 function layoutPatch(
   tabs: Array<{ tab: Pick<GroveTab, 'tab_ref' | 'title' | 'domain' | 'is_open'>; reason?: string }>,
   x: number,
+  groundY: number,
   halfWidth: number,
   label: string,
   stemHeights: [number, number]
@@ -507,6 +649,7 @@ function layoutPatch(
   const startX = x - (spacing * (tabs.length - 1)) / 2;
   return {
     x,
+    groundY,
     halfWidth,
     label,
     leaves: tabs.map(({ tab, reason }, index) => {
@@ -519,65 +662,150 @@ function layoutPatch(
         dwellMinutes: 0,
         isOpen: tab.is_open,
         x: baseX,
-        y: GROUND_Y - height,
+        y: groundY - height,
         angle: -90,
-        length: SMALL_LEAF,
-        stemBase: { x: baseX, y: GROUND_Y },
+        length: LEAF_SIZE,
+        stemBase: { x: baseX, y: groundY },
         reason,
       };
     }),
   };
 }
 
-export function computeGroveLayout(grove: GroveResponse): GroveLayout {
-  const maxDwell = Math.max(1, ...grove.trees.flatMap((t) => t.tabs.map((tab) => tab.dwell_minutes)));
+export interface GroveLayoutOptions {
+  /**
+   * The width there is to draw in. A grove wider than this wraps onto further
+   * rows instead of being shrunk. Left out, everything stands in one row.
+   */
+  maxWidth?: number;
+}
+
+export function computeGroveLayout(grove: GroveResponse, options: GroveLayoutOptions = {}): GroveLayout {
   const maxAttention = Math.max(1, ...grove.trees.map((t) => t.attention_minutes));
-  const leafLength = scaleSqrt().domain([0, maxDwell]).range(LEAF_LENGTH).clamp(true);
   const trunkWidth = scaleSqrt().domain([0, maxAttention]).range(TRUNK_WIDTH).clamp(true);
+  const maxWidth = options.maxWidth && options.maxWidth > 0 ? options.maxWidth : Infinity;
 
-  let cursor = EDGE_PADDING;
-  const place = (halfWidth: number): number => {
-    const x = cursor + halfWidth;
-    cursor = x + halfWidth + GAP;
-    return round(x);
-  };
-
-  // Sprouts stand at the forest edge, ahead of the trees.
-  const sprouts: SproutLayout[] = grove.sprouts.map((sprout) => {
-    const halfWidth = patchHalfWidth(sprout.label, 1);
-    const x = place(halfWidth);
-    const shown = sprout.tabs.slice(0, 3);
-    const angles = shown.length === 1 ? [-90] : shown.length === 2 ? [-135, -45] : [-145, -90, -35];
-    const top: Point = { x, y: GROUND_Y - 28 };
-    return {
-      ref: sprout.sprout_ref,
-      x,
-      halfWidth,
-      label: sprout.label,
-      leaves: shown.map((tab, index) => ({
-        tabRef: tab.tab_ref,
-        title: tab.title,
-        domain: tab.domain,
-        dwellMinutes: tab.dwell_minutes,
-        isOpen: tab.is_open,
-        x: top.x,
-        y: top.y,
-        angle: angles[index],
-        length: SMALL_LEAF,
-        stemBase: { x, y: GROUND_Y },
-      })),
-    };
-  });
-
-  const trees = grove.trees.map((tree) => {
-    const width = trunkWidth(tree.attention_minutes);
-    const ground = planGround(tree, width, leafLength);
-    const halfWidth = treeHalfWidth(tree, ground);
-    const fireflies = (grove.past_connections ?? [])
+  const firefliesOf = (tree: TreeData) =>
+    (grove.past_connections ?? [])
       .filter((connection) => connection.tree_cluster_ref === tree.cluster_ref)
       .map((connection) => ({ id: connection.past_project_id, text: connection.summary }));
-    return layoutTree(tree, place(halfWidth), halfWidth, ground, leafLength, width, fireflies);
+
+  // 1. Measure everything that stands in the grove, in the order it is read.
+  type Item =
+    | { kind: 'sprout'; index: number; halfWidth: number; above: number; below: number }
+    | { kind: 'tree'; index: number; halfWidth: number; above: number; below: number; width: number; ground: GroundPlan }
+    | { kind: 'meadow' | 'fog' | 'zone'; halfWidth: number; above: number; below: number };
+  const items: Item[] = [];
+
+  grove.sprouts.forEach((sprout, index) => {
+    items.push({ kind: 'sprout', index, halfWidth: patchHalfWidth(sprout.label, 1), above: 90, below: MIN_BELOW });
   });
+  grove.trees.forEach((tree, index) => {
+    const width = trunkWidth(tree.attention_minutes);
+    const ground = planGround(tree, width);
+    const measured = layoutTree(tree, 0, 0, 0, ground, width, firefliesOf(tree));
+    items.push({
+      kind: 'tree',
+      index,
+      width,
+      ground,
+      halfWidth: round(measured.reach + 6),
+      above: round(-measured.top + 14),
+      below: 34 + measured.nameLines.length * NAME_LINE_HEIGHT + 22,
+    });
+  });
+  const fogTabs = grove.fog ?? [];
+  if (grove.meadow.tabs.length > 0) {
+    items.push({ kind: 'meadow', halfWidth: patchHalfWidth(grove.meadow.label, grove.meadow.tabs.length), above: 90, below: MIN_BELOW });
+  }
+  if (fogTabs.length > 0) {
+    items.push({ kind: 'fog', halfWidth: Math.max(60, patchHalfWidth('Unclear', fogTabs.length)), above: 90, below: MIN_BELOW });
+  }
+  // The drop zone floats above the meadow and fog; a grove without either gets a slot of its own.
+  const hasPatch = items.some((item) => item.kind === 'meadow' || item.kind === 'fog');
+  if (!hasPatch) items.push({ kind: 'zone', halfWidth: NEW_TREE_RADIUS + 8, above: 240, below: MIN_BELOW });
+
+  // 2. Fill rows from left to right; start a new row when the next thing would not fit.
+  const filled: Array<{ items: Item[]; width: number }> = [];
+  let current: Item[] = [];
+  let cursor = EDGE_PADDING;
+  for (const item of items) {
+    const span = item.halfWidth * 2;
+    const fits = cursor + span + EDGE_PADDING <= maxWidth;
+    // The drop zone never takes a row to itself: it floats in a corner instead.
+    if (item.kind === 'zone' && current.length > 0 && !fits) continue;
+    if (current.length > 0 && !fits) {
+      filled.push({ items: current, width: cursor - GAP + EDGE_PADDING });
+      current = [];
+      cursor = EDGE_PADDING;
+    }
+    current.push(item);
+    cursor += span + GAP;
+  }
+  filled.push({ items: current, width: cursor - GAP + EDGE_PADDING });
+
+  const width = round(Number.isFinite(maxWidth) ? Math.max(maxWidth, ...filled.map((row) => row.width)) : filled[0].width);
+
+  // 3. Place everything: each row is centred, and stands on its own ground line.
+  const sprouts: SproutLayout[] = [];
+  const trees: TreeLayout[] = [];
+  let meadow: PatchLayout | null = null;
+  let fog: PatchLayout | null = null;
+  let zoneSlot: Point | null = null;
+  const rows: GroveRow[] = [];
+  let rowTop = 0;
+
+  for (const row of filled) {
+    const above = Math.max(
+      filled.length === 1 ? MIN_ABOVE : MIN_ABOVE_STACKED,
+      ...row.items.map((item) => item.above)
+    );
+    const below = Math.max(MIN_BELOW, ...row.items.map((item) => item.below));
+    const groundY = round(rowTop + above);
+    rows.push({ top: rowTop, groundY, bottom: round(groundY + below) });
+
+    let x = EDGE_PADDING + (width - row.width) / 2;
+    for (const item of row.items) {
+      const centre = round(x + item.halfWidth);
+      x += item.halfWidth * 2 + GAP;
+
+      if (item.kind === 'sprout') {
+        const sprout = grove.sprouts[item.index];
+        const shown = sprout.tabs.slice(0, 3);
+        const angles = shown.length === 1 ? [-90] : shown.length === 2 ? [-135, -45] : [-145, -90, -35];
+        const top: Point = { x: centre, y: groundY - 28 };
+        sprouts.push({
+          ref: sprout.sprout_ref,
+          x: centre,
+          groundY,
+          halfWidth: item.halfWidth,
+          label: sprout.label,
+          leaves: shown.map((tab, index) => ({
+            tabRef: tab.tab_ref,
+            title: tab.title,
+            domain: tab.domain,
+            dwellMinutes: tab.dwell_minutes,
+            isOpen: tab.is_open,
+            x: top.x,
+            y: top.y,
+            angle: angles[index],
+            length: LEAF_SIZE,
+            stemBase: { x: centre, y: groundY },
+          })),
+        });
+      } else if (item.kind === 'tree') {
+        const tree = grove.trees[item.index];
+        trees.push(layoutTree(tree, centre, groundY, item.halfWidth, item.ground, item.width, firefliesOf(tree)));
+      } else if (item.kind === 'meadow') {
+        meadow = layoutPatch(grove.meadow.tabs.map((tab) => ({ tab })), centre, groundY, item.halfWidth, grove.meadow.label, [36, 24]);
+      } else if (item.kind === 'fog') {
+        fog = layoutPatch(fogTabs, centre, groundY, item.halfWidth, 'Unclear', [30, 22]);
+      } else {
+        zoneSlot = { x: centre, y: groundY - 180 };
+      }
+    }
+    rowTop = round(groundY + below);
+  }
 
   // A tab that serves two goals has a leaf on each tree; a faint vine joins them.
   const sharedVines: SharedVineLayout[] = [];
@@ -600,38 +828,19 @@ export function computeGroveLayout(grove: GroveResponse): GroveLayout {
     }
   }
 
-  let meadow: PatchLayout | null = null;
-  if (grove.meadow.tabs.length > 0) {
-    const halfWidth = patchHalfWidth(grove.meadow.label, grove.meadow.tabs.length);
-    meadow = layoutPatch(
-      grove.meadow.tabs.map((tab) => ({ tab })),
-      place(halfWidth),
-      halfWidth,
-      grove.meadow.label,
-      [36, 24]
-    );
-  }
-
-  let fog: PatchLayout | null = null;
-  const fogTabs = grove.fog ?? [];
-  if (fogTabs.length > 0) {
-    const halfWidth = Math.max(60, patchHalfWidth('Unclear', fogTabs.length));
-    fog = layoutPatch(fogTabs, place(halfWidth), halfWidth, 'Unclear', [30, 22]);
-  }
-
-  // The drop zone floats in the open sky above the meadow and fog; a grove
-  // without either gets a slot of its own at the far edge.
   const patches = [meadow, fog].filter((patch): patch is PatchLayout => patch !== null);
-  const zoneX =
-    patches.length > 0
-      ? patches.reduce((sum, patch) => sum + patch.x, 0) / patches.length
-      : place(NEW_TREE_RADIUS + 8);
-  const newTreeZone: DropZone = { x: round(zoneX), y: GROUND_Y - 180, r: NEW_TREE_RADIUS };
+  const slot: Point =
+    zoneSlot ??
+    (patches.length > 0
+      ? { x: patches.reduce((sum, patch) => sum + patch.x, 0) / patches.length, y: patches[0].groundY - 180 }
+      : { x: width - NEW_TREE_RADIUS - 12, y: rows[0].top + NEW_TREE_RADIUS + 12 });
+  const newTreeZone: DropZone = { x: round(slot.x), y: round(slot.y), r: NEW_TREE_RADIUS };
 
   return {
-    width: round(cursor - GAP + EDGE_PADDING),
-    height: HEIGHT,
-    groundY: GROUND_Y,
+    width,
+    height: rows[rows.length - 1].bottom,
+    groundY: rows[0].groundY,
+    rows,
     trees,
     sprouts,
     meadow,
@@ -649,7 +858,7 @@ export function resolveDrop(layout: GroveLayout, point: Point, fromTreeId: strin
   for (const tree of layout.trees) {
     if (tree.id === fromTreeId) continue;
     if (Math.abs(point.x - tree.x) > tree.halfWidth) continue;
-    if (point.y < 0 || point.y > layout.groundY + 60) continue;
+    if (point.y < tree.top - 30 || point.y > tree.groundY + 60) continue;
     let nearest: BranchLayout | null = null;
     let best = Infinity;
     for (const branch of tree.branches) {
@@ -674,7 +883,7 @@ export function computeRoots(
   const tree = layout.trees.find((t) => t.id === treeId);
   if (!tree) return null;
 
-  let origin: Point = { x: tree.x, y: layout.groundY };
+  let origin: Point = { x: tree.x, y: tree.groundY };
   if (anchor.kind === 'stone') {
     const stone = tree.stones.find((s) => s.id === anchor.id);
     if (stone) origin = { x: stone.x, y: stone.y - 8 };

@@ -32,6 +32,12 @@ interface GroveCanvasProps {
   growKey?: number;
   /** Multiplies the animation's durations. Tests pass a small number. */
   growTimeScale?: number;
+  /**
+   * What to do when the grove is wider than the space: 'wrap' (the default)
+   * stacks it in rows at natural size; 'scale' keeps one row and shrinks it,
+   * for small example groves that should be seen whole.
+   */
+  fit?: 'wrap' | 'scale';
   /** A tab to point out: its leaf, its branch and its copies are lit. */
   highlight?: { tabRef: string; treeId?: string | null; copyRefs?: string[] } | null;
   /** The pointer moved onto a leaf, or off it (null). */
@@ -45,6 +51,7 @@ export interface GroveRoots {
 }
 
 const ZOOM_STEP = 1.3;
+const WRAP_TOLERANCE = 1.25;
 
 // The last grow that was animated. Kept outside the component so that coming
 // back to this screen in the middle of a grow does not replay it.
@@ -70,6 +77,7 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
   growTimeScale = 1,
   highlight = null,
   onHoverLeaf,
+  fit = 'wrap',
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const controlsRef = useRef<GroveZoomControls | null>(null);
@@ -87,7 +95,33 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
     setIntro(prefersReducedMotion() || growKey <= playedGrowKey ? null : { key: growKey, grove });
   }
   const shown = intro ? intro.grove : grove;
-  const layout = useMemo(() => computeGroveLayout(shown), [shown]);
+  // The grove is drawn at its natural size. When it is wider than the space there
+  // is, it wraps onto further rows (and the panel scrolls) instead of shrinking.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [frameWidth, setFrameWidth] = useState(0);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setFrameWidth(Math.round(frame.clientWidth));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+  const natural = useMemo(() => computeGroveLayout(shown), [shown]);
+  // A grove only a little wider than the space is scaled to fit, as before. One
+  // that would have to shrink by more than a fifth is stacked in rows instead,
+  // and the rows are filled to that same limit so the width is used well.
+  const wrapWidth =
+    fit === 'wrap' && frameWidth > 0 && natural.width > frameWidth * WRAP_TOLERANCE
+      ? Math.round(frameWidth * WRAP_TOLERANCE)
+      : 0;
+  const layout = useMemo(
+    () => (wrapWidth > 0 ? computeGroveLayout(shown, { maxWidth: wrapWidth }) : natural),
+    [natural, shown, wrapWidth]
+  );
+  const stacked = layout.rows.length > 1;
+  const lastWrapRef = useRef(wrapWidth);
 
   // Kept in a ref so a new callback never forces D3 to redraw and lose the zoom.
   const onSelectRef = useRef(onSelect);
@@ -127,6 +161,8 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
     const controls = renderGrove(svgRef.current, layout, {
       onSelect: (selection) => onSelectRef.current?.(selection),
       onDropLeaf: (drop) => onDropLeafRef.current?.(drop),
+      // Stacked rows scroll with the page, so the wheel and dragging are left alone.
+      gestures: !stacked,
     });
     controlsRef.current = controls;
 
@@ -136,7 +172,10 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
       ? decorateGrove(svgRef.current, layout, { still: reduced })
       : null;
 
-    const previous = lastLayoutRef.current;
+    // A redraw caused by the window changing size is not a change to the grove.
+    const resized = lastWrapRef.current !== wrapWidth;
+    lastWrapRef.current = wrapWidth;
+    const previous = resized ? null : lastLayoutRef.current;
     lastLayoutRef.current = layout;
     let animation: GrowAnimation | null = null;
     if (intro) {
@@ -221,13 +260,27 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
     'flex h-8 w-8 items-center justify-center text-forest-200 hover:bg-forest-800 hover:text-forest-50';
 
   return (
-    <div className="relative h-full w-full">
-      <svg
-        ref={svgRef}
-        role="img"
-        aria-label={describe(grove)}
-        className="grove-canvas h-full w-full cursor-grab touch-none active:cursor-grabbing"
-      />
+    <div ref={frameRef} className="relative h-full w-full">
+      <div
+        data-stacked={stacked ? 'true' : undefined}
+        className={stacked ? 'h-full overflow-y-auto overflow-x-hidden' : 'h-full'}
+      >
+        <svg
+          ref={svgRef}
+          role="img"
+          aria-label={describe(grove)}
+          className={
+            stacked
+              ? 'grove-canvas block w-full'
+              : 'grove-canvas h-full w-full cursor-grab touch-none active:cursor-grabbing'
+          }
+          style={
+            stacked
+              ? { height: Math.round(layout.height * Math.min(1, frameWidth / layout.width)) }
+              : undefined
+          }
+        />
+      </div>
       {intro && (
         // The Hollow count appears in the corner as the leaves start to gather (SPEC §9.3).
         <p
