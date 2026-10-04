@@ -491,6 +491,70 @@
   },
   {
    "id": "t62",
+   "topic": "recipes",
+   "group": "coconut_chickpea_curry",
+   "title": "Creamy Coconut Chickpea Curry (Vegan) Recipe",
+   "domain": "www.bbcgoodfood.com",
+   "leaf_type": "article"
+  },
+  {
+   "id": "t63",
+   "topic": "recipes",
+   "group": "thai_green_curry",
+   "title": "Thai Green Curry with Chicken Recipe",
+   "domain": "www.simplyrecipes.com",
+   "leaf_type": "other"
+  },
+  {
+   "id": "t64",
+   "topic": "recipes",
+   "group": "tikka_masala",
+   "title": "Chicken Tikka Masala Curry Recipe",
+   "domain": "cooking.nytimes.com",
+   "leaf_type": "other"
+  },
+  {
+   "id": "t65",
+   "topic": "recipes",
+   "group": "dal",
+   "title": "Red Lentil Dal Recipe",
+   "domain": "cooking.nytimes.com",
+   "leaf_type": "other"
+  },
+  {
+   "id": "t66",
+   "topic": "recipes",
+   "group": "hummus",
+   "title": "Creamy Homemade Hummus Recipe",
+   "domain": "www.simplyrecipes.com",
+   "leaf_type": "other"
+  },
+  {
+   "id": "t67",
+   "topic": "recipes",
+   "group": "pepper_hummus",
+   "title": "Roasted Red Pepper Hummus Recipe",
+   "domain": "www.bbcgoodfood.com",
+   "leaf_type": "article"
+  },
+  {
+   "id": "t68",
+   "topic": "recipes",
+   "group": "chickpea_salad",
+   "title": "Mediterranean Chickpea Salad Recipe",
+   "domain": "www.allrecipes.com",
+   "leaf_type": "article"
+  },
+  {
+   "id": "t69",
+   "topic": "recipes",
+   "group": "roasted_chickpeas",
+   "title": "Crispy Oven-Roasted Chickpeas Recipe",
+   "domain": "cooking.nytimes.com",
+   "leaf_type": "other"
+  },
+  {
+   "id": "t70",
    "topic": "discussion",
    "group": "rust_vs_go",
    "title": "Rust vs Go for a small CLI tool?",
@@ -498,7 +562,7 @@
    "leaf_type": "discussion"
   },
   {
-   "id": "t63",
+   "id": "t71",
    "topic": "discussion",
    "group": "rust_vs_go",
    "title": "Go or Rust for a command line tool?",
@@ -506,7 +570,7 @@
    "leaf_type": "discussion"
   },
   {
-   "id": "t64",
+   "id": "t72",
    "topic": "discussion",
    "group": "laptops",
    "title": "MacBook Air or Dell XPS for programming?",
@@ -514,7 +578,7 @@
    "leaf_type": "discussion"
   },
   {
-   "id": "t65",
+   "id": "t73",
    "topic": "discussion",
    "group": "jwt_overkill",
    "title": "Is JWT overkill for a side project?",
@@ -654,6 +718,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t01",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t02",
    "b": "t03",
    "label": "redundant"
@@ -755,32 +824,32 @@
   },
   {
    "a": "t02",
-   "b": "t25",
+   "b": "t28",
    "label": "unrelated"
   },
   {
    "a": "t02",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t02",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t02",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t02",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t02",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -904,6 +973,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t03",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t04",
    "b": "t05",
    "label": "redundant"
@@ -995,32 +1069,32 @@
   },
   {
    "a": "t04",
-   "b": "t25",
+   "b": "t28",
    "label": "unrelated"
   },
   {
    "a": "t04",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t04",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t04",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t04",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t04",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -1134,6 +1208,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t05",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t06",
    "b": "t07",
    "label": "redundant"
@@ -1215,32 +1294,32 @@
   },
   {
    "a": "t06",
-   "b": "t25",
+   "b": "t28",
    "label": "unrelated"
   },
   {
    "a": "t06",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t06",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t06",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t06",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t06",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -1344,6 +1423,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t07",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t08",
    "b": "t09",
    "label": "redundant"
@@ -1415,32 +1499,32 @@
   },
   {
    "a": "t08",
-   "b": "t25",
+   "b": "t28",
    "label": "unrelated"
   },
   {
    "a": "t08",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t08",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t08",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t08",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t08",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -1534,6 +1618,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t09",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t10",
    "b": "t11",
    "label": "redundant"
@@ -1895,7 +1984,7 @@
   },
   {
    "a": "t18",
-   "b": "t37",
+   "b": "t50",
    "label": "unrelated"
   },
   {
@@ -1915,7 +2004,7 @@
   },
   {
    "a": "t19",
-   "b": "t37",
+   "b": "t50",
    "label": "unrelated"
   },
   {
@@ -1930,7 +2019,7 @@
   },
   {
    "a": "t20",
-   "b": "t37",
+   "b": "t50",
    "label": "unrelated"
   },
   {
@@ -1940,12 +2029,12 @@
   },
   {
    "a": "t21",
-   "b": "t37",
+   "b": "t50",
    "label": "unrelated"
   },
   {
    "a": "t22",
-   "b": "t37",
+   "b": "t50",
    "label": "unrelated"
   },
   {
@@ -1975,27 +2064,27 @@
   },
   {
    "a": "t23",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t23",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t23",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t23",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t23",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2039,6 +2128,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t24",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t25",
    "b": "t26",
    "label": "redundant"
@@ -2055,27 +2149,27 @@
   },
   {
    "a": "t25",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t25",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t25",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t25",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t25",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2109,33 +2203,38 @@
    "label": "unrelated"
   },
   {
+   "a": "t26",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t27",
    "b": "t28",
    "label": "redundant"
   },
   {
    "a": "t27",
-   "b": "t31",
+   "b": "t34",
    "label": "unrelated"
   },
   {
    "a": "t27",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t27",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t27",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t27",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2156,6 +2255,11 @@
   {
    "a": "t28",
    "b": "t58",
+   "label": "unrelated"
+  },
+  {
+   "a": "t28",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2200,22 +2304,22 @@
   },
   {
    "a": "t29",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t29",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t29",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t29",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2269,6 +2373,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t30",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t31",
    "b": "t32",
    "label": "redundant"
@@ -2300,22 +2409,22 @@
   },
   {
    "a": "t31",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t31",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t31",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t31",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2359,6 +2468,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t32",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t33",
    "b": "t34",
    "label": "redundant"
@@ -2380,22 +2494,22 @@
   },
   {
    "a": "t33",
-   "b": "t40",
+   "b": "t43",
    "label": "unrelated"
   },
   {
    "a": "t33",
-   "b": "t46",
+   "b": "t52",
    "label": "unrelated"
   },
   {
    "a": "t33",
-   "b": "t55",
+   "b": "t58",
    "label": "unrelated"
   },
   {
    "a": "t33",
-   "b": "t61",
+   "b": "t68",
    "label": "unrelated"
   },
   {
@@ -2429,6 +2543,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t34",
+   "b": "t68",
+   "label": "unrelated"
+  },
+  {
    "a": "t35",
    "b": "t36",
    "label": "related"
@@ -2439,17 +2558,12 @@
    "label": "related"
   },
   {
-   "a": "t35",
-   "b": "t50",
-   "label": "unrelated"
-  },
-  {
    "a": "t36",
    "b": "t37",
    "label": "related"
   },
   {
-   "a": "t37",
+   "a": "t36",
    "b": "t50",
    "label": "unrelated"
   },
@@ -2480,12 +2594,17 @@
   },
   {
    "a": "t38",
-   "b": "t52",
+   "b": "t46",
    "label": "unrelated"
   },
   {
    "a": "t38",
-   "b": "t58",
+   "b": "t55",
+   "label": "unrelated"
+  },
+  {
+   "a": "t38",
+   "b": "t61",
    "label": "unrelated"
   },
   {
@@ -2540,12 +2659,17 @@
   },
   {
    "a": "t40",
-   "b": "t52",
+   "b": "t46",
    "label": "unrelated"
   },
   {
    "a": "t40",
-   "b": "t58",
+   "b": "t55",
+   "label": "unrelated"
+  },
+  {
+   "a": "t40",
+   "b": "t61",
    "label": "unrelated"
   },
   {
@@ -2580,12 +2704,17 @@
   },
   {
    "a": "t42",
-   "b": "t52",
+   "b": "t46",
    "label": "unrelated"
   },
   {
    "a": "t42",
-   "b": "t58",
+   "b": "t55",
+   "label": "unrelated"
+  },
+  {
+   "a": "t42",
+   "b": "t61",
    "label": "unrelated"
   },
   {
@@ -2635,7 +2764,12 @@
   },
   {
    "a": "t44",
-   "b": "t56",
+   "b": "t53",
+   "label": "unrelated"
+  },
+  {
+   "a": "t44",
+   "b": "t59",
    "label": "unrelated"
   },
   {
@@ -2674,6 +2808,11 @@
    "label": "unrelated"
   },
   {
+   "a": "t45",
+   "b": "t67",
+   "label": "unrelated"
+  },
+  {
    "a": "t46",
    "b": "t47",
    "label": "redundant"
@@ -2695,12 +2834,12 @@
   },
   {
    "a": "t46",
-   "b": "t52",
+   "b": "t55",
    "label": "unrelated"
   },
   {
    "a": "t46",
-   "b": "t58",
+   "b": "t61",
    "label": "unrelated"
   },
   {
@@ -2770,7 +2909,12 @@
   },
   {
    "a": "t51",
-   "b": "t60",
+   "b": "t57",
+   "label": "unrelated"
+  },
+  {
+   "a": "t51",
+   "b": "t67",
    "label": "unrelated"
   },
   {
@@ -2814,6 +2958,11 @@
    "label": "related"
   },
   {
+   "a": "t53",
+   "b": "t59",
+   "label": "unrelated"
+  },
+  {
    "a": "t54",
    "b": "t55",
    "label": "related"
@@ -2829,13 +2978,18 @@
    "label": "unrelated"
   },
   {
+   "a": "t54",
+   "b": "t67",
+   "label": "unrelated"
+  },
+  {
    "a": "t55",
    "b": "t56",
    "label": "redundant"
   },
   {
    "a": "t55",
-   "b": "t58",
+   "b": "t61",
    "label": "unrelated"
   },
   {
@@ -2864,6 +3018,46 @@
    "label": "related"
   },
   {
+   "a": "t57",
+   "b": "t62",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t63",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t64",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t57",
+   "b": "t69",
+   "label": "related"
+  },
+  {
    "a": "t58",
    "b": "t59",
    "label": "related"
@@ -2879,6 +3073,46 @@
    "label": "related"
   },
   {
+   "a": "t58",
+   "b": "t62",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t63",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t64",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t58",
+   "b": "t69",
+   "label": "related"
+  },
+  {
    "a": "t59",
    "b": "t60",
    "label": "redundant"
@@ -2889,14 +3123,134 @@
    "label": "related"
   },
   {
+   "a": "t59",
+   "b": "t62",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t63",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t64",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t59",
+   "b": "t69",
+   "label": "related"
+  },
+  {
    "a": "t60",
    "b": "t61",
    "label": "related"
   },
   {
+   "a": "t60",
+   "b": "t62",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t63",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t64",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t60",
+   "b": "t69",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t62",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t63",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t64",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t61",
+   "b": "t69",
+   "label": "related"
+  },
+  {
    "a": "t62",
    "b": "t63",
-   "label": "redundant"
+   "label": "related"
   },
   {
    "a": "t62",
@@ -2909,6 +3263,26 @@
    "label": "related"
   },
   {
+   "a": "t62",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t62",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t62",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t62",
+   "b": "t69",
+   "label": "related"
+  },
+  {
    "a": "t63",
    "b": "t64",
    "label": "related"
@@ -2916,11 +3290,131 @@
   {
    "a": "t63",
    "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t63",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t63",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t63",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t63",
+   "b": "t69",
    "label": "related"
   },
   {
    "a": "t64",
    "b": "t65",
+   "label": "related"
+  },
+  {
+   "a": "t64",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t64",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t64",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t64",
+   "b": "t69",
+   "label": "related"
+  },
+  {
+   "a": "t65",
+   "b": "t66",
+   "label": "related"
+  },
+  {
+   "a": "t65",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t65",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t65",
+   "b": "t69",
+   "label": "related"
+  },
+  {
+   "a": "t66",
+   "b": "t67",
+   "label": "related"
+  },
+  {
+   "a": "t66",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t66",
+   "b": "t69",
+   "label": "related"
+  },
+  {
+   "a": "t67",
+   "b": "t68",
+   "label": "related"
+  },
+  {
+   "a": "t67",
+   "b": "t69",
+   "label": "related"
+  },
+  {
+   "a": "t68",
+   "b": "t69",
+   "label": "related"
+  },
+  {
+   "a": "t70",
+   "b": "t71",
+   "label": "redundant"
+  },
+  {
+   "a": "t70",
+   "b": "t72",
+   "label": "related"
+  },
+  {
+   "a": "t70",
+   "b": "t73",
+   "label": "related"
+  },
+  {
+   "a": "t71",
+   "b": "t72",
+   "label": "related"
+  },
+  {
+   "a": "t71",
+   "b": "t73",
+   "label": "related"
+  },
+  {
+   "a": "t72",
+   "b": "t73",
    "label": "related"
   }
  ]

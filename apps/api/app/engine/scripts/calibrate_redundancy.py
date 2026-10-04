@@ -26,6 +26,11 @@ from app.engine.aoai import AzureOpenAIClient  # noqa: E402
 from app.engine.embeddings import embed_tabs  # noqa: E402
 from app.engine.fixtures import FIXTURES_DIR, _json  # noqa: E402
 from app.engine.normalize import normalize_tab  # noqa: E402
+from app.engine.redundancy import MIN_SHARED_TERMS, SEMANTIC_VINE_THRESHOLD, shared_distinctive_terms  # noqa: E402
+
+# Groups added after a live check (chickpea, curry and hummus recipes labelled "says the same as another source"):
+LIVE_FINDING_GROUPS = {"coconut_chickpea_curry", "thai_green_curry", "tikka_masala", "dal", "hummus", "pepper_hummus",
+                       "chickpea_salad", "roasted_chickpeas", "curry"}
 
 CAL_USER = UUID("00000000-0000-4000-8000-0000000000f3")
 NS = uuid.UUID("5d2c1e0a-7b4f-4a8e-9c3d-2f1e0d9c8b7a")
@@ -99,6 +104,42 @@ def main() -> None:
     print(f"redundant same-type pairs below it: {len(below)}")
     for c, a, b in below[:6]:
         print(f"   {c:.3f}  {a[:46]!r} ~ {b[:46]!r}")
+    combined(data, vectors)
+
+
+def combined(data: dict, vectors: dict[str, np.ndarray]) -> None:
+    """Prune's rule: raw cosine >= SEMANTIC_VINE_THRESHOLD AND >= MIN_SHARED_TERMS distinctive shared title terms."""
+    tabs = {t["id"]: t for t in data["tabs"]}
+    unit = {k: v / np.linalg.norm(v) for k, v in vectors.items()}
+    rows = []
+    for p in data["pairs"]:
+        a, b = tabs[p["a"]], tabs[p["b"]]
+        if a["leaf_type"] != b["leaf_type"]:
+            continue
+        shared = shared_distinctive_terms(a["title"], a["leaf_type"], b["title"], b["leaf_type"])
+        rows.append((float(unit[p["a"]] @ unit[p["b"]]), p["label"], len(shared), a, b, sorted(shared)))
+    print(f"\ncombined rule (prune): cosine >= {SEMANTIC_VINE_THRESHOLD} and >= {MIN_SHARED_TERMS} shared distinctive terms")
+    print(f"{'rule':<34}{'precision':>10}{'recall':>8}{'F1':>7}{'TP':>5}{'FP':>5}")
+    for name, ok in (("cosine only", lambda c, n: c >= SEMANTIC_VINE_THRESHOLD),
+                     ("terms only", lambda c, n: n >= MIN_SHARED_TERMS),
+                     ("cosine and terms (prune)", lambda c, n: c >= SEMANTIC_VINE_THRESHOLD and n >= MIN_SHARED_TERMS)):
+        tp = sum(ok(c, n) and l == "redundant" for c, l, n, *_ in rows)
+        fp = sum(ok(c, n) and l != "redundant" for c, l, n, *_ in rows)
+        fn = sum(not ok(c, n) and l == "redundant" for c, l, n, *_ in rows)
+        pr, rc = (tp / (tp + fp) if tp + fp else 1.0), (tp / (tp + fn) if tp + fn else 0.0)
+        print(f"{name:<34}{pr:>10.3f}{rc:>8.3f}{(2 * pr * rc / (pr + rc) if pr + rc else 0.0):>7.3f}{tp:>5}{fp:>5}")
+    live = {t["id"] for t in data["tabs"] if t["group"] in LIVE_FINDING_GROUPS}
+    pairs = sorted(((c, n, a["title"], b["title"], sh) for c, l, n, a, b, sh in rows
+                    if a["id"] in live and b["id"] in live and l == "related"), reverse=True)
+    passing = [x for x in pairs if x[0] >= SEMANTIC_VINE_THRESHOLD and x[1] >= MIN_SHARED_TERMS]
+    print(f"\nthe live-finding recipe tabs (chickpea / curry / hummus ...): {len(pairs)} related pairs, "
+          f"{len(passing)} pass the combined rule (flagged as redundant; want 0); the 8 closest:")
+    for c, n, a, b, sh in pairs[:8]:
+        verdict = "FLAGGED" if c >= SEMANTIC_VINE_THRESHOLD and n >= MIN_SHARED_TERMS else "ok"
+        print(f"   {c:.3f}  terms {n} {sh}  {verdict:<8}{a[:38]!r} ~ {b[:38]!r}")
+    by_cos = sum(c >= SEMANTIC_VINE_THRESHOLD for c, *_ in pairs)
+    by_terms = sum(n >= MIN_SHARED_TERMS for _, n, *_ in pairs)
+    print(f"   alone: cosine >= {SEMANTIC_VINE_THRESHOLD} would flag {by_cos}; two shared terms would flag {by_terms}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """R-13 prune suggestions: rules, the similarity gate, requested-tabs-only, failure handling and the endpoint. No network."""
 
 import asyncio
+import copy
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -95,7 +96,9 @@ def test_no_grove_means_no_suggestions_but_the_same_shape() -> None:
 # --- semantic redundancy: same branch and similarity >= SIMILARITY_MIN ------------------------------
 
 def test_a_member_below_the_similarity_gate_is_not_suggested() -> None:
-    vectors = {**CLOSE, tid(10): vec(0.5, 0.9)}  # cosine to tab 1 is about 0.49
+    # 10 is about 0.5 from the keeper (below SIMILARITY_MIN); 9 is 0.8 from it and 0.92 from 10, and shares FastAPI and
+    # JWT with 10, so 9 still says the same as a fellow member.
+    vectors = {tid(1): vec(1, 0), tid(9): vec(0.8, 0.6), tid(10): vec(0.5, 0.866)}
     got = run(embed=embedder(vectors))
     semantic = by_kind(got)["semantic_redundant"]
     assert semantic["tab_refs"] == [tid(9)]
@@ -106,14 +109,59 @@ def test_nothing_above_the_gate_means_no_semantic_suggestion() -> None:
     assert "semantic_redundant" not in by_kind(run(embed=embedder(far)))
 
 
-def test_the_gate_sits_exactly_at_the_constant() -> None:
+def test_the_keeper_gate_sits_exactly_at_the_constant() -> None:
     lo = prune.SIMILARITY_MIN
 
     def at(cos: float) -> np.ndarray:
         return vec(cos, float(np.sqrt(1 - cos**2)))
 
+    # 9 and 10 are 0.9+ apart from each other, so only their distance to the keeper decides
     vectors = {tid(1): vec(1, 0), tid(9): at(lo + 1e-3), tid(10): at(lo - 1e-3)}
     assert by_kind(run(embed=embedder(vectors)))["semantic_redundant"]["tab_refs"] == [tid(9)]
+
+
+def pair_at(cos: float) -> dict:
+    """Keeper at angle 0; tabs 9 and 10 mirrored around it so that cosine(9, 10) = cos and both are close to it."""
+    half = float(np.arccos(cos)) / 2
+    return {tid(1): vec(1, 0), tid(9): vec(np.cos(half), np.sin(half)), tid(10): vec(np.cos(half), -np.sin(half))}
+
+
+def test_the_peer_gate_is_the_calibrated_redundancy_threshold() -> None:
+    assert prune.SEMANTIC_VINE_THRESHOLD == 0.66
+    above = by_kind(run(embed=embedder(pair_at(0.66 + 1e-3))))["semantic_redundant"]
+    assert set(above["tab_refs"]) == {tid(9), tid(10)}
+    assert "semantic_redundant" not in by_kind(run(embed=embedder(pair_at(0.66 - 1e-3))))
+
+
+def retitled(titles: dict[str, str]) -> dict:
+    grove = copy.deepcopy(GROVE)
+    for tree in grove["trees"]:
+        for branch in tree["branches"]:
+            for leaf in branch["leaves"]:
+                leaf["title"] = titles.get(leaf["tab_ref"], leaf["title"])
+    return grove
+
+
+def test_one_shared_title_term_is_not_enough_however_close_the_vectors() -> None:
+    grove = retitled({tid(9): "Securing FastAPI with JWT: a step-by-step guide", tid(10): "Tokens in FastAPI, explained"})
+    assert "semantic_redundant" not in by_kind(run(grove=grove, embed=embedder(pair_at(0.99))))
+
+
+def test_two_shared_distinctive_terms_pass() -> None:
+    grove = retitled({tid(9): "Securing FastAPI with JWT: a step-by-step guide", tid(10): "FastAPI JWT authentication explained"})
+    assert set(by_kind(run(grove=grove, embed=embedder(pair_at(0.99))))["semantic_redundant"]["tab_refs"]) == {tid(9), tid(10)}
+
+
+def test_recipe_tabs_that_share_only_the_page_kind_or_one_ingredient_are_not_redundant() -> None:
+    leaves = {r: {"title": t, "source_type": "article"} for r, t in (
+        ("curry", "Easy Chickpea Curry Recipe"), ("thai", "Thai Green Curry with Chicken Recipe"),
+        ("hummus", "Classic Creamy Hummus Recipe"), ("salad", "Chickpea Salad Sandwich Recipe"),
+        ("curry2", "Quick Chickpea Curry in 20 Minutes"))}
+    same = {r: vec(1, 0) for r in leaves}  # identical vectors: only the title rule can say no
+    assert not prune._says_the_same("thai", ["curry", "thai"], same, leaves)      # curry only
+    assert not prune._says_the_same("hummus", ["curry", "hummus"], same, leaves)  # nothing shared but "recipe"
+    assert not prune._says_the_same("salad", ["curry", "salad"], same, leaves)    # chickpea only
+    assert prune._says_the_same("curry2", ["curry", "curry2"], same, leaves)      # chickpea + curry
 
 
 def test_the_gate_keeps_the_real_demo_pair_and_rejects_unrelated_tabs() -> None:
@@ -126,6 +174,8 @@ def test_a_group_spanning_branches_only_keeps_the_members_in_the_keepers_branch(
     grove = {**GROVE, "trees": [dict(t) for t in GROVE["trees"]]}
     tree = grove["trees"][0]
     tree["vines"] = [{"tab_refs": [tid(9), tid(5)], "kind": "semantic", "keep_ref": tid(1), "reason": "x"}]
+    grove = {**grove, "trees": [{**t, "branches": retitled({tid(9): "OAuth2 password flow with JWT tokens in FastAPI"})
+                                 ["trees"][0]["branches"]} if t is tree else t for t in grove["trees"]]}
     vectors = {tid(1): vec(1, 0), tid(9): vec(0.99, 0.01), tid(5): vec(0.99, 0.01)}  # 5 is in the OAuth 2.0 branch
     got = run(grove=grove, embed=embedder(vectors), refs=[tid(1), tid(9), tid(5)])
     assert by_kind(got)["semantic_redundant"]["tab_refs"] == [tid(9)]

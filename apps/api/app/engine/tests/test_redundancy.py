@@ -14,7 +14,8 @@ from app.engine import prune
 from app.engine.adapters.stats import get_stats_source
 from app.engine.fixtures import FIXTURES_DIR, _json
 from app.engine.model_schema import ClusterInference
-from app.engine.redundancy import KEEPER_MIN_COSINE, SEMANTIC_VINE_THRESHOLD, semantic_vines
+from app.engine.redundancy import (KEEPER_MIN_COSINE, MIN_SHARED_TERMS, SEMANTIC_VINE_THRESHOLD, distinctive_terms,
+                                   semantic_vines, shared_distinctive_terms)
 from app.engine.tests import test_grow as tg
 
 SCRIPTS = Path(prune.__file__).parent / "scripts"
@@ -126,6 +127,37 @@ def test_a_chain_of_close_pages_is_one_group() -> None:
 
 def test_the_keeper_bar_equals_the_prune_gate() -> None:
     assert KEEPER_MIN_COSINE == prune.SIMILARITY_MIN
+
+
+def test_prune_uses_the_redundancy_constant_for_model_groups() -> None:
+    assert prune.SEMANTIC_VINE_THRESHOLD is SEMANTIC_VINE_THRESHOLD and prune.MIN_SHARED_TERMS == MIN_SHARED_TERMS == 2
+
+
+def test_distinctive_terms_drop_stopwords_page_kind_words_and_the_leaf_type() -> None:
+    assert distinctive_terms("Easy Chickpea Curry Recipe", "article") == {"chickpea", "curry"}
+    assert distinctive_terms("Creamy Homemade Hummus Recipe", "article") == {"creamy", "hummus"}
+    assert distinctive_terms("Securing FastAPI with JWT: a step-by-step guide") == {"securing", "fastapi", "jwt"}
+    assert distinctive_terms("Rust docs: Ownership - The Rust Programming Language", "docs") == {"rust", "ownership"}  # suffix cut, "docs" dropped
+    assert distinctive_terms("Quick Chickpea Curry in 20 Minutes") == {"chickpea", "curry"}
+
+
+def test_two_shared_terms_are_needed_and_a_shared_page_kind_does_not_count() -> None:
+    assert shared_distinctive_terms("Easy Chickpea Curry Recipe", "article", "Quick Chickpea Curry in 20 Minutes", "article") \
+        == {"chickpea", "curry"}
+    assert shared_distinctive_terms("Classic Hummus Recipe", "article", "Thai Green Curry Recipe", "article") == frozenset()
+    assert len(shared_distinctive_terms("Easy Chickpea Curry Recipe", "article", "Chickpea Salad Recipe", "article")) == 1
+
+
+def test_the_fixture_has_the_live_finding_recipes_as_related_never_redundant() -> None:
+    data = _json(FIXTURES_DIR / "title_pairs.json")
+    tabs = {t["id"]: t for t in data["tabs"]}
+    finding = {"coconut_chickpea_curry", "thai_green_curry", "tikka_masala", "dal", "hummus", "pepper_hummus",
+               "chickpea_salad", "roasted_chickpeas"}
+    assert finding <= {t["group"] for t in tabs.values()}
+    for p in data["pairs"]:
+        a, b = tabs[p["a"]], tabs[p["b"]]
+        if a["group"] in finding and b["group"] in finding:
+            assert p["label"] == "related"
 
 
 # --- the labeled title-pair fixture ----------------------------------------------------------------------------------------
