@@ -28,7 +28,8 @@ export const NOTICES = {
 } as const;
 
 let running = false;
-// Counts grows started, so a slow restore never replaces a grove that grew after it was asked for.
+// Counts grows that really asked the server, so a slow restore never replaces a grove that grew after it was asked for.
+// A grow that returns early (no tab to grow from, or too few on open) does not count: it changes nothing.
 let growsStarted = 0;
 
 /**
@@ -38,7 +39,7 @@ let growsStarted = 0;
 export async function restoreStoredGrove(): Promise<boolean> {
   const before = growsStarted;
   const stored = await fetchStoredGrove();
-  if (!stored || growsStarted !== before || running) return false;
+  if (!stored || growsStarted !== before) return false;
   useGroveStore.getState().setGrove(stored);
   saveLastGrove(stored);
   return true;
@@ -47,7 +48,6 @@ export async function restoreStoredGrove(): Promise<boolean> {
 export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
   if (running) return 'busy';
   running = true;
-  growsStarted += 1;
   const grove = useGroveStore.getState();
   grove.setGroveNotice(null);
   grove.setStreaming(true);
@@ -76,6 +76,7 @@ export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
       return 'last-grove';
     }
 
+    growsStarted += 1;
     const { handleStreamMessage } = useGroveStore.getState();
     try {
       await streamGrow(snapshot, handleStreamMessage, {

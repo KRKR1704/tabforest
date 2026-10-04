@@ -41,6 +41,8 @@ screenshot of every screen.
 
 It **never deletes anything** (no "Delete forest", no "Delete all"). It creates real events and one real grove for the account that
 signs in, and one excluded domain (`example-live-check.invalid`) that the Grove cannot remove afterwards. Use a test account if
+
+Keep using the computer (move the mouse now and then) while it browses, about 3 minutes: attention is counted only while Chrome sees the computer in use (idle after 60 s without input). If nobody touches it, every tree reads 0 minutes; the script samples the idle state and reports that as a note instead of a failure.
 you care about a clean history.
 
 ## What you need

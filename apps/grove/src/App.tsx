@@ -116,11 +116,11 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
   const signIn = useCallback(async () => {
     const ok = await bridgeSignIn();
     if (!ok) return false;
-    // Sign-in always lands on the grove, grown for this user from their open tabs.
+    // Sign-in always lands on the grove. The effect above then shows the stored grove and grows from the open tabs:
+    // starting a grow here as well made it race the restore and throw the stored grove away.
     setActiveScreen('grove');
-    if (growOnOpen) void runGrow({ auto: true });
     return true;
-  }, [bridgeSignIn, growOnOpen, setActiveScreen]);
+  }, [bridgeSignIn, setActiveScreen]);
 
   const signOut = useCallback(async () => {
     await bridgeSignOut();
