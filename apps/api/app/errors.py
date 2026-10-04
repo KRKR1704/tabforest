@@ -42,6 +42,10 @@ def unavailable(detail: str) -> Problem:
     return Problem(503, detail, headers={"Retry-After": RETRY_AFTER_S})
 
 
+def not_found(detail: str) -> Problem:
+    return Problem(404, detail)
+
+
 def _phrase(status: int) -> str:
     try:
         return HTTPStatus(status).phrase
@@ -66,10 +70,13 @@ async def _http_exception(request: Request, exc: StarletteHTTPException) -> JSON
                             headers=getattr(exc, "headers", None), type_=getattr(exc, "type_", "about:blank"))
 
 
+_SOURCES = ("body", "query", "path")
+
+
 def _path(loc: tuple[Any, ...] | list[Any]) -> str:
     out = ""
-    for part in loc:
-        if part == "body":
+    for i, part in enumerate(loc):
+        if i == 0 and part in _SOURCES:
             continue
         out += f"[{part}]" if isinstance(part, int) else (f".{part}" if out else str(part))
     return out
@@ -80,10 +87,14 @@ def validation_detail(errors: list[dict[str, Any]]) -> str:
         return "Request body contains fields that are not allowed"
     first = errors[0]
     path = _path(first["loc"])
-    if first["type"] == "enum":
-        allowed = re.findall(r"'([^']*)'", str(first.get("ctx", {}).get("expected", "")))
-        if allowed:
-            return f"{path} must be one of {', '.join(allowed)}"
+    ctx = first.get("ctx") or {}
+    allowed = re.findall(r"'([^']*)'", str(ctx.get("expected", "")))
+    if first["type"] == "enum" and allowed:
+        return f"{path} must be one of {', '.join(allowed)}"
+    if first["type"] == "literal_error" and allowed:
+        return f"{path} must be {' or '.join(allowed)}"
+    if "detail" in ctx:  # a custom error that states its own wording (PydanticCustomError ctx)
+        return f"{path} {ctx['detail']}"
     return f"{path}: {first['msg']}" if path else first["msg"]
 
 
