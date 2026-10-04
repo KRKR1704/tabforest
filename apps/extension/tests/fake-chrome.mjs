@@ -31,7 +31,7 @@ export function fakeChrome(initialTabs = [], initialWindow = { id: 1, focused: t
     },
     windows: { WINDOW_ID_NONE: -1, onFocusChanged: event(), getLastFocused: vi.fn(async () => initialWindow) },
     idle: { onStateChanged: event(), setDetectionInterval: vi.fn(), queryState: vi.fn(async () => 'active') },
-    runtime: { onInstalled: event(), onStartup: event(), getURL: path => `chrome-extension://test/${path}` },
+    runtime: { id: 'test', onMessage: event(), onInstalled: event(), onStartup: event(), getURL: path => `chrome-extension://test/${path}` },
     action: { onClicked: event() },
   };
   return { api, tabs };

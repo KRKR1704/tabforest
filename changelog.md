@@ -105,6 +105,29 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Saving references (`kind: "references"`) from the prune dialog is S-11; resuming one already works.
 - Restoring into a named tab group depends on the extension (`group_name` is sent).
 - BUILD_TASKS.md: S-8 row ticked only.
+## [2026-10-03] — D-7 Extension bridge handlers (D)
+
+### Added
+
+- Synchronously registered async onMessage router for all 16 bridge messages, own-extension sender validation, short error codes and message-type-only error logging.
+- Read-only snapshot, Hollow count, sender preview, stripped local URLs and auth/work-item stubs; snapshot metadata preserves the original OPEN timestamp across worker sleep and includes only opened, currently eligible tabs, sorted by recent access and capped at 60.
+- Local ref-based focus/reopen/close/restore actions, validated pause/domain settings and live local/session wipe; existing global helpers remain available.
+- Twelve new bridge and integration tests cover reply shapes, privacy filtering, tab actions, settings, live reset, synchronous registration and sender abort/drain during wipe.
+
+### Decisions
+
+- C6 permits null titles while the shared draft declares string, so the extension uses a local nullable snapshot type without changing contracts; old sessions lacking OPEN metadata are omitted rather than assigning invented opening times.
+- Epoch-millisecond pause values are accepted per C6 alongside the draft's string/null values; null removes the key, invalid values/domains return invalid_payload, and domain writes are serialized and deduplicated.
+- RESTORE fallback_urls uses positional matching, only when the local entry is missing; duplicate refs are processed once, reopen URLs must be HTTP(S), and group_name is validated but grouping waits for D-8.
+- RESTORE stops at the first unresolvable ref with not_found; earlier requested actions may already have completed.
+- GET_URLS additionally strips URL credentials; snapshot and other replies contain no Chrome IDs or raw URLs, with GET_URLS the explicit stripped-URL exception.
+- WIPE_LOCAL pauses sender triggers, aborts/drains the current request, waits for capture persistence, clears both stores and resets capture memory, then resumes normal operation; auth remains not_implemented until D-6 and work items remain empty until D-9.
+- Fake Chrome runtime gained id/onMessage support; no existing test assertion changed, no new dependencies or permissions, and no Grove or contract files edited.
+
+### Verification
+
+- All four Node 20 checkpoints passed; final pnpm test 136/136 tests, 13/13 files; pnpm typecheck exit 0; pnpm build exit 0 (14 modules, 168ms); git diff --check clean.
+- Real-Chromium verification remains with Claude/Deep; no new HTML or test page, commit or push.
 
 ## [2026-10-03] — Lane S-7 Timeline, and repair of a bad merge on main (S)
 

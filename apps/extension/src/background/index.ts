@@ -2,6 +2,7 @@ import { registerCapture } from './capture';
 import { emit } from './emit';
 import { EventQueue } from './queue';
 import { EventSync } from './sync';
+import { registerBridge } from './bridge';
 
 const queue = new EventQueue(chrome.storage.local);
 const sync = new EventSync(queue, chrome.storage.local);
@@ -16,6 +17,11 @@ const capture = registerCapture(chrome, async event => {
   emit(event);
   // Do not hold capture's serialized callback chain while sending.
   void sync.onEvent();
+});
+registerBridge(chrome, {
+  settled: capture.settled,
+  sendPreview: () => sync.sendPreview(),
+  wipeLocal: () => sync.reset(() => capture.reset()),
 });
 sync.start();
 Object.assign(globalThis, {
