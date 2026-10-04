@@ -8,6 +8,12 @@ It is not a tab manager. Tab groups, session savers and AI tab sorters file URLs
 
 Built for GirlHacks 2026 (NJIT).
 
+## Try it
+
+**[tabforest.azurewebsites.net/welcome](https://tabforest.azurewebsites.net/welcome/)** is the landing page: what TabForest is, a live demo on an example grove, what each thing in the grove means, and the seven steps to install the extension.
+
+TabForest is not on the Chrome Web Store yet, so the page gives you the extension as a zip and shows how to load it into Chrome.
+
 > **Status:** pre-implementation. This repository currently holds the specification and the team plan. See [SPEC.md](SPEC.md) for the full build contract and [BUILD_TASKS.md](BUILD_TASKS.md) for lanes, tasks and timeline.
 
 ## The difference
@@ -143,6 +149,8 @@ pnpm dev
 ```bash
 uv run uvicorn app.main:app --reload
 ```
+
+The landing page lives in `apps/grove`: `npm run dev:landing` runs it locally on port 3100, and `npm run build:landing` builds it into `apps/grove/build/landing`. It is deployed with the API on every push to `main` and served at `/welcome/`.
 
 The extension loads unpacked from `apps/extension/dist`. The API runs from `apps/api` against a Tiger Cloud dev service and needs an `apps/api/.env`; the variables are listed in [SPEC.md](SPEC.md#141-environment-variables).
 
