@@ -47,7 +47,7 @@ export function forgetStandInAccount(): void {
  * first run is never assumed, so onboarding is not shown on a guess.
  */
 export async function getAccount(): Promise<Account | null> {
-  if (isMockMode()) {
+  if (isMockMode('me')) {
     const wire = example(provisioned ? 'later_call' : 'first_call_provisions');
     provisioned = true;
     return normalize(wire);

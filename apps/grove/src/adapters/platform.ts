@@ -3,39 +3,53 @@ import {
   BrowserSession,
   TimelineResponse,
   TimelineResult,
-  TokenData,
 } from '../types';
 import {
   mockUserProfile,
   mockSessions,
   mockTimelineResponse,
 } from '../mocks/mockData';
-import { isMockMode } from './grove';
-import { sendBridgeMessage } from './bridge';
+import { apiBaseUrl, authHeaders as getAuthHeader } from './grove';
+import { isMockMode } from './live';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+/** GET /api/me as the server sends it (contracts/me.example.json). */
+interface WireMe {
+  user: { id: string; display_name: string | null; email: string | null; created_at: string };
+  stats: {
+    total_forests: number;
+    active_goals: number;
+    total_attention_ms: number;
+    total_resolved_questions: number;
+  };
+  privacy: UserProfile['privacy'];
+}
 
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const tokenRes = await sendBridgeMessage<void, TokenData>('GET_TOKEN');
-  const token = tokenRes.data?.token;
-  if (token) return { Authorization: `Bearer ${token}` };
-  return { 'X-Dev-User': 'usr-5d0a-9b1e-3f4a' };
+const MS_PER_HOUR = 3_600_000;
+
+export function normalizeMe(wire: WireMe): UserProfile {
+  return {
+    id: wire.user.id,
+    display_name: wire.user.display_name ?? '',
+    email: wire.user.email ?? '',
+    created_at: wire.user.created_at,
+    privacy: wire.privacy,
+    stats: {
+      total_forests: wire.stats.total_forests,
+      active_goals: wire.stats.active_goals,
+      total_attention_hours: Math.round((wire.stats.total_attention_ms / MS_PER_HOUR) * 10) / 10,
+      total_resolved_questions: wire.stats.total_resolved_questions,
+    },
+  };
 }
 
 export async function getMe(): Promise<UserProfile> {
-  if (isMockMode()) return mockUserProfile;
+  if (isMockMode('me')) return mockUserProfile;
 
   try {
     const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/me`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
+    const res = await fetch(`${apiBaseUrl()}/api/me`, { method: 'GET', headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return normalizeMe((await res.json()) as WireMe);
   } catch (err) {
     console.warn('[Platform Adapter] getMe failed, using mock fallback:', err);
     return mockUserProfile;
@@ -43,11 +57,11 @@ export async function getMe(): Promise<UserProfile> {
 }
 
 export async function getSessions(): Promise<BrowserSession[]> {
-  if (isMockMode()) return mockSessions;
+  if (isMockMode('sessions')) return mockSessions;
 
   try {
     const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/sessions`, {
+    const res = await fetch(`${apiBaseUrl()}/api/sessions`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -64,13 +78,13 @@ export async function getSessions(): Promise<BrowserSession[]> {
 }
 
 export async function getSession(id: string): Promise<BrowserSession> {
-  if (isMockMode()) {
+  if (isMockMode('sessions')) {
     return mockSessions.find((s) => s.id === id) || mockSessions[0];
   }
 
   try {
     const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/sessions/${id}`, {
+    const res = await fetch(`${apiBaseUrl()}/api/sessions/${id}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -123,12 +137,12 @@ export async function getTimeline(
   projectId: string,
   range: string = '24h'
 ): Promise<TimelineResult> {
-  if (isMockMode()) return standInTimeline(projectId, range);
+  if (isMockMode('timeline')) return standInTimeline(projectId, range);
 
   try {
     const headers = await getAuthHeader();
     const res = await fetch(
-      `${API_BASE_URL}/api/projects/${encodeURIComponent(projectId)}/timeline?range=${encodeURIComponent(range)}`,
+      `${apiBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/timeline?range=${encodeURIComponent(range)}`,
       { method: 'GET', headers }
     );
     if (res.status === 503) {

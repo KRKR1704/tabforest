@@ -2,6 +2,7 @@ import streamContract from '@contracts/grove.stream.example.ndjson?raw';
 import { GroveResponse, StreamMessage, SnapshotPayload, TokenData } from '../types';
 import { mockGroveResponse } from '../mocks/mockData';
 import { sendBridgeMessage } from './bridge';
+import { apiBaseUrl, authHeaderFor, isMockMode } from './live';
 import {
   indexTabs,
   normalizeGrove,
@@ -11,41 +12,45 @@ import {
   type WireStreamMessage,
 } from './groveContract';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-
-export const isMockMode = (): boolean => {
-  return import.meta.env.VITE_MOCK !== '0';
-};
-
-export const apiBaseUrl = (): string => API_BASE_URL;
+// Kept here as well: the other adapters import these from this file.
+export { apiBaseUrl, isMockMode };
 
 /** Bearer token from the extension bridge; held in memory only, never stored. */
 export const authHeaders = (): Promise<Record<string, string>> => getAuthHeader();
 
-function headersFor(token: string | null | undefined): Record<string, string> {
-  if (token) return { Authorization: `Bearer ${token}` };
-  return { 'X-Dev-User': 'usr-5d0a-9b1e-3f4a' };
-}
-
 async function getAuthHeader(): Promise<Record<string, string>> {
   const tokenRes = await sendBridgeMessage<void, TokenData>('GET_TOKEN');
-  return headersFor(tokenRes.data?.token);
+  return authHeaderFor(tokenRes.data?.token);
+}
+
+/**
+ * The grow request as R's route accepts it (apps/api/app/engine/routes.py):
+ * the nine snapshot fields per tab and the Hollow count. The route rejects any
+ * unknown field, so nothing else the extension keeps on a tab is passed on.
+ */
+export function growRequestBody(snapshot: SnapshotPayload, hollowCount?: number) {
+  const open_tabs = snapshot.open_tabs.map((tab) => ({
+    tab_ref: tab.tab_ref,
+    domain: tab.domain,
+    title: tab.title,
+    opener_tab_ref: tab.opener_tab_ref ?? null,
+    opened_at: tab.opened_at,
+    active: tab.active === true,
+    pinned: tab.pinned === true,
+    dup_key: tab.dup_key ?? null,
+    search_query: tab.search_query ?? null,
+  }));
+  return hollowCount === undefined ? { open_tabs } : { open_tabs, hollow_count: hollowCount };
 }
 
 export async function getGrove(): Promise<GroveResponse> {
-  if (isMockMode()) {
+  if (isMockMode('grove')) {
     return mockGroveResponse;
   }
 
   try {
     const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/grove`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
+    const res = await fetch(`${apiBaseUrl()}/api/grove`, { method: 'GET', headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return normalizeGrove((await res.json()) as WireGrove);
   } catch (err) {
@@ -55,19 +60,19 @@ export async function getGrove(): Promise<GroveResponse> {
 }
 
 export async function growGrove(snapshot: SnapshotPayload): Promise<GroveResponse> {
-  if (isMockMode()) {
+  if (isMockMode('grove')) {
     return mockGroveResponse;
   }
 
   try {
     const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/grove/grow`, {
+    const res = await fetch(`${apiBaseUrl()}/api/grove/grow`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...headers,
       },
-      body: JSON.stringify(snapshot),
+      body: JSON.stringify(growRequestBody(snapshot)),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return normalizeGrove((await res.json()) as WireGrove, indexTabs(snapshot.open_tabs));
@@ -105,6 +110,8 @@ export async function readNdjson(
 export interface StreamGrowOptions {
   /** Token from GET_TOKEN. Left out, the adapter asks the bridge itself. */
   token?: string | null;
+  /** From GET_HOLLOW_COUNT; the server echoes it back with the grove. */
+  hollowCount?: number;
   /** Pause before each stand-in tree, so trees visibly arrive one by one. */
   standInDelayMs?: number;
 }
@@ -134,17 +141,17 @@ export async function streamGrow(
   options: StreamGrowOptions = {}
 ): Promise<void> {
   const index = indexTabs(snapshot.open_tabs);
-  if (isMockMode()) {
+  if (isMockMode('grove')) {
     await streamStandIn(index, onMessage, options.standInDelayMs);
     return;
   }
 
   const headers =
-    options.token !== undefined ? headersFor(options.token) : await getAuthHeader();
-  const res = await fetch(`${API_BASE_URL}/api/grove/grow?stream=1`, {
+    options.token !== undefined ? authHeaderFor(options.token) : await getAuthHeader();
+  const res = await fetch(`${apiBaseUrl()}/api/grove/grow?stream=1`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(snapshot),
+    body: JSON.stringify(growRequestBody(snapshot, options.hollowCount)),
   });
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
