@@ -1,4 +1,5 @@
 // Saved contexts and resume (connection C7, contracts/saved-context.example.json).
+import { isHeldOnStandIn } from './live';
 import contextContract from '@contracts/saved-context.example.json';
 import { apiBaseUrl, authHeaders, isMockMode } from './grove';
 import type { WireClaim, WireMushroom, WireNextAction, WireStone } from './groveContract';
@@ -216,7 +217,7 @@ export async function saveContext(
   body: SaveContextBody
 ): Promise<SavedContextReceipt> {
   const clean = sanitize(body);
-  if (isMockMode()) return standInSave(projectId, clean);
+  if (isMockMode('contexts')) return standInSave(projectId, clean);
   return request<SavedContextReceipt>(
     'POST',
     `/api/projects/${encodeURIComponent(projectId)}/save-context`,
@@ -226,7 +227,7 @@ export async function saveContext(
 
 /** GET /api/contexts. */
 export async function listContexts(): Promise<ContextList> {
-  if (isMockMode()) return { contexts: standInRows, sample: false };
+  if (isMockMode('contexts')) return { contexts: standInRows, sample: isHeldOnStandIn('contexts') };
   try {
     const data = await request<{ contexts: SavedContextRow[] }>('GET', '/api/contexts');
     return { contexts: data.contexts ?? [], sample: false };
@@ -238,7 +239,7 @@ export async function listContexts(): Promise<ContextList> {
 
 /** POST /api/contexts/{id}/resume (no body). Null when the context cannot be resumed. */
 export async function resumeContext(id: string): Promise<ResumeResult | null> {
-  if (isMockMode()) return standInResume(id);
+  if (isMockMode('contexts')) return standInResume(id);
   try {
     return await request<ResumeResult>('POST', `/api/contexts/${encodeURIComponent(id)}/resume`);
   } catch (err) {

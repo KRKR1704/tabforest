@@ -99,19 +99,19 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<Ou
 
 /** GET /api/privacy. */
 export async function getPrivacy(): Promise<Outcome<PrivacySettings>> {
-  if (isMockMode()) return { ok: true, value: standIn };
+  if (isMockMode('privacy')) return { ok: true, value: standIn };
   return call<PrivacySettings>('GET', '/api/privacy');
 }
 
 /** PATCH /api/privacy. Returns the full settings as they now stand. */
 export async function patchPrivacy(patch: PrivacyPatch): Promise<Outcome<PrivacySettings>> {
-  if (isMockMode()) return { ok: true, value: standInPatch(patch) };
+  if (isMockMode('privacy')) return { ok: true, value: standInPatch(patch) };
   return call<PrivacySettings>('PATCH', '/api/privacy', patch);
 }
 
 /** DELETE /api/projects/{id}: "Delete forest". Removes the project and everything derived from it. */
 export async function deleteForest(projectId: string): Promise<Outcome<DeleteResult>> {
-  if (isMockMode()) {
+  if (isMockMode('privacy')) {
     return {
       ok: true,
       value:
@@ -125,7 +125,7 @@ export async function deleteForest(projectId: string): Promise<Outcome<DeleteRes
 
 /** DELETE /api/me: "Delete all memory". Every row the user owns, in one transaction. */
 export async function deleteAccount(): Promise<Outcome<DeleteResult>> {
-  if (isMockMode()) {
+  if (isMockMode('privacy')) {
     resetPrivacyStandIn();
     forgetStandInAccount();
     return { ok: true, value: DELETED_ACCOUNT };

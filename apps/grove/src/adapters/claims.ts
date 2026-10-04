@@ -123,7 +123,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export async function patchClaim(id: string, body: ClaimPatchBody): Promise<ClaimUpdate> {
-  if (isMockMode()) return mockClaimUpdate(id, body);
+  if (isMockMode('claims')) return mockClaimUpdate(id, body);
   try {
     const wire = await request<WireClaimResponse>(
       'PATCH',
@@ -151,7 +151,7 @@ function mockAssign(tabRef: string, target: AssignTarget): AssignResult {
 }
 
 export async function assignTab(tabRef: string, target: AssignTarget): Promise<AssignResult> {
-  if (isMockMode()) return mockAssign(tabRef, target);
+  if (isMockMode('claims')) return mockAssign(tabRef, target);
   try {
     return await request<AssignResult>(
       'POST',
@@ -194,7 +194,7 @@ function mockNote(body: NoteBody): NoteResult {
 }
 
 export async function createNote(body: NoteBody): Promise<NoteResult> {
-  if (isMockMode()) return mockNote(body);
+  if (isMockMode('claims')) return mockNote(body);
   try {
     return normalizeNoteResponse(await request<WireNoteResponse>('POST', '/api/notes', body));
   } catch (err) {
@@ -208,7 +208,7 @@ export async function createNote(body: NoteBody): Promise<NoteResult> {
  * re-analyze, so the caller keeps the tree it already has.
  */
 export async function analyzeTree(projectId: string): Promise<TreeData | null> {
-  if (isMockMode()) return null;
+  if (isMockMode('claims')) return null;
   try {
     const wire = await request<WireTree>(
       'POST',

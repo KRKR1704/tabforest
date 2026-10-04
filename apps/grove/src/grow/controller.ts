@@ -4,6 +4,7 @@
 import { sendBridgeMessage } from '../adapters/bridge';
 import { streamGrow, streamStandIn } from '../adapters/grove';
 import { indexTabs } from '../adapters/groveContract';
+import { isHeldOnStandIn } from '../adapters/live';
 import { loadLastGrove, saveLastGrove } from '../lib/lastGrove';
 import { useBridgeStore } from '../store/useBridgeStore';
 import { useGroveStore } from '../store/useGroveStore';
@@ -19,6 +20,7 @@ export type GrowOutcome = 'grown' | 'last-grove' | 'stand-in' | 'no-snapshot' | 
 export const NOTICES = {
   offlineLastGrove: 'The grove service is unreachable. Showing your last grove.',
   offlineStandIn: 'The grove service is unreachable. Showing sample data, not your tabs.',
+  notConnected: 'The grove service is not connected yet. Showing sample data, not your tabs.',
   noSnapshot: 'Could not read your open tabs from the extension.',
   degraded: 'AI unavailable — showing groups only',
 } as const;
@@ -51,6 +53,7 @@ export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
     try {
       await streamGrow(snapshot, handleStreamMessage, {
         token: tokenReply.data?.token ?? null,
+        hollowCount: hollowReply.ok ? hollowReply.data?.count : undefined,
         standInDelayMs: options.standInDelayMs,
       });
     } catch (err) {
@@ -64,6 +67,13 @@ export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
       }
       await streamStandIn(indexTabs(snapshot.open_tabs), handleStreamMessage, options.standInDelayMs);
       grove.setGroveNotice(NOTICES.offlineStandIn);
+      return 'stand-in';
+    }
+
+    if (isHeldOnStandIn('grove')) {
+      // The rest of the app is live but this endpoint is not served yet: what
+      // grew is the contract's sample, so it is labelled and not kept.
+      grove.setGroveNotice(NOTICES.notConnected);
       return 'stand-in';
     }
 
