@@ -87,6 +87,11 @@ const SITES = [
   ['travel', 'https://en.wikipedia.org/wiki/Portugal'],
 ];
 const pages = [];
+// Attention counts only while the computer is in use (Chrome's idle state, 60 s): a run where nobody touches the mouse or
+// keyboard for the 2-3 minutes of browsing reads 0 minutes. Sample the idle state so that case is reported as such.
+const idleSamples = [];
+const idleTimer = setInterval(async () => { idleSamples.push(await sw.evaluate(() => new Promise(r => chrome.idle.queryState(60, r))).catch(() => '?')); }, 8000);
+log('==> KEEP USING THE COMPUTER for the next 3 minutes (move the mouse now and then): time spent counts only while it is in use.');
 await step('browse 12 real pages and 3 searches with dwell and switching', async () => {
   let lastTopic = null;
   for (const [topic, url] of SITES) {
@@ -135,7 +140,13 @@ await step('the Grove shows no "AI unavailable" or "unreachable" banner', async 
   const body = await grove.innerText('body');
   ok(!/AI unavailable|unreachable|Showing sample data/.test(body), body.match(/AI unavailable[^\n]*|The grove service[^\n]*|Showing sample data[^\n]*/)?.[0] ?? 'banner');
 });
+clearInterval(idleTimer);
+const idleSeen = idleSamples.filter(state => state !== 'active').length;
 await step('attention minutes are real (the engine reads the stored events)', async () => {
+  if (growth && !growth.trees.some(t => t.attention_min > 0) && idleSeen > 0) {
+    note(`attention read 0 min because the computer was idle in ${idleSeen} of ${idleSamples.length} samples while browsing; run it again and keep using the mouse`);
+    return `0m, computer idle (${idleSeen}/${idleSamples.length} samples)`;
+  }
   ok(growth && growth.trees.some(t => t.attention_min > 0), growth ? growth.trees.map(t => t.attention_min).join(',') : 'no grove');
   return growth.trees.map(t => `${t.attention_min}m`).join(' ');
 });

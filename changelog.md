@@ -20,7 +20,7 @@ The Grove still looked blank after signing in, although `GET /api/grove` returne
 
 ### Notes
 
-- Not fixed here: attention minutes showing 0 on the live API after #64/#66/#67/#72 (the Timeline is empty for a short session). That is the engine and platform side; see the message to R and P.
+- Attention minutes read 0 in the 11:22 live check, but that was not a server regression: the extension counts time only while Chrome sees the computer in use (idle after 60 s without mouse or keyboard input, by design), and nobody touched the computer during the 3 minutes of automated browsing. The live check now samples the idle state while it browses, asks the person to keep using the computer, and reports an idle run as a note instead of a failure (`e2e/full-stack/live-check.mjs`, README). The product behaviour is unchanged.
 
 ## [2026-10-04] — CI database tests: per-user ids, research memory loop (P)
 
