@@ -23,6 +23,12 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - Saved contexts (`adapters/contexts.py`, C13) still read their fixture; they belong to R-12.
 
+## [2026-10-04] — Retention test no longer runs the real job on a shared database (P)
+
+### Fixed
+
+- `tests/test_privacy_deletion.py`: one retention test called `run_retention(pool)` without a user filter, which on a database with real users (the CI database, when `DATABASE_URL` is set) would delete real users' expired events as the nightly job does. It now passes `only_users=[its own user]`, like the other retention tests.
+
 ## [2026-10-04] — Restore click can no longer be held forever (D)
 
 ### Fixed
