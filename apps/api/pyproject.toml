@@ -1,0 +1,43 @@
+[project]
+name = "tabforest-api"
+version = "0.1.0"
+description = "TabForest API: P's platform app with R's engine routes mounted"
+readme = "README.md"
+requires-python = ">=3.12"
+# P owns this file (X3). R's runtime imports are here too (openai, httpx, python-dotenv),
+# because R's routes run inside P's app; R sends new dependency lines to P.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "asyncpg>=0.29",
+    "pyjwt[crypto]>=2.9",
+    "argon2-cffi>=23.1",
+    "slowapi>=0.1.9",
+    "azure-monitor-opentelemetry>=1.6",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "openai>=1.50",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["app/engine"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header"]

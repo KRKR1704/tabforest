@@ -1,0 +1,103 @@
+"""The API app (P-1): settings, CORS for the extension only, RFC 7807 errors, /health, P's routes,
+and R's engine routes mounted with the auth override (§4.1, §4.4).
+
+Run locally (PowerShell, from apps/api):
+    uv run uvicorn app.main:create_app --factory --port 8000
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+
+from app.auth import EntraVerifier, current_user
+from app.config import Settings, load_settings
+from app.db.pool import Database, StorageUnavailable
+from app.errors import install_error_handlers
+from app.limits import limiter, rate_limited
+from app.routes import login_router, router
+from app.telemetry import instrument, setup_telemetry
+
+log = logging.getLogger("tabforest")
+
+
+def _configure_logging() -> None:
+    if not log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        log.addHandler(handler)
+    log.setLevel(logging.INFO)
+
+
+def mount_engine(app: FastAPI) -> bool:
+    """Include R's router if it imports cleanly; P's app runs without it otherwise (§4.4)."""
+    try:
+        from app.engine.adapters.auth import get_user_id
+        from app.engine.routes import router as engine_router
+    except Exception as exc:  # noqa: BLE001 - any import failure leaves P's app running
+        log.warning("engine routes not mounted (%s: %s); running without them", type(exc).__name__, exc)
+        return False
+    app.include_router(engine_router)
+    app.dependency_overrides[get_user_id] = current_user
+    log.info("engine routes mounted with the current_user override")
+    return True
+
+
+async def _close_engine_pool() -> None:
+    try:
+        from app.engine.db import close_pool
+    except Exception:  # noqa: BLE001
+        return
+    await close_pool()
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    _configure_logging()
+    settings = settings or load_settings()
+    telemetry_on = setup_telemetry(settings.applicationinsights_connection_string)
+    if settings.auth_mode == "dev":
+        for line in ("=" * 72, "AUTH_MODE=dev: X-Dev-User is accepted without a token.",
+                     "Local runs and the H6.5 smoke test only. Never leave the deployed API on dev.", "=" * 72):
+            log.warning(line)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        app.state.db = Database(settings.database_url.get_secret_value())
+        try:
+            await app.state.db.pool()
+        except StorageUnavailable as exc:
+            log.warning("database unreachable at startup (%s); requests get 503 until it is back", exc)
+        yield
+        await app.state.db.close()
+        if app.state.engine_mounted:
+            await _close_engine_pool()
+
+    app = FastAPI(title="TabForest API", version="0.1.0", lifespan=lifespan)
+    app.state.settings = settings
+    app.state.entra = EntraVerifier(settings)
+    app.state.limiter = limiter
+    install_error_handlers(app)
+    app.add_exception_handler(RateLimitExceeded, rate_limited)
+
+    allowed_headers = ["Authorization", "Content-Type"] + (["X-Dev-User"] if settings.auth_mode == "dev" else [])
+    app.add_middleware(CORSMiddleware, allow_origins=[settings.allowed_extension_origin],
+                       allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=allowed_headers,
+                       max_age=600)
+
+    @app.get("/health", tags=["system"])
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    app.include_router(router)
+    if settings.fallback_login:
+        app.include_router(login_router)
+        log.warning("fallback login is on (POST /api/auth/login)")
+    app.state.engine_mounted = mount_engine(app)
+    if telemetry_on:
+        instrument(app)
+    return app
