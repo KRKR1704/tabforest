@@ -5,6 +5,8 @@ import { sendBridgeMessage, isExtensionEnvironment } from '../adapters/bridge';
 interface BridgeStoreState {
   isConnectedToExtension: boolean;
   authState: AuthStateData;
+  /** True once the extension has said whether the user is signed in. */
+  authChecked: boolean;
   token: string | null;
   hollowCount: number;
   sendPreview: SendPreviewData | null;
@@ -13,7 +15,8 @@ interface BridgeStoreState {
 
   // Actions
   initializeBridge: () => Promise<void>;
-  signIn: () => Promise<void>;
+  /** Resolves to whether the user is signed in afterwards. */
+  signIn: () => Promise<boolean>;
   signOut: () => Promise<void>;
   fetchHollowCount: () => Promise<void>;
   fetchSendPreview: () => Promise<void>;
@@ -27,6 +30,7 @@ interface BridgeStoreState {
 export const useBridgeStore = create<BridgeStoreState>((set) => ({
   isConnectedToExtension: false,
   authState: { signed_in: true, user_id: 'usr-5d0a-9b1e-3f4a', display_name: 'Maya Lin', email: 'maya@tabforest.local' },
+  authChecked: false,
   token: 'dev-test-token-jwt-user-5d0a',
   hollowCount: 3,
   sendPreview: null,
@@ -52,6 +56,7 @@ export const useBridgeStore = create<BridgeStoreState>((set) => ({
     if (hollowRes.ok && hollowRes.data) {
       set({ hollowCount: hollowRes.data.count });
     }
+    set({ authChecked: true });
   },
 
   signIn: async () => {
@@ -65,6 +70,7 @@ export const useBridgeStore = create<BridgeStoreState>((set) => ({
       }
     }
     set({ isLoading: false });
+    return res.ok && res.data?.signed_in === true;
   },
 
   signOut: async () => {

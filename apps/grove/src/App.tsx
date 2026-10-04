@@ -12,6 +12,10 @@ import { SavedGroves } from './screens/SavedGroves';
 import { WorkContext } from './screens/WorkContext';
 import { Privacy } from './screens/Privacy';
 import { AskMemory } from './screens/AskMemory';
+import { SignIn } from './screens/SignIn';
+import { Onboarding } from './screens/Onboarding';
+import { getAccount } from './adapters/me';
+import { clearLastGrove } from './lib/lastGrove';
 import { ResumeCard } from './components/ResumeCard';
 import { resumeContext } from './adapters/contexts';
 import { sendBridgeMessage } from './adapters/bridge';
@@ -39,6 +43,13 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
   const isStreaming = useGroveStore((state) => state.isStreaming);
   const hollowCount = useBridgeStore((state) => state.hollowCount);
   const initializeBridge = useBridgeStore((state) => state.initializeBridge);
+  const authState = useBridgeStore((state) => state.authState);
+  const authChecked = useBridgeStore((state) => state.authChecked);
+  const bridgeSignIn = useBridgeStore((state) => state.signIn);
+  const bridgeSignOut = useBridgeStore((state) => state.signOut);
+  const setGrove = useGroveStore((state) => state.setGrove);
+  const [onboarding, setOnboarding] = useState(false);
+  const signedOut = authChecked && !authState.signed_in;
 
   const [evidence, setEvidence] = useState<{ claim: EvidenceClaim; tabs: GroveTab[] } | null>(null);
   const [memoryQuery, setMemoryQuery] = useState('');
@@ -83,6 +94,40 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
     if (growOnOpen && !showInspector) void runGrow();
   }, [growOnOpen]);
 
+  // Once the user is known to be signed in, ask the server who they are. The
+  // first call for a new account says first_sign_in, which starts onboarding.
+  useEffect(() => {
+    if (!authChecked || !authState.signed_in) return;
+    let cancelled = false;
+    void getAccount().then((account) => {
+      if (!cancelled && account?.first_sign_in) setOnboarding(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authChecked, authState.signed_in]);
+
+  const signIn = useCallback(async () => {
+    const ok = await bridgeSignIn();
+    if (!ok) return false;
+    // Sign-in always lands on the grove, grown for this user from their open tabs.
+    setActiveScreen('grove');
+    if (growOnOpen) void runGrow();
+    return true;
+  }, [bridgeSignIn, growOnOpen, setActiveScreen]);
+
+  const signOut = useCallback(async () => {
+    await bridgeSignOut();
+    // Nothing of this user's grove stays on screen or on the device for the next one.
+    clearLastGrove();
+    setGrove(null);
+    setResume(null);
+    setResumeNotice(null);
+    setEvidence(null);
+    setOnboarding(false);
+    setActiveScreen('grove');
+  }, [bridgeSignOut, setGrove, setResume, setActiveScreen]);
+
   const closeEvidence = useCallback(() => setEvidence(null), []);
 
   if (ContractInspector && showInspector) {
@@ -90,6 +135,16 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
       <Suspense fallback={null}>
         <ContractInspector />
       </Suspense>
+    );
+  }
+
+  if (signedOut) return <SignIn onSignIn={signIn} />;
+  if (onboarding) {
+    return (
+      <Onboarding
+        name={authState.display_name?.split(' ')[0]}
+        onDone={() => setOnboarding(false)}
+      />
     );
   }
 
@@ -101,6 +156,8 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
         setActiveScreen(screen);
       }}
       hollowCount={hollowCount}
+      userName={authState.display_name || authState.email}
+      onSignOut={() => void signOut()}
       openQuestionCount={countOpenQuestions(grove)}
       isGrowing={isStreaming}
       onGrow={() => {

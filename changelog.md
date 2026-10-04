@@ -6,6 +6,40 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S-13 Sign-in, onboarding, outline, keyboard, few tabs (S)
+
+### Added
+- `apps/grove/src/screens/SignIn.tsx`: the sign-in screen. "Sign in with Microsoft" (sends `SIGN_IN`), a line when sign-in does not finish, and the three-line privacy promise. It replaces the whole app while the extension says the user is signed out, so no grove content is on the page before sign-in.
+- `apps/grove/src/screens/Onboarding.tsx`: the 3-step first run (browse as usual; grow your grove; check what it says), with Next, Back, Skip and "Open my grove". Shown when `GET /api/me` answers `first_sign_in: true`.
+- `apps/grove/src/adapters/me.ts`: `getAccount()` for `GET /api/me`, read from `contracts/me.example.json`. The stand-in follows the contract: a known user gets `first_sign_in: false`; after "Delete all" the next call provisions the account again and says `true`. A failed live call returns null and is not treated as a first run.
+- Left rail: the signed-in user's name and "Sign out". Sign out sends `SIGN_OUT`, clears the grove on screen and the last grove kept on this device, and returns to the sign-in screen.
+- Keyboard: sprouts, trees, the meadow and the Unclear patch are focus stops on the canvas in left-to-right order (SPEC §9.4), each with a name; Enter or Space does what a click does (a tree opens Tree Detail). A focus ring shows which one has focus.
+- Few tabs (SPEC §13 "Only 2–3 tabs"): when a grove has no tree, or three tabs or fewer, the screen says "TabForest learns as you browse" with the tab count, and still draws the tabs as sprouts.
+
+### Changed
+- Outline view now lists the same grove as the canvas, nested: under each goal its claims, then its paths with every tab (title, domain, minutes, open or closed); then sprouts, the Wildflower Meadow and the Unclear tabs with their reason. Each tab is a button that opens it (`OPEN_TAB`). A listening tree says "Listening… no result for this goal yet" instead of empty claims.
+- `screens/CurrentGrove.tsx`: a grove with tabs but no tree is drawn instead of showing "No grove yet."
+- `store/useBridgeStore.ts`: `authChecked` (true once the extension has answered `GET_AUTH_STATE`); `signIn()` resolves to whether the user is now signed in.
+- `App.tsx`: after sign-in the app lands on Current Grove and grows for that user.
+- `adapters/privacy.ts`: the stand-in "Delete all" also removes the stand-in account.
+
+### Tests
+- `src/__tests__/signInOnboarding.test.tsx` (29): the `/api/me` adapter (stand-in first and later calls, after Delete all, the live request, failure is not a first run); sign-in screen content, focus and failure; onboarding steps, focus and skip; signed-out users see only the sign-in screen; sign out clears the grove and the saved copy; a first-time user gets onboarding and then the grove; a returning user does not; the few-tabs note and sprouts; focus order left to right and Enter/Space; the nested Outline, opening a tab from it, listening trees, and titles written as text.
+- Updated 2 existing tests for the new behaviour: the Privacy app test starts as a signed-in, known user (earlier tests in that file run "Delete all"); the Tree Detail live test counts PATCH requests, because the app now also calls `GET /api/me`.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 19 files, 418 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server, mock mode): Sign out showed the sign-in screen with focus on the button; sign-in returned to Current Grove; Privacy → Delete all → sign in showed onboarding step 1 of 3, then steps 2 and 3, then the grove; Tab moved the focus ring from the sprout to the first tree and Enter opened its Tree Detail.
+- Not checked in a browser: the few-tabs state (the stand-in always has 28 tabs; covered by tests), and sign-in against the real extension and Entra.
+
+### Notes
+- The wording of the three promise lines and the three onboarding steps is S's; SPEC §9.2 names them but gives no text. The promise lines restate rules in `docs/privacy.md`.
+- For P: onboarding depends on the Grove page's `GET /api/me` being the call that creates the user. If `POST /api/events` creates the user row first, `first_sign_in` will already be false and onboarding will not show.
+- Until the extension answers `GET_AUTH_STATE`, the app shows the shell (a few milliseconds), and a grow on open may start before a signed-out state is known; that grow fails without a token and is replaced by the grow after sign-in.
+- SPEC §11's "Sign in again" state after a failed silent renewal is not part of this task: the Grove page shows the sign-in screen whenever the extension reports signed out.
+- The canvas keeps `role="img"`; screen-reader users are served by the Outline view, keyboard users by the focus stops.
+- BUILD_TASKS.md: S-13 row ticked only.
+
 ## [2026-10-04] — Lane S-12 Grow animation (S)
 
 ### Added

@@ -454,8 +454,10 @@ describe('Tree Detail: requests in live mode', () => {
     click(container, '[data-stone-kind="mossy"]');
     fireEvent.click(claimRow(mossy.id).getByRole('button', { name: 'Confirm' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0];
+    // The app also asks GET /api/me who is signed in; only the claim request is checked here.
+    const patches = () => fetchMock.mock.calls.filter(([, options]) => options?.method === 'PATCH');
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    const [url, init] = patches()[0];
     expect(String(url).endsWith(contract.request.path)).toBe(true);
     expect(init.method).toBe('PATCH');
     expect(JSON.parse(init.body)).toEqual({ action: 'confirm' });

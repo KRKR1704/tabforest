@@ -4,6 +4,7 @@
 // Unlike the read-only screens, nothing here falls back to stand-in data when
 // the API fails: showing settings that are not the user's, or reporting a
 // delete that did not happen, would be worse than saying it failed.
+import { forgetStandInAccount } from './me';
 import meContract from '@contracts/me.example.json';
 import privacyContract from '@contracts/privacy.example.json';
 import { apiBaseUrl, authHeaders, isMockMode } from './grove';
@@ -126,6 +127,7 @@ export async function deleteForest(projectId: string): Promise<Outcome<DeleteRes
 export async function deleteAccount(): Promise<Outcome<DeleteResult>> {
   if (isMockMode()) {
     resetPrivacyStandIn();
+    forgetStandInAccount();
     return { ok: true, value: DELETED_ACCOUNT };
   }
   return call<DeleteResult>('DELETE', '/api/me');

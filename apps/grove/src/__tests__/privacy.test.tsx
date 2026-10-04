@@ -4,6 +4,7 @@ import meContract from '@contracts/me.example.json';
 import privacyContract from '@contracts/privacy.example.json';
 import { App } from '../App';
 import { resetMockBridge, sendBridgeMessage } from '../adapters/bridge';
+import { resetAccountStandIn } from '../adapters/me';
 import {
   deleteAccount,
   deleteForest,
@@ -515,6 +516,14 @@ describe('Privacy screen: live requests', () => {
 });
 
 describe('Privacy in the app', () => {
+  // "Delete all" in the tests above signs the user out and removes the stand-in
+  // account; this one starts as a known, signed-in user.
+  beforeEach(() => {
+    resetMockBridge();
+    resetAccountStandIn();
+    useBridgeStore.setState({ authState: { signed_in: true }, authChecked: false });
+  });
+
   it('opens from the left rail', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
