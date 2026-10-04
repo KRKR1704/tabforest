@@ -4,7 +4,7 @@ Owner: lane D (extension). Describes what the extension in `apps/extension/` doe
 
 ## In one paragraph
 
-TabForest watches which tabs you open, switch to and close, so it can show why you opened them. It records only the site name (domain), a cleaned-up page title and timings. It never records full addresses, page contents, passwords, cookies or what you type. Private sites (banking, health, personal email, password managers, sign-in pages) and Incognito windows are never recorded at all. You can pause, exclude a site, or delete everything.
+TabForest watches which tabs you open, switch to and close, so it can show why you opened them. It records only the site name (domain), a cleaned-up page title and timings. It never records full addresses, page contents, passwords, cookies or what you type into pages. The only words of yours it records are the text of a search you make on a known search engine, so it can notice when you keep searching for the same thing. Private sites (banking, health, personal email, password managers, sign-in pages) and Incognito windows are never recorded at all. You can pause, exclude a site, or delete everything.
 
 ## What leaves the device
 
@@ -22,14 +22,19 @@ Each tab event sent to the server (`POST /api/events`, contract `contracts/event
 
 Title redaction (`src/background/hollow.ts`): web addresses, email addresses and long token-like strings are replaced by `[redacted]` before an event is even queued. A title that is just an address is not sent.
 
-Also sent, only when you use the feature: your privacy settings (excluded domains and pause time, `PATCH /api/privacy`) and your sign-in token to prove who you are.
+Also sent, only when you use the feature: your privacy settings (excluded domains and pause time, `PATCH /api/privacy`), your sign-in token to prove who you are, and, only when you press **Reconstruct** in Work Context, the text of the pages, files or notes you added (at most 12,000 characters each) to `POST /api/work-context/analyze` or `/upload`. The server uses that text to answer and does not store it (it stores only counts for the daily AI budget).
+
+## What the server does with the events
+
+The server keeps the events above (domain, redacted title, timings, a hash instead of the address) so the Grove can group your tabs into goals. To find the goal behind a group, the server sends the site names and cleaned page titles of that group, and the text you hand to Work Context, to Azure OpenAI (Microsoft's cloud AI service) to be read once; the answer is stored with the grove. The events are deleted every night once they are older than the number of days you choose (7, 30 or 90; the default is 90). You can delete one goal or all of your memory from the Privacy screen of the Grove (`DELETE /api/projects/{id}`, `DELETE /api/me`).
 
 ## What stays on the device
 
 - Full addresses (query strings and fragments included). They are kept in `chrome.storage.local`, keyed by the random `tab_ref`, so that "restore tabs" can reopen them. They are not sent.
 - Chrome's tab, window and group ids.
 - The queue of events waiting to be sent (until the server confirms them).
-- Work Context items (selection or page text you added by right-click): kept in `chrome.storage.local`, newest 20, at most 12,000 characters each. Today nothing sends them to the server.
+- Work Context items (selection or page text you added by right-click): kept in `chrome.storage.local`, newest 20, at most 12,000 characters each. They leave the device only when you press **Reconstruct** (see above).
+- The last grove you saw, kept by the Grove page in the extension's own local storage so the page opens at once (site names, cleaned titles and the labels of your goals). It is removed when you sign out or delete your data.
 - The sign-in token, in `chrome.storage.session` only (cleared when the browser closes or you sign out).
 
 ## What is never collected
@@ -81,6 +86,5 @@ TabForest's use of information received from Chrome APIs adheres to the Chrome W
 
 - The Hollow's built-in categories cannot be switched off or edited from the Grove yet; there is no bridge message for it.
 - An exclusion cannot be removed through the bridge, so removal is not synced.
-- The API side of privacy sync (`PATCH /api/privacy`) and account deletion (`DELETE /api/me`, `DELETE /api/projects/{id}`) is implemented; until the API version that contains it is deployed, changes stay on the device and wait.
-- Work Context text is not uploaded anywhere today. If analysis of it is added later, it needs its own explicit action and an update to this page.
-- The data-retention and "who can read user data" statements describe the API lane's configuration; confirm with P before submitting to the Web Store.
+- The sign-in lasts about an hour and is not renewed in the background; after it expires, or after the browser restarts, you sign in again.
+- The statements about retention, deletion and "no human reads user data" describe how the deployed API is set up; they were checked against the code on 2026-10-04 and must be checked again if the API changes.

@@ -34,6 +34,26 @@ Not a BUILD_TASKS.md row. A page for people who do not have the extension yet.
 - `docs/privacy.md` says TabForest never records "what you type" in its summary paragraph, and lists the text of a search as something that is sent. The page quotes the paragraph as written and leaves search text out of its lists. For lane D to settle.
 - Lane D will send final steps and screenshots; only `landing/content.ts` needs to change.
 
+## [2026-10-04] — Chrome Web Store package: icons, listing, privacy page (D)
+
+### Added
+
+- Extension icons (16, 32, 48, 128 px; the tree on a forest-green square), used for the toolbar and the store. Source `apps/extension/store/icon.svg`.
+- `pnpm build:store` (`scripts/build-zip.mjs`, `STORE=1`): the same build as `build:zip` without the manifest `key` (the Web Store assigns the extension ID), named `tabforest-extension-<version>-store.zip`. Both builds now also refuse a build whose 16, 48 or 128 px icon is missing from the manifest or the package.
+- `apps/extension/store/`: `LISTING.md` (every field to paste into the developer dashboard: name, summary, description, single purpose, a justification for each permission, data-usage answers, test instructions, distribution), the 440x280 promo tile and six 1280x800 screenshots made from the sample Grove.
+
+### Changed
+
+- `docs/privacy.md` now matches the product: Work Context text leaves the device only on Reconstruct and is not stored; what the server keeps and how long; the use of Azure OpenAI; the last-grove copy kept by the Grove page; the sign-in expiry. The old "known gaps" that the API has since closed were removed.
+
+### Tests
+
+- `build-zip.test.mjs`: icons present and missing, the store build rejects a key and gets the `-store` name. Extension suite 225 of 225, typecheck clean. `pnpm build:store` was run and the manifest in the zip has the icons and no key.
+
+### Notes
+
+- Not done: the store assigns a new extension ID, so `ALLOWED_EXTENSION_ORIGIN` and the Entra redirect URI must be updated after the first upload (see `LISTING.md`). Reviewer sign-in details go in the dashboard, not in the repository.
+
 ## [2026-10-04] — GET /api/grove serves the newest grow that has trees (R)
 
 D's live check: a 1-2 tab grow stores a run with a lone sprout and no trees, and GET /api/grove returned that newest run, hiding the user's real grove.
