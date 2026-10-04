@@ -1,9 +1,11 @@
 // D-13: build the installable zip. Builds the extension, bundles the Grove UI, checks the result and zips it.
 //   pnpm build:zip                      -> tabforest-extension-<version>.zip in apps/extension/
+//   pnpm build:store                    -> tabforest-extension-<version>-store.zip: the same build without the manifest "key",
+//                                          which the Chrome Web Store assigns itself (the store gives its own extension ID)
 // Needs the Grove build (apps/grove: npm ci && npm run build). API base defaults to the deployed API;
 // set VITE_API_BASE to point somewhere else. The zip is what a teammate unzips and loads with "Load unpacked".
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -20,12 +22,20 @@ function walk(dir) {
 }
 
 /** Everything that must be true of a build before it is handed to someone. Returns a list of problems. */
-export function verifyDist(dist, { apiBase = DEFAULT_API_BASE } = {}) {
+export function verifyDist(dist, { apiBase = DEFAULT_API_BASE, store = false } = {}) {
   const problems = [];
   const manifestPath = join(dist, 'manifest.json');
   if (!existsSync(manifestPath)) return [`${manifestPath} is missing; build the extension first`];
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (!String(manifest.key ?? '').startsWith(EXPECTED_ID_KEY_START)) problems.push('manifest key is missing or changed: the extension ID would differ (it must be nldemblgfgcaolkpkajdbefjfnileeoi)');
+  if (store) {
+    if (manifest.key !== undefined) problems.push('the store build must not contain a manifest key (the Web Store assigns the extension ID)');
+  } else if (!String(manifest.key ?? '').startsWith(EXPECTED_ID_KEY_START)) {
+    problems.push('manifest key is missing or changed: the extension ID would differ (it must be nldemblgfgcaolkpkajdbefjfnileeoi)');
+  }
+  for (const size of ['16', '48', '128']) {
+    const icon = manifest.icons?.[size];
+    if (!icon || !existsSync(join(dist, icon))) problems.push(`the ${size} px icon is missing from the manifest or from the build (the Web Store needs 16, 48 and 128)`);
+  }
   if (JSON.stringify([...(manifest.permissions ?? [])].sort()) !== JSON.stringify([...EXPECTED_PERMISSIONS].sort())) problems.push(`permissions differ from the approved list: ${JSON.stringify(manifest.permissions)}`);
   if (JSON.stringify(manifest.optional_permissions ?? []) !== '["tabGroups"]') problems.push(`optional permissions differ: ${JSON.stringify(manifest.optional_permissions)}`);
   if (manifest.host_permissions?.length || manifest.content_scripts?.length) problems.push('host permissions or content scripts found; the privacy page says there are none');
@@ -41,8 +51,8 @@ export function verifyDist(dist, { apiBase = DEFAULT_API_BASE } = {}) {
   return problems;
 }
 
-export function zipName(dist) {
-  return `tabforest-extension-${JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8')).version}.zip`;
+export function zipName(dist, { store = false } = {}) {
+  return `tabforest-extension-${JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8')).version}${store ? '-store' : ''}.zip`;
 }
 
 function run(cmd, args, options = {}) {
@@ -63,13 +73,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   rmSync(dist, { recursive: true, force: true });
   run('npx', ['vite', 'build'], { cwd: root, env });
   run('node', ['scripts/bundle-grove.mjs'], { cwd: root, env });
-  const problems = verifyDist(dist, { apiBase });
+  const store = process.env.STORE === '1';
+  if (store) {
+    const path = join(dist, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    delete manifest.key;
+    writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+  const problems = verifyDist(dist, { apiBase, store });
   if (problems.length) {
     console.error(`build:zip: refusing to zip, ${problems.length} problem(s):\n- ${problems.join('\n- ')}`);
     process.exit(1);
   }
-  const out = join(root, zipName(dist));
+  const out = join(root, zipName(dist, { store }));
   rmSync(out, { force: true });
   run('zip', ['-r', '-X', '-q', out, '.'], { cwd: dist });
-  console.log(`build:zip: ${out} (${Math.round(statSync(out).size / 1024)} KB). Unzip it, open chrome://extensions, Developer mode, Load unpacked.`);
+  console.log(`build:zip: ${out} (${Math.round(statSync(out).size / 1024)} KB). ${store ? 'Upload this file in the Chrome Web Store developer dashboard.' : 'Unzip it, open chrome://extensions, Developer mode, Load unpacked.'}`);
 }
