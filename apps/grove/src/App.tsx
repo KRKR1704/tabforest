@@ -23,7 +23,7 @@ import { sendBridgeMessage } from './adapters/bridge';
 import { restorePayload } from './lib/contextCard';
 import { useResumeStore } from './store/useResumeStore';
 import { countOpenQuestions } from './lib/grove';
-import { runGrow } from './grow/controller';
+import { restoreStoredGrove, runGrow } from './grow/controller';
 
 // The S-1 contract inspector stays reachable in development at #inspector.
 // The DEV guard keeps it out of the production bundle.
@@ -92,9 +92,13 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
     initializeBridge();
   }, [initializeBridge]);
 
+  // Open: show the last stored grove at once, then grow from the open tabs. Both wait until the extension has
+  // said the user is signed in; before that the API only answers 401 and the grove would stay empty.
+  const signedIn = authChecked && authState.signed_in;
   useEffect(() => {
-    if (growOnOpen && !showInspector) void runGrow();
-  }, [growOnOpen]);
+    if (!growOnOpen || showInspector || !signedIn) return;
+    void restoreStoredGrove().then(() => runGrow());
+  }, [growOnOpen, signedIn]);
 
   // Once the user is known to be signed in, ask the server who they are. The
   // first call for a new account says first_sign_in, which starts onboarding.

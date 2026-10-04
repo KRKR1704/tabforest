@@ -6,6 +6,28 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Grove: show the stored grove on open, and wait for sign-in before growing (D)
+
+Found by the live check against the deployed API: the Current Grove and Timeline screens were empty on every open even though the server held the user's history (Saved Groves and Privacy, which read the server, were filled).
+
+### Fixed
+
+- On open the Grove page now loads the last grove the server stored (`GET /api/grove`) as soon as the extension says the user is signed in, then grows from the open tabs on top of it. Current Grove and Timeline show the user's history instead of "No grove yet". The stored grove is never replaced by one that grew while the request was in flight, and a failed or empty answer leaves the page as it was (it never falls back to the sample grove).
+- The first grow no longer fires at page load, before sign-in finished; it used to get a 401 and not retry. It runs once the user is known to be signed in, and again after sign-in or sign-out and sign-in.
+- Growing with no open tab keeps the grove already on screen instead of replacing it with an empty one.
+
+### Changed
+
+- `apps/grove/src/App.tsx`, `grow/controller.ts` (`restoreStoredGrove`), `adapters/grove.ts` (`fetchStoredGrove`). The existing "grows on first open" test now waits for the snapshot request instead of looking for the transient "Reading your open tabs" text, because the grow starts after the sign-in check.
+
+### Tests
+
+- New `restoreOnOpen.test.tsx` (7): restore fills an empty page and keeps a copy on the device, nothing from the server leaves the page alone, a restore that finishes after a grow is discarded, an empty tab list keeps the grove, nothing is requested before sign-in, and `fetchStoredGrove` is null for the sample build, a 404 and a network error. Grove suite: 489 of 489 pass; typecheck clean.
+
+### Notes
+
+- Not done here: silent token renewal (the sign-in still lasts about an hour, then the next request is a 401), and the Grove folder belongs to Shriya.
+
 ## [2026-10-04] — Live check: the product against the deployed API with a real sign-in (D)
 
 ### Added

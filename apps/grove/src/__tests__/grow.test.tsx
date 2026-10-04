@@ -281,7 +281,8 @@ describe('Grow in the app', () => {
 
   it('grows on first open', async () => {
     const { container } = render(<App growOnOpen />);
-    expect(screen.getByText('Reading your open tabs…')).toBeInTheDocument();
+    // It waits until the extension has said the user is signed in, so the first screen is not a 401.
+    await waitFor(() => expect(sentTypes()).toContain('GET_SNAPSHOT'));
 
     await waitFor(
       () => {
