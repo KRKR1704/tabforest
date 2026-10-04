@@ -57,7 +57,7 @@ test.each(['removed-first', 'activated-first'])('closing focused tab preserves d
 test('all lifecycle events match first_send keys, stable refs and opener relationships', async () => {
   const h = await setup();
   const parent = tab(1001);
-  const child = tab(1002, { openerTabId: 1001, title: 'x'.repeat(350), url: 'https://www.google.com/search?q=refresh+token' });
+  const child = tab(1002, { openerTabId: 1001, title: 'research notes '.repeat(25), url: 'https://www.google.com/search?q=refresh+token' });
   h.tabs.set(parent.id, parent); h.api.tabs.onCreated.fire(parent);
   h.tabs.set(child.id, child); h.api.tabs.onCreated.fire(child);
   await h.settle();
@@ -164,7 +164,7 @@ test('rapid callbacks retain callback timing and BLUR/FOCUS order through async 
 
 test('emit logs exactly one contract event; toolbar listener still opens grove', async () => {
   const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-  emit(firstSend[0]); expect(log).toHaveBeenCalledWith('[tf-capture]', firstSend[0]);
+  emit(firstSend[0]); expect(log.mock.calls).toEqual([[{ type: firstSend[0].type, event_id: firstSend[0].event_id }]]);
   const { api } = fakeChrome(); vi.stubGlobal('chrome', api);
   await import('../src/background/index');
   api.action.onClicked.fire();
