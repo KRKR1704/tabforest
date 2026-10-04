@@ -6,6 +6,24 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Landing page hosted by the API at /welcome (P)
+
+### Added
+- `main.py` serves the landing page (`apps/grove`, `npm run build:landing`) at `/welcome/` from `app/welcome_site/`, public and cached for 5 minutes; `/welcome` redirects to `/welcome/`. It is plain static files with relative paths, so nothing else in the API changes: the rest keeps `Cache-Control: no-store` and its auth. With no build present the route does not exist.
+- The deploy job builds the page (Node 20, `npm ci`, `npm run build:landing`), copies it into the app before the zip is made, and after the deploy checks that `/welcome/` answers 200. A push that touches `apps/grove/**` now redeploys, so a change to the page goes live on its own.
+- `.gitignore`: `apps/api/app/welcome_site/` (the build output is never committed).
+
+### Tests
+- Local: `test_e1_welcome.py` (7): page and assets served without a token, 5-minute cache, nothing outside the folder is served (four traversal forms), the API keeps `no-store` and 401, no build means no route.
+
+### Verification
+- Built from a clean export: `npm ci` then `npm run build:landing` in 21 s, 328 KB (`index.html` plus `assets/index-*.js` and `.css`). Served through the app: `/welcome/` 200 `text/html`, both assets 200, the download link `releases/latest/download/tabforest-extension.zip` is in the bundle, traversal 404, `/health` still `no-store`.
+- 33 passed on the touched tests; `ruff check` clean.
+
+### Notes
+- The deploy job's new steps run for the first time on the push to `main` after this merges; I could not run them locally (no `zip` binary here). The page is live at `https://tabforest.azurewebsites.net/welcome/` once that run finishes.
+- It lives on the API's App Service, so it is down when the API is down.
+
 ## [2026-10-04] — CI database tests: per-user ids, research memory loop (P)
 
 ### Fixed
