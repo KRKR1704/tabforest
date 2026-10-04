@@ -319,6 +319,35 @@ function buildSteps(): GuideStep[] {
 
 export const GUIDE_STEPS: GuideStep[] = buildSteps();
 
+/**
+ * One example grove with everything in the key on it at once: an open question,
+ * an answered one, a confirmed decision and a tree gone quiet. For the landing page.
+ */
+export const GUIDE_SHOWCASE: GroveResponse = (() => {
+  const start = base();
+  const withQuestions = withTree(start, PREP, (item) => ({
+    ...openQuestion(item),
+    unresolved_questions: [
+      ...openQuestion(item).unresolved_questions,
+      {
+        id: 'g-q2',
+        question: 'When is the submission deadline?',
+        display_text: 'When is the submission deadline?',
+        kind: 'repeated_search' as const,
+        confidence: 0.8,
+        status: 'resolved' as const,
+        recurrence_count: 2,
+        evidence: [],
+      },
+    ],
+  }));
+  const carved = withTree(withQuestions, LOGIN, (item) => ({
+    ...item,
+    decisions: item.decisions.map((d) => ({ ...d, provenance: 'stated' as const, stone_kind: 'carved' as const })),
+  }));
+  return withTree(carved, JOB, asleep);
+})();
+
 /** What each thing in the grove stands for, in everyday words. */
 export const GUIDE_KEY = [
   { id: 'tree', name: 'A tree', meaning: 'is one thing you are working on' },
