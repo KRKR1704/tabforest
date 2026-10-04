@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
-import { bundleGrove } from '../scripts/bundle-grove.mjs';
+import { PERMISSION_TAG, bundleGrove } from '../scripts/bundle-grove.mjs';
 
 const dirs = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -36,7 +36,7 @@ test('copies the Grove build into the extension as grove.html and skips sourcema
   const { groveDist, extDist } = fixture();
   const result = bundleGrove({ groveDist, extDist, log: quiet });
   expect(result.bundled).toBe(true);
-  expect(readFileSync(join(extDist, 'grove.html'), 'utf8')).toBe(indexHtml());
+  expect(readFileSync(join(extDist, 'grove.html'), 'utf8')).toBe(indexHtml().replace('</body>', `${PERMISSION_TAG}</body>`));
   expect(readdirSync(join(extDist, 'assets')).sort()).toEqual(['index-AAA.js', 'index-BBB.css']);
 });
 
@@ -90,4 +90,12 @@ test('is safe to run twice', () => {
   const { groveDist, extDist } = fixture();
   bundleGrove({ groveDist, extDist, log: quiet });
   expect(() => bundleGrove({ groveDist, extDist, log: quiet })).not.toThrow();
+});
+
+test('adds the permission script exactly once, even when run twice', () => {
+  const { groveDist, extDist } = fixture();
+  bundleGrove({ groveDist, extDist, log: quiet });
+  bundleGrove({ groveDist, extDist, log: quiet });
+  const html = readFileSync(join(extDist, 'grove.html'), 'utf8');
+  expect(html.split('tf-permissions.js')).toHaveLength(2);
 });

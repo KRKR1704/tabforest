@@ -32,6 +32,13 @@ function checkHtml(html, groveDist) {
   return problems;
 }
 
+// D-8: the extension's own script that asks for the optional tabGroups permission on a restore click.
+export const PERMISSION_TAG = '<script src="./tf-permissions.js"></script>';
+export function withPermissionScript(html) {
+  if (html.includes('tf-permissions.js')) return html;
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${PERMISSION_TAG}</body>`) : html + PERMISSION_TAG;
+}
+
 export function bundleGrove({ groveDist, extDist, log = console.log }) {
   const indexPath = join(groveDist, 'index.html');
   if (!existsSync(indexPath)) {
@@ -59,7 +66,7 @@ export function bundleGrove({ groveDist, extDist, log = console.log }) {
   }
   mkdirSync(target, { recursive: true });
   for (const [to, data] of copies) writeFileSync(to, data);
-  writeFileSync(join(extDist, 'grove.html'), html);
+  writeFileSync(join(extDist, 'grove.html'), withPermissionScript(html));
   log(`bundle-grove: ${copies.length} asset file(s) and grove.html copied into ${extDist}`);
   return { bundled: true, files: copies.map(([, , name]) => name) };
 }
