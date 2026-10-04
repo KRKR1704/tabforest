@@ -8,6 +8,12 @@ import { EvidenceDrawer, type EvidenceClaim } from './components/EvidenceDrawer'
 import { CurrentGrove } from './screens/CurrentGrove';
 import { ScreenPlaceholder } from './screens/ScreenPlaceholder';
 import { Timeline } from './screens/Timeline';
+import { SavedGroves } from './screens/SavedGroves';
+import { ResumeCard } from './components/ResumeCard';
+import { resumeContext } from './adapters/contexts';
+import { sendBridgeMessage } from './adapters/bridge';
+import { restorePayload } from './lib/contextCard';
+import { useResumeStore } from './store/useResumeStore';
 import { countOpenQuestions } from './lib/grove';
 import { runGrow } from './grow/controller';
 
@@ -33,6 +39,38 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
 
   const [evidence, setEvidence] = useState<{ claim: EvidenceClaim; tabs: GroveTab[] } | null>(null);
   const [memoryQuery, setMemoryQuery] = useState('');
+  const resume = useResumeStore((state) => state.resume);
+  const setResume = useResumeStore((state) => state.setResume);
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
+
+  // Resume: fetch the card, pin it above the grove, and let the user choose what to reopen.
+  const startResume = useCallback(
+    async (contextId: string) => {
+      const result = await resumeContext(contextId);
+      if (!result) return false;
+      setResumeNotice(null);
+      setResume(result);
+      setEvidence(null);
+      setActiveScreen('grove');
+      return true;
+    },
+    [setResume, setActiveScreen]
+  );
+
+  const restore = useCallback(
+    async (which: 'important' | 'all') => {
+      if (!resume) return;
+      const payload = restorePayload(resume, which);
+      const reply = await sendBridgeMessage('RESTORE', payload);
+      const count = payload.tab_refs.length;
+      setResumeNotice(
+        reply.ok
+          ? `Reopened ${count} ${count === 1 ? 'tab' : 'tabs'}.`
+          : 'Could not reopen the tabs.'
+      );
+    },
+    [resume]
+  );
 
   useEffect(() => {
     initializeBridge();
@@ -77,13 +115,30 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
       }
     >
       {activeScreen === 'grove' ? (
-        <CurrentGrove
-          grove={grove}
-          onShowEvidence={(claim, tabs) => setEvidence({ claim, tabs })}
-          onHideEvidence={closeEvidence}
-        />
+        <div className="flex h-full flex-col">
+          {resume && (
+            <ResumeCard
+              resume={resume}
+              notice={resumeNotice}
+              onRestore={(which) => void restore(which)}
+              onDismiss={() => {
+                setResume(null);
+                setResumeNotice(null);
+              }}
+            />
+          )}
+          <div className="min-h-0 flex-1">
+            <CurrentGrove
+              grove={grove}
+              onShowEvidence={(claim, tabs) => setEvidence({ claim, tabs })}
+              onHideEvidence={closeEvidence}
+            />
+          </div>
+        </div>
       ) : activeScreen === 'timeline' ? (
         <Timeline grove={grove} />
+      ) : activeScreen === 'saved' ? (
+        <SavedGroves onResume={startResume} />
       ) : (
         <ScreenPlaceholder description={navItemFor(activeScreen).description}>
           {activeScreen === 'memory' && memoryQuery && (

@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { analyzeTree, assignTab, createNote, patchClaim } from '../adapters/claims';
 import { sendBridgeMessage } from '../adapters/bridge';
+import { saveContext as saveContextRequest } from '../adapters/contexts';
+import { buildContextCard, buildContextTabs } from '../lib/contextCard';
 import {
   addDecision,
   applyClaimUpdate,
@@ -9,7 +11,15 @@ import {
   replaceTree,
 } from '../lib/groveEdits';
 import { useGroveStore } from '../store/useGroveStore';
-import type { AssignTarget, ClaimPatchBody, GroveResponse, NoteKind } from '../types';
+import type {
+  AssignTarget,
+  ClaimPatchBody,
+  GetUrlsData,
+  GetUrlsPayload,
+  GroveResponse,
+  NoteKind,
+  TreeData,
+} from '../types';
 
 export type MoveDestination =
   | { projectId: string; branchLabel: string | null }
@@ -108,5 +118,29 @@ export function useGroveActions() {
     );
   }, []);
 
-  return { notice, setNotice, patch, addNote, clearFog, move, openTab, excludeDomain };
+  // Save: ask the extension for the tabs' stripped URLs, then store the card and tabs.
+  const saveContext = useCallback(async (tree: TreeData) => {
+    const reply = await sendBridgeMessage<GetUrlsPayload, GetUrlsData>('GET_URLS', {
+      tab_refs: tree.tabs.map((tab) => tab.tab_ref),
+    });
+    const urls = reply.ok && reply.data?.urls ? reply.data.urls : {};
+    try {
+      const receipt = await saveContextRequest(tree.cluster_ref, {
+        kind: 'resume',
+        title: tree.project.name,
+        card: buildContextCard(tree),
+        tabs: buildContextTabs(tree, urls),
+      });
+      setNotice(
+        `Saved. ${receipt.important_tab_count} of ${receipt.total_tab_count} tabs are marked to reopen. Find it under Saved Groves.`
+      );
+      return receipt;
+    } catch (err) {
+      console.warn('[Save context] failed:', err);
+      setNotice('Could not save this context. Nothing was stored.');
+      return null;
+    }
+  }, []);
+
+  return { notice, setNotice, patch, addNote, clearFog, move, openTab, excludeDomain, saveContext };
 }
