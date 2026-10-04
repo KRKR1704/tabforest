@@ -8,7 +8,9 @@
     "build": "vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "mock": "node mock-api/server.mjs"
+    "mock": "node mock-api/server.mjs",
+    "bundle:grove": "node scripts/bundle-grove.mjs",
+    "build:with-grove": "vite build && node scripts/bundle-grove.mjs"
   },
   "devDependencies": {
     "vite": "^6.3.5",

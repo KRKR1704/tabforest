@@ -6,6 +6,24 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — D-11 Grove UI inside the extension (D)
+
+### Added
+
+- `apps/extension/scripts/bundle-grove.mjs` (and `pnpm bundle:grove`, `pnpm build:with-grove`): copies the Grove build (`apps/grove/dist`) into the extension build as `grove.html` plus its assets, skipping sourcemaps and removing their comment. The placeholder `grove.html` stays when the Grove build is missing. It refuses a Grove build with inline or remote scripts, an inline event handler, a reference to a file that is not in the build, or an asset name that already exists in the extension with different content, and writes nothing in those cases. Safe to run twice.
+- `tests/bundle-grove.test.mjs`: eight tests for the copy, the sourcemap handling, the fallback, the missing extension build, the refusals and running twice.
+- README section with the two build commands.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test`, `pnpm typecheck` and `pnpm build` pass (144 of 144 tests, 8 of them new). The earlier real-Chromium checks (capture, Hollow, sync, bridge) still pass with the bundled build. Grove built with `npm ci` and `npm run build` (its own `check-dist` step passes).
+- Real Chromium (Playwright, outside the repo) with the bundled build: `grove.html` loads inside the extension, shows the Grove with the extension runtime (the real bridge, not the stand-in), has no CSP violation, no script error and no failed request, and `GET_SNAPSHOT` from that page returns the three open tabs.
+
+### Notes
+
+- Shriya's code, `contracts/`, the manifest and the dependencies are unchanged; only `package.json` scripts were added.
+- The Grove shows its demo data until sign-in exists (D-6): `GET_TOKEN` is still `null`, so the page cannot call the API in production mode.
+- The Grove page loads Inter and Lora from Google Fonts (a remote stylesheet). The extension CSP only restricts scripts, so this works while online and falls back to system fonts offline.
 ## [2026-10-03] — D-6 Sign-in: fallback login and Microsoft Entra ID (D)
 
 ### Added
