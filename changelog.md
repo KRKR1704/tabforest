@@ -6,6 +6,21 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Full-stack test: the whole product in one automated run (D)
+
+### Added
+
+- `apps/extension/e2e/full-stack/`: one script (`full-flow.mjs`, 38 checks, about 5 minutes) drives the real extension in Chromium through a day of browsing (the 28 demo tabs over five simulated hours plus three private sites), sign-in through the extension's own window, events into a real Postgres through the real API, the grove from the real Azure OpenAI model, tree detail, save context, resume and restore into a tab group, prune, Work Context (captured page, pasted note, uploaded files), Ask Memory, privacy, delete one forest and delete everything. `harness.py` starts a throwaway Postgres 16 with pgvector (the migrations without the TimescaleDB-only statements, aggregates as live views, a loopback address so the API accepts it) and removes it afterwards; `prepare-build.mjs` makes the build it needs (a movable clock in the service worker, `tabGroups` and web access granted); `run-full-stack.sh` starts the API. Nothing touches a shared database; Azure settings come from the environment only.
+- Gaps the run reports instead of failing on (lines starting `KNOWN`): the Grove grows once before sign-in and does not retry after it; prune finds nothing on a normal day of browsing; Ask Memory has no endpoint yet.
+
+### Verification
+
+- 38 of 38 checks pass with the engine reading real events (R-15); without that change the check "attention minutes come from the real events" fails, which is the point of it.
+
+### Notes
+
+- Found and fixed along the way: R-15 (engine used fixture events) and the Restore click that could stay held (separate PRs).
+
 ## [2026-10-04] — R-15 The engine reads the real events (R)
 
 ### Fixed
