@@ -4,8 +4,6 @@ import { drag, pointer, select, zoom, zoomIdentity, zoomTransform, type Selectio
 import { resolveDrop } from './layout';
 import type {
   DropTarget,
-import { select, zoom, zoomIdentity, type Selection } from 'd3';
-import type {
   FireflyLayout,
   GroveLayout,
   HypothesisLayout,
@@ -463,7 +461,8 @@ function drawTree(
       branch.leaves,
       tree.dormant ? PALETTE.leafAmber : PALETTE.leafGreen,
       onSelect,
-      tree.id
+      tree.id,
+      dragContext
     );
   }
 

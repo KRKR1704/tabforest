@@ -13,6 +13,7 @@ import {
 } from '../types';
 import groveContract from '@contracts/grove.example.json';
 import snapshotContract from '@contracts/snapshot.example.json';
+import timelineContract from '@contracts/timeline.example.json';
 import { indexTabs, normalizeGrove, type WireGrove } from '../adapters/groveContract';
 
 // The 28 demo tabs from the contract, as GET_SNAPSHOT returns them.
@@ -27,73 +28,9 @@ export const mockGroveResponse: GroveResponse = normalizeGrove(
   indexTabs(snapshotContract.open_tabs)
 );
 
-export const mockTimelineResponse: TimelineResponse = {
-  project_id: 'p-backend-auth',
-  project_name: 'Backend Authentication',
-  range: '24h',
-  buckets: [
-    {
-      time: '2026-10-04T09:00:00Z',
-      branch_ref: 'b1',
-      branch_label: 'JWT',
-      minutes: 15.0,
-      tab_switches: 4,
-      intent_switches: 0,
-      tabs: [
-        { tab_ref: 't1', domain: 'fastapi.tiangolo.com', minutes: 9.5 },
-        { tab_ref: 't2', domain: 'github.com', minutes: 5.5 },
-      ],
-      markers: [
-        {
-          type: 'question',
-          id: 'q-1',
-          label: 'Where should refresh tokens be stored securely?',
-          ts: '2026-10-04T09:12:00Z',
-        },
-      ],
-    },
-    {
-      time: '2026-10-04T09:20:00Z',
-      branch_ref: 'b2',
-      branch_label: 'OAuth 2.0',
-      minutes: 8.0,
-      tab_switches: 2,
-      intent_switches: 1,
-      tabs: [{ tab_ref: 't4', domain: 'auth0.com', minutes: 8.0 }],
-      markers: [],
-    },
-    {
-      time: '2026-10-04T09:40:00Z',
-      branch_ref: 'b3',
-      branch_label: 'Sessions',
-      minutes: 12.0,
-      tab_switches: 3,
-      intent_switches: 1,
-      tabs: [{ tab_ref: 't6', domain: 'redis.io', minutes: 12.0 }],
-      markers: [],
-    },
-    {
-      time: '2026-10-04T10:00:00Z',
-      branch_ref: 'b1',
-      branch_label: 'JWT',
-      minutes: 22.0,
-      tab_switches: 5,
-      intent_switches: 1,
-      tabs: [
-        { tab_ref: 't3', domain: 'jwt.io', minutes: 14.0 },
-        { tab_ref: 't5', domain: 'stackoverflow.com', minutes: 8.0 },
-      ],
-      markers: [
-        {
-          type: 'decision',
-          id: 'dec-1',
-          label: 'Not using OAuth providers for v1',
-          ts: '2026-10-04T10:14:32Z',
-        },
-      ],
-    },
-  ],
-};
+// The Backend Authentication timeline from the contract (its "story_24h" example).
+export const mockTimelineResponse = timelineContract.examples[0].response
+  .body as unknown as TimelineResponse;
 
 export const mockSavedContexts: {
   list: SavedContextItem[];

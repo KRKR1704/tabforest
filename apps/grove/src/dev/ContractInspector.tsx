@@ -61,7 +61,7 @@ export const ContractInspector: React.FC = () => {
 
   const { data: timelineData } = useQuery({
     queryKey: ['timeline-test'],
-    queryFn: () => getTimeline('p-backend-auth', '24h'),
+    queryFn: () => getTimeline('p_10000000-0000-4000-8000-000000000001', '24h'),
   });
 
   const startStreamSimulation = () => {
@@ -452,7 +452,7 @@ export const ContractInspector: React.FC = () => {
                 GET /api/projects/timeline, GET /api/me, GET /api/sessions
               </p>
               <div className="bg-forest-950 p-3 rounded text-xs font-mono text-forest-300 border border-forest-800">
-                Timeline buckets: {timelineData?.buckets.length} intervals for {timelineData?.project_name}
+                Timeline: {timelineData?.status === 'ok' ? `${timelineData.timeline.lanes.length} lanes for ${timelineData.timeline.name}` : timelineData?.status}
               </div>
             </div>
 

@@ -7,6 +7,7 @@ import { navItemFor } from './shell/navigation';
 import { EvidenceDrawer, type EvidenceClaim } from './components/EvidenceDrawer';
 import { CurrentGrove } from './screens/CurrentGrove';
 import { ScreenPlaceholder } from './screens/ScreenPlaceholder';
+import { Timeline } from './screens/Timeline';
 import { countOpenQuestions } from './lib/grove';
 import { runGrow } from './grow/controller';
 
@@ -81,6 +82,8 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
           onShowEvidence={(claim, tabs) => setEvidence({ claim, tabs })}
           onHideEvidence={closeEvidence}
         />
+      ) : activeScreen === 'timeline' ? (
+        <Timeline grove={grove} />
       ) : (
         <ScreenPlaceholder description={navItemFor(activeScreen).description}>
           {activeScreen === 'memory' && memoryQuery && (
