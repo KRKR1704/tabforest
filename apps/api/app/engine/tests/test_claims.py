@@ -556,3 +556,35 @@ def test_http_cross_user_404_and_user_id_422(world) -> None:
             finally:
                 await db.close_pool()
         asyncio.run(clean())
+
+
+# --- an edited action's note is context, not a decision source (audit fix) ----------------------------------------------
+
+def test_an_edited_next_action_never_becomes_a_stated_stone_on_the_next_grow(world) -> None:
+    async def test(w):
+        action = auth_tree(await w.stored())["next_actions"][0]
+        edited = "Prototype the refresh-token flow with HttpOnly, Secure, SameSite=Strict cookies"
+        await patch(w.pool, action["id"], action="edit", text=edited)
+        note = await w.pool.fetchrow("SELECT id, kind FROM user_notes WHERE user_id = $1", USER)
+        assert note["kind"] == "note"                                    # an action's note is a plain note
+
+        # The model reads the note (n1) and, as it once did live, writes the edited action up as a STATED decision.
+        ev = [{"ref": "n1", "why": "the user's note"}, {"ref": "t8", "why": "searched cookies"}, {"ref": "t3", "why": "example"}]
+        leak = rich_auth(decisions=[{"text": edited, "provenance": "stated", "user_note_ref": "n1", "quote": None,
+                                     "confidence": 0.95, "evidence": ev}])
+        w.client = Recording({"auth": lambda _: leak})
+        run, _ = await w.grow()
+        tree = auth_tree(run.response)
+        everywhere = tree["stones"] + tree["hypotheses"] + ([tree["direction"]] if tree["direction"] else [])
+        mine = [c for c in everywhere if c["text"] == edited]
+        assert mine and all(c["provenance"] != "stated" and c.get("kind") != "carved" for c in mine)   # downgraded, not carved
+        assert not any(s["kind"] == "carved" for s in tree["stones"])
+        # ... and the model still got the note as context, with its ref
+        payload = tg.payload_of(next(m for m in w.client.messages if "Prototype the refresh-token" in m[1]["content"]))
+        assert {"ref": "n1", "text": edited} in payload["user_notes"]
+        # a decision-kind note is still stated-eligible: confirm a stone, re-grow, it is carved from its note
+        stone = next(s for s in tree["stones"] if s["kind"] == "mossy")
+        await patch(w.pool, stone["id"], action="confirm")
+        run, _ = await w.grow()
+        assert [s["text"] for s in auth_tree(run.response)["stones"] if s["kind"] == "carved"] == [stone["text"]]
+    scenario(world, test)
