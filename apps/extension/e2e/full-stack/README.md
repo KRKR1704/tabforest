@@ -58,12 +58,12 @@ cd apps/extension/e2e && npm install && npx playwright install chromium && cd ..
 
 # 2. The extension build that talks to the deployed API, with the live Grove inside it
 cd apps/grove && npm ci && VITE_MOCK=0 VITE_API_BASE_URL=https://tabforest.azurewebsites.net npm run build && cd ../..
-cd apps/extension && pnpm install && pnpm build:with-grove && cd ../..
-# the extension's default API address is the deployed one in a production build; check that the build mentions it:
-grep -l "tabforest.azurewebsites.net" apps/extension/dist/assets/*.js
+cd apps/extension && pnpm install && VITE_API_BASE=https://tabforest.azurewebsites.net pnpm build:with-grove && cd ../..
+# BOTH bundles must mention the deployed address (the extension's own default is the local mock, 127.0.0.1:8001):
+grep -l "tabforest.azurewebsites.net" apps/extension/dist/assets/*.js    # expect two files: the service worker and the Grove
 ```
 
-(`pnpm build:zip` also works and runs extra safety checks; it needs the Grove build from step 2 first.)
+(`pnpm build:zip` sets the deployed address itself and runs extra safety checks; it needs the Grove build from step 2 first.)
 
 ## Run
 
