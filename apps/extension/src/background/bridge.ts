@@ -4,6 +4,7 @@ import { Hollow } from './hollow';
 import { httpUrl } from './url';
 import { AuthError } from './auth';
 import type { WorkContext } from './work-context';
+import type { PrivacySync } from './privacy-sync';
 import { INTERNAL_AUTH_TYPES, type AuthService, type InternalAuthMessage } from './signin';
 
 type SnapshotData = { open_tabs: SnapshotItem[] };
@@ -14,6 +15,7 @@ export interface BridgeServices {
   sendPreview: () => Promise<SendPreviewData>;
   auth?: AuthService;
   workItems?: Pick<WorkContext, 'list' | 'clear'>;
+  privacy?: Pick<PrivacySync, 'record' | 'onSignedIn'>;
   signOut?: () => Promise<void>;
 }
 const known = new Set<MessageType>([
@@ -35,27 +37,48 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
     return { saved, hollow, tabs, refs: new Map(saved.session?.refs ?? []) };
   }
 
-  async function openRef(ref: string, fallback?: string): Promise<boolean> {
+  /** Brings a tab for the ref to the front, or opens it from the local URL store (else the fallback). */
+  async function openRef(ref: string, fallback?: string, options: { active?: boolean } = {}):
+  Promise<{ id?: number; windowId?: number } | null> {
     const { saved, tabs, refs } = await read();
     const live = tabs.find(tab => refs.get(tab.id!) === ref);
     if (live?.id !== undefined) {
-      await api.tabs.update(live.id, { active: true });
-      await api.windows.update(live.windowId, { focused: true });
-      return true;
+      if (options.active !== false) {
+        await api.tabs.update(live.id, { active: true });
+        await api.windows.update(live.windowId, { focused: true });
+      }
+      return { id: live.id, windowId: live.windowId };
     }
     const stored = new Map(saved.urls);
     const value = stored.has(ref) ? stored.get(ref) : fallback;
     const url = httpUrl(value);
-    if (!url) return false;
-    await api.tabs.create({ url: url.href });
-    return true;
+    if (!url) return null;
+    const created = await api.tabs.create({ url: url.href, ...(options.active === false ? { active: false } : {}) });
+    return { id: created?.id, windowId: created?.windowId };
+  }
+
+  /** Puts the restored tabs into one named group when the optional tabGroups permission was granted. */
+  async function groupTabs(opened: { id?: number; windowId?: number }[], name: string): Promise<void> {
+    const first = opened.find(tab => tab.id !== undefined);
+    if (!first || !api.tabs.group || !api.tabGroups) return;
+    try {
+      if (!await api.permissions.contains({ permissions: ['tabGroups'] })) return;
+      // A group lives in one window: the ones that were already open elsewhere stay where they are.
+      const tabIds = opened.filter(tab => tab.id !== undefined && tab.windowId === first.windowId).map(tab => tab.id!);
+      const groupId = await api.tabs.group({ tabIds });
+      await api.tabGroups.update(groupId, { title: name.trim().slice(0, 60), color: 'green', collapsed: false });
+    } catch { /* the tabs are open already; a group is only a convenience */ }
   }
 
   async function handle(request: BridgeRequest): Promise<Reply> {
     switch (request.type) {
       case 'SIGN_IN': {
         if (!services.auth) return { ok: false, error: 'not_implemented' };
-        try { return { ok: true, data: await services.auth.signIn() }; }
+        try {
+          const state = await services.auth.signIn();
+          void services.privacy?.onSignedIn();
+          return { ok: true, data: state };
+        }
         catch (error) { return { ok: false, error: error instanceof AuthError ? error.code : 'handler_failed' }; }
       }
       case 'SIGN_OUT': {
@@ -77,6 +100,7 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         }
         if (until === null) await api.storage.local.remove('paused_until');
         else await api.storage.local.set({ paused_until: until });
+        await services.privacy?.record({ paused: until });
         return { ok: true, data: null };
       }
       case 'EXCLUDE_DOMAIN': {
@@ -88,6 +112,7 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         const existing = Array.isArray(saved.user_excluded_domains)
           ? saved.user_excluded_domains.filter((x: unknown): x is string => typeof x === 'string').map((x: string) => x.toLowerCase()) : [];
         await api.storage.local.set({ user_excluded_domains: [...new Set([...existing, domain])] });
+        await services.privacy?.record({ addDomain: domain });
         return { ok: true, data: null };
       }
       case 'OPEN_TAB': {
@@ -106,11 +131,16 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         if (!refsPayload(request.tab_refs) || (request.fallback_urls !== undefined && !refsPayload(request.fallback_urls))
           || (request.group_name !== undefined && typeof request.group_name !== 'string')) return { ok: false, error: 'invalid_payload' };
         const visited = new Set<string>();
+        const opened: { id?: number; windowId?: number }[] = [];
         for (const [index, ref] of request.tab_refs.entries()) {
           if (visited.has(ref)) continue;
           visited.add(ref);
-          if (!await openRef(ref, request.fallback_urls?.[index])) return { ok: false, error: 'not_found' };
+          // The first tab comes to the front; the others open quietly behind it.
+          const tab = await openRef(ref, request.fallback_urls?.[index], { active: opened.length === 0 });
+          if (tab) opened.push(tab);
         }
+        if (!opened.length) return { ok: false, error: 'not_found' };
+        if (request.group_name?.trim()) await groupTabs(opened, request.group_name);
         return { ok: true, data: null };
       }
       case 'GET_AUTH_STATE': return { ok: true, data: services.auth ? await services.auth.state() : { signed_in: false } };
