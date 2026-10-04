@@ -211,7 +211,8 @@ describe('grow orchestration: live API', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toMatch(/\/api\/grove\/grow\?stream=1$/);
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({ open_tabs: snapshotContract.open_tabs });
+    // The snapshot as the contract has it, plus the Hollow count the route also accepts.
+    expect(JSON.parse(init.body)).toEqual({ open_tabs: snapshotContract.open_tabs, hollow_count: 3 });
     expect(init.headers.Authorization).toMatch(/^Bearer .+/);
     expect(init.body).not.toContain('user_id');
 

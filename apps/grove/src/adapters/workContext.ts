@@ -1,5 +1,6 @@
 // Work Context analyze (JSON) and upload (multipart), connection C6. Only what
 // the user explicitly handed over is ever sent (SPEC §3.5).
+import { isHeldOnStandIn } from './live';
 import workContextContract from '@contracts/work-context.example.json';
 import type { WorkContextOutcome, WorkContextResponse, WorkItem, WorkItemInput } from '../types';
 import { apiBaseUrl, authHeaders, isMockMode } from './grove';
@@ -94,7 +95,9 @@ async function send(path: string, init: RequestInit): Promise<WorkContextOutcome
 /** POST /api/work-context/analyze with `{ items }`. */
 export async function analyzeWorkContext(items: WorkItemInput[]): Promise<WorkContextOutcome> {
   if (items.length === 0) return { ok: false, message: 'Add a page, a file or a note first.' };
-  if (isMockMode()) return { ok: true, result: SAMPLE_WORK_CONTEXT, sample: false };
+  if (isMockMode('work-context')) {
+    return { ok: true, result: SAMPLE_WORK_CONTEXT, sample: isHeldOnStandIn('work-context') };
+  }
   return send('/api/work-context/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -114,7 +117,9 @@ export async function uploadWorkContext(
   const problem = files.map(fileProblem).find((message) => message !== null);
   if (problem) return { ok: false, message: problem };
   if (files.length === 0) return analyzeWorkContext(items);
-  if (isMockMode()) return { ok: true, result: SAMPLE_WORK_CONTEXT, sample: false };
+  if (isMockMode('work-context')) {
+    return { ok: true, result: SAMPLE_WORK_CONTEXT, sample: isHeldOnStandIn('work-context') };
+  }
 
   const form = new FormData();
   for (const file of files) form.append('files[]', file, file.name);

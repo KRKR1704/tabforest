@@ -6,6 +6,39 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S-14 Adapters to the real API, one by one (S)
+
+### Added
+- `apps/grove/src/adapters/live.ts`: one switch per endpoint. `VITE_MOCK=0` turns the real API on; `VITE_LIVE_ENDPOINTS` (for example `me,grove`) names the endpoints the server really serves, and every other adapter stays on its stand-in. Left out, all are live, as before. Names: `me`, `grove`, `claims`, `contexts`, `timeline`, `sessions`, `privacy`, `memory`, `prune`, `work-context`.
+- `apps/grove/.env.example`: the four build settings (`VITE_MOCK`, `VITE_API_BASE_URL`, `VITE_LIVE_ENDPOINTS`, `VITE_DEV_USER`). No secrets.
+- A live build that still shows stand-in data says so: the grove shows "The grove service is not connected yet. Showing sample data, not your tabs." and is not kept as the user's last grove; saved groves and Work Context use their existing "sample data" lines.
+
+### Fixed (differences from the real server, all in `adapters/`)
+- With no token the adapters sent `X-Dev-User: usr-5d0a-9b1e-3f4a`. That value is not a UUID, and the deployed API does not allow the header at all (CORS lists it only when `AUTH_MODE=dev`), so the browser would have blocked the request. Now nothing is sent without a token and the API answers 401. `VITE_DEV_USER` supplies a dev user for a local `AUTH_MODE=dev` API only.
+- The grow request sent the snapshot object as the extension returned it. R's route rejects unknown fields, so the body is now built from the nine contract fields per tab, plus `hollow_count`, which the route accepts and echoes back (before, a live grove would have said 0 tabs in the Hollow).
+- `platform.getMe` returned the server's `{ user, first_sign_in, stats, privacy }` as if it were the flat profile the UI type describes. It is now converted (`normalizeMe`; attention in ms becomes hours).
+- The API address is read in one place and a trailing slash is removed; `platform.ts` had its own copy.
+- GET requests no longer send `Content-Type`.
+
+### Changed
+- Every adapter asks `isMockMode('<endpoint>')` for its own endpoint. `screens/Privacy.tsx` asks for `privacy` (two one-word changes outside `adapters/`).
+- `grow/controller.ts`: passes the Hollow count to the adapter and sets the "not connected" notice (outside `adapters/`; needed so sample data is not passed off as the user's).
+
+### Tests
+- `src/__tests__/liveAdapters.test.ts` (19): the switch (default, all live, one by one, empty list); the API address; bearer token, nothing without a token, dev header only when configured; the grow body (contract snapshot, Hollow count, only the nine fields); `/api/me` conversion against the contract; a build with only `me` live calls only `/api/me`, keeps the rest on stand-ins, labels sample data and does not save the sample grove; a build with `me,grove` posts the grow request.
+- Updated 1 existing test: the grow body now includes `hollow_count`.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 20 files, 437 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Deployed API (`https://tabforest.azurewebsites.net`), checked without signing in: `/health` 200; `/openapi.json` lists only `/health`, `/api/me`, `/api/events`; `/api/me` without a token answers 401 problem JSON as in the contract; `/api/grove` and `/api/privacy` answer 404. So today only `me` can be switched on against the deployed API. `main` also has R's `/api/grove` and `/api/grove/grow`, not deployed yet.
+- Manual (dev server built with `VITE_MOCK=0 VITE_LIVE_ENDPOINTS=me`, API address pointed at an unused local port): the only request to the API was `GET /api/me`; the grove grew from the stand-in with the "not connected" notice; Saved Groves showed its sample-data line; Privacy loaded from its stand-in.
+- **Not verified:** a real signed-in call. That needs the extension build, an Entra sign-in and the extension origin the API allows; it cannot be done from the dev server. The S-14 row is therefore **not ticked**.
+
+### Notes
+- Build for today's deployed API: `VITE_MOCK=0 VITE_API_BASE_URL=https://tabforest.azurewebsites.net VITE_LIVE_ENDPOINTS=me`. Add `grove` when the engine routes are deployed, then the others as P and R ship them.
+- A failed grow (401, 429 limit or budget, 5xx) still shows the generic "service is unreachable" notice; the reason is not shown.
+- The live paths for endpoints the server does not have yet (claims, contexts, timeline, sessions, privacy, memory, prune, work context) follow the `contracts/` examples and are tested against them, but have never met a real server.
+
 ## [2026-10-04] — Lane S-13 Sign-in, onboarding, outline, keyboard, few tabs (S)
 
 ### Added

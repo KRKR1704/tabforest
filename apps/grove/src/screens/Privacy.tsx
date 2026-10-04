@@ -114,7 +114,7 @@ export const Privacy: React.FC<PrivacyProps> = ({ previewIntervalMs = 5000 }) =>
   const pause = async (until: string | null) => {
     const reply = await sendBridgeMessage('PAUSE', { until });
     if (!reply.ok) return fail('The extension could not change capture.');
-    if (isMockMode()) await patchPrivacy({ paused_until: until });
+    if (isMockMode('privacy')) await patchPrivacy({ paused_until: until });
     setSettings((current) => (current ? { ...current, paused_until: until } : current));
     say(until ? 'Capture is paused.' : 'Capture has resumed.');
   };
@@ -125,7 +125,7 @@ export const Privacy: React.FC<PrivacyProps> = ({ previewIntervalMs = 5000 }) =>
     if (!domain) return fail('Enter a site like mybank.com.');
     const reply = await sendBridgeMessage('EXCLUDE_DOMAIN', { domain });
     if (!reply.ok) return fail(`Could not exclude ${domain}.`);
-    if (isMockMode()) await patchPrivacy({ excluded_domains_add: [domain] });
+    if (isMockMode('privacy')) await patchPrivacy({ excluded_domains_add: [domain] });
     setSettings((current) =>
       current && !current.excluded_domains.includes(domain)
         ? { ...current, excluded_domains: [...current.excluded_domains, domain] }
