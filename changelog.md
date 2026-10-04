@@ -6,12 +6,17 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+feat/enchanted-responsive-grove
 ## [2026-10-04] — The restored grove stays on open (D, in S's App.tsx with her ask pending)
+
+## [2026-10-04] — The restored grove stays on open (D, in S's App.tsx)
+ main
 
 ### Fixed
 - `apps/grove/src/App.tsx`: on open, the page showed the stored grove and then grew from the open tabs, which replaced the user's trees with a small grove of only the tabs open at that moment. The page now grows on its own only when there is no stored grove to show. The Grow grove button is unchanged and adds the current tabs.
 
 ### Tests
+ feat/enchanted-responsive-grove
 - `keepRestoredGrove.test.tsx`: a restored grove is kept with three tabs open and no grow is asked for; with no stored grove the page still grows on open.
 
 ### Verification
@@ -105,6 +110,12 @@ UI only. No adapter, store, bridge, API or extension code changed. Not a BUILD_T
 - Leaf size no longer shows reading time on the canvas (SPEC §9.1 and the moodboard say it does). The minutes are still in the leaf's tooltip, the Outline and the Tabs panel. Decided with Shriya for readability; SPEC.md is not changed here.
 - The muted violet haze and the fireflies' soft glow are on the landing page only, and only faintly; the moodboard rules out purple gradients and ungrounded glows in the app itself, and the app is unchanged in that respect.
 - Tree Detail and the Tabs panel are still fixed-width side panels; on a phone they leave little room for the grove.
+
+- `keepRestoredGrove.test.tsx`: a restored grove is kept with three tabs open and no grow is asked for; with no stored grove the page still grows on open. The first test fails on the old code.
+
+### Verification
+- Grove tests (569) and type check pass.
+ main
 
 ## [2026-10-04] — Secret audit and placeholder values in .env.example (P)
 
