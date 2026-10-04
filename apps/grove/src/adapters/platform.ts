@@ -1,6 +1,5 @@
 import {
   UserProfile,
-  PrivacySettings,
   BrowserSession,
   TimelineResponse,
   TimelineResult,
@@ -8,7 +7,6 @@ import {
 } from '../types';
 import {
   mockUserProfile,
-  mockPrivacySettings,
   mockSessions,
   mockTimelineResponse,
 } from '../mocks/mockData';
@@ -41,26 +39,6 @@ export async function getMe(): Promise<UserProfile> {
   } catch (err) {
     console.warn('[Platform Adapter] getMe failed, using mock fallback:', err);
     return mockUserProfile;
-  }
-}
-
-export async function deleteMe(): Promise<{ success: boolean; deleted_rows: number }> {
-  if (isMockMode()) return { success: true, deleted_rows: 42 };
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/me`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] deleteMe failed, using mock fallback:', err);
-    return { success: true, deleted_rows: 42 };
   }
 }
 
@@ -166,71 +144,5 @@ export async function getTimeline(
   } catch (err) {
     console.warn('[Platform Adapter] getTimeline failed, using the stand-in:', err);
     return standInTimeline(projectId, range);
-  }
-}
-
-export async function getPrivacy(): Promise<PrivacySettings> {
-  if (isMockMode()) return mockPrivacySettings;
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/privacy`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] getPrivacy fallback:', err);
-    return mockPrivacySettings;
-  }
-}
-
-export async function updatePrivacy(settings: Partial<PrivacySettings>): Promise<PrivacySettings> {
-  if (isMockMode()) {
-    return {
-      ...mockPrivacySettings,
-      ...settings,
-    };
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/privacy`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(settings),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] updatePrivacy fallback:', err);
-    return { ...mockPrivacySettings, ...settings };
-  }
-}
-
-export async function deleteProject(projectId: string): Promise<{ success: boolean; deleted_rows: number }> {
-  if (isMockMode()) return { success: true, deleted_rows: 15 };
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] deleteProject fallback:', err);
-    return { success: true, deleted_rows: 15 };
   }
 }
