@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
@@ -139,6 +140,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     if WELCOME_SITE.is_dir():
         app.mount("/welcome", StaticFiles(directory=WELCOME_SITE, html=True), name="welcome")
+
+        @app.get("/", include_in_schema=False)
+        async def root() -> RedirectResponse:
+            """The bare address (tabforest.nyc) opens the landing page."""
+            return RedirectResponse("/welcome/", status_code=307)
     app.include_router(demo_router)
     app.include_router(router)
     app.include_router(privacy_router)
