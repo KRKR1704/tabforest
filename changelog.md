@@ -24,6 +24,36 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Shriya's code, `contracts/`, the manifest and the dependencies are unchanged; only `package.json` scripts were added.
 - The Grove shows its demo data until sign-in exists (D-6): `GET_TOKEN` is still `null`, so the page cannot call the API in production mode.
 - The Grove page loads Inter and Lora from Google Fonts (a remote stylesheet). The extension CSP only restricts scripts, so this works while online and falls back to system fonts offline.
+## [2026-10-03] — D-6 Sign-in: fallback login and Microsoft Entra ID (D)
+
+### Added
+
+- `src/background/auth.ts`: the token store (`chrome.storage.session` only, with a 30 s expiry margin), the fallback login (`POST /api/auth/login`) and the Microsoft Entra ID authorization code flow with PKCE (`launchWebAuthFlow`, S256 challenge, state check, code exchange). Only the public Entra client ID is in the bundle; `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_TENANT` and `VITE_ENTRA_SCOPE` can override the defaults.
+- `src/background/signin.ts` and `signin.html` with `src/signin.ts`: `SIGN_IN` opens a small sign-in window of the extension (email and password, or "Sign in with Microsoft"). The window talks to the worker with `AUTH_FALLBACK`, `AUTH_ENTRA` and `AUTH_CANCEL`, which are accepted only from that exact page and only while a sign-in is in progress. Closing the window or pressing Cancel ends `SIGN_IN` with `cancelled`.
+- Bridge: `SIGN_IN` returns the signed-in profile, `SIGN_OUT` clears the token and everything waiting to be sent (queue, last sent batch, sender state), `GET_AUTH_STATE` and `GET_TOKEN` answer from the stored token and return signed-out values once it expires. The sign-in messages are not queued behind each other, so waiting for the user does not hold up the rest of the bridge. The event sender now uses the token as `Authorization: Bearer`.
+- Worker globals `signIn()` for testing from the console.
+
+### Changed
+
+- `contracts/bridge.types.ts`: the reply of `SIGN_IN` is `AuthStateData` (it was an acknowledgement). Shriya's store already reads the profile from that reply. No other contract change.
+- `tests/fake-chrome.mjs` (helper): `storage.remove`, `windows.onRemoved/create/update` and `identity`; no existing assertion changed.
+- `vite.config.ts`: `signin.html` added as a page.
+
+### Tests
+
+- 29 new tests: `tests/auth.test.mjs` (token store, claims, fallback login results, PKCE test vector from RFC 7636, authorize URL, redirect parsing, code exchange, the whole Entra flow with a state mismatch and a closed window) and `tests/signin.test.mjs` (popup flow, shared window, wrong password then right one, cancel and window close, sender and state checks, sign-out, expiry, the password is never stored or logged, Microsoft sign-in, no auth service). A deliberate break of the sender check and of the expiry check was caught by these tests.
+
+### Verification
+
+- From `apps/extension/` with Node 20: 165 of 165 tests, typecheck and build pass. `contracts/` changes only as listed, `apps/grove`, the manifest permissions and dependencies are unchanged (the manifest already had `identity`).
+- Real Chromium (Playwright, outside the repo) against a stand-in API: 15 of 15 for the whole flow (401 and queued events before sign-in, the popup, a wrong then a right password, the profile, the token only in session storage, the Bearer token on the next send, sign-out clearing everything, capture still queuing locally, closing the window and the Cancel button). The capture, Hollow, sync and bridge checks still pass.
+
+### Notes
+
+- **The deployed API has the fallback login turned off** (`POST /api/auth/login` answers 404 because `FALLBACK_LOGIN` is false), so there only a Microsoft token (or the dev header) works. P has to turn the fallback on and create an account for the demo, or confirm Entra.
+- **The Microsoft path is not verified against a real tenant.** It follows the standard flow, but it needs the redirect URI `https://<extension id>.chromiumapp.org/` registered for the app and the scope `api://<client id>/user_impersonation` to match what the API expects; if the token request is refused for its origin, the registration type may have to change. Plan: try it with a real account; fall back to the email login if it does not work.
+- Sign-out follows SPEC §11.3 for the token and the queue, but capture keeps running locally and nothing is sent until the next sign-in (the spec says capture stops).
+- The Grove has no sign-in screen yet (S-13), so the entry points are the `SIGN_IN` message and the console helper `signIn()`.
 
 ## [2026-10-03] — Lane S-10 Privacy (S)
 

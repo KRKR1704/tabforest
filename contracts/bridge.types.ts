@@ -135,7 +135,7 @@ export interface BridgeReplyMap {
   CLOSE_TABS: AcknowledgementData;
   RESTORE: AcknowledgementData;
   GET_URLS: GetUrlsData;
-  SIGN_IN: AcknowledgementData;
+  SIGN_IN: AuthStateData; // the signed-in state, as the Grove page's store expects
   SIGN_OUT: AcknowledgementData;
   GET_AUTH_STATE: AuthStateData;
   GET_TOKEN: TokenData;
