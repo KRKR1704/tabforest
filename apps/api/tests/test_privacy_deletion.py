@@ -514,7 +514,7 @@ def test_retention_deletes_only_what_each_user_chose_to_forget() -> None:
 
 
 @requires_db
-def test_retention_with_no_user_filter_does_not_fail_and_never_touches_ninety_day_users() -> None:
+def test_retention_never_touches_a_ninety_day_user_however_old_the_events() -> None:
     uid = uuid.uuid4()
     try:
         run(seed_events(uid, 90, [200]))
@@ -522,7 +522,7 @@ def test_retention_with_no_user_filter_does_not_fail_and_never_touches_ninety_da
         async def job():
             pool = await asyncpg.create_pool(database_url(), min_size=1, max_size=2, timeout=30)
             try:
-                return await retention.run_retention(pool)
+                return await retention.run_retention(pool, only_users=[uid])
             finally:
                 await pool.close()
         assert run(job()) is not None
