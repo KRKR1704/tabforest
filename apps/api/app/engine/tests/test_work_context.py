@@ -602,3 +602,9 @@ def test_unblocks_follows_the_blocker_that_replaced_its_twin() -> None:
     to_other = scripted().next_actions[2].model_copy(update={"unblocks_blocker": 1})
     response = analyze(tampered(blockers=[maybe_twin(), other, sourced_blocker()], next_actions=[to_other]))[0]
     assert response["next_actions"][0]["unblocks"] == response["blockers"][1]["id"]
+
+
+def test_the_prompt_ranks_unblocking_actions_and_the_nearest_dated_step_first() -> None:
+    prompt = wc.SYSTEM_PROMPT
+    assert "Rank first the actions that unblock a blocker" in prompt
+    assert prompt.index("unblock a blocker") < prompt.index("nearest date or deadline") < prompt.index("the rest, most important first")

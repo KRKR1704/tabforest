@@ -92,8 +92,9 @@ Rules:
 - open_questions: questions about the work that were asked and not answered anywhere in the documents. recurrence is
   how many times it is raised across the documents (at least 1). answered is true only if a document answers it; then
   answer holds the answer and quote is the sentence that answers it.
-- next_actions: concrete next steps for the work in order of priority, at most 5. unblocks_blocker is the 0-based
-  index of the blocker it resolves, or null.
+- next_actions: concrete next steps for the work, at most 5, in rank order. Rank first the actions that unblock a
+  blocker, then the step with the nearest date or deadline named in the documents (a meeting, "before Thursday"), then
+  the rest, most important first. unblocks_blocker is the 0-based index of the blocker it resolves, or null.
 - Do not write timestamps.
 """
 USER_INSTRUCTION = ("Extract the working context from the documents in the DATA block below and answer with the "
