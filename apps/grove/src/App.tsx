@@ -11,6 +11,7 @@ import { Timeline } from './screens/Timeline';
 import { SavedGroves } from './screens/SavedGroves';
 import { WorkContext } from './screens/WorkContext';
 import { Privacy } from './screens/Privacy';
+import { AskMemory } from './screens/AskMemory';
 import { ResumeCard } from './components/ResumeCard';
 import { resumeContext } from './adapters/contexts';
 import { sendBridgeMessage } from './adapters/bridge';
@@ -134,6 +135,7 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
               grove={grove}
               onShowEvidence={(claim, tabs) => setEvidence({ claim, tabs })}
               onHideEvidence={closeEvidence}
+              onResume={startResume}
             />
           </div>
         </div>
@@ -145,14 +147,10 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
         <WorkContext />
       ) : activeScreen === 'privacy' ? (
         <Privacy />
+      ) : activeScreen === 'memory' ? (
+        <AskMemory query={memoryQuery} onAsk={setMemoryQuery} onOpenGrove={startResume} />
       ) : (
-        <ScreenPlaceholder description={navItemFor(activeScreen).description}>
-          {activeScreen === 'memory' && memoryQuery && (
-            <p className="mt-6 text-sm text-forest-200">
-              You asked: <span className="font-medium text-forest-50">{memoryQuery}</span>
-            </p>
-          )}
-        </ScreenPlaceholder>
+        <ScreenPlaceholder description={navItemFor(activeScreen).description} />
       )}
     </AppShell>
   );

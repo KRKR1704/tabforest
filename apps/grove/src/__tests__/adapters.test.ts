@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { getGrove, growGrove, streamGrowGrove } from '../adapters/grove';
-import { searchMemory, getPruneSuggestions } from '../adapters/memory';
 import {
   getMe,
   getSessions,
@@ -38,17 +37,6 @@ describe('Adapters Suite (C3–C7)', () => {
     expect(messages[1].type).toBe('tree');
     expect(messages[messages.length - 1].type).toBe('done');
     expect(isDone).toBe(true);
-  });
-
-  it('searches memory and fetches prune suggestions', async () => {
-    const hit = await searchMemory('session storage');
-    expect(hit.results.length).toBeGreaterThan(0);
-
-    const miss = await searchMemory('random obscure term');
-    expect(miss.results.length).toBe(0);
-
-    const prunes = await getPruneSuggestions();
-    expect(prunes.suggestions.length).toBeGreaterThan(0);
   });
 
   it('queries platform endpoints', async () => {

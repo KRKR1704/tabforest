@@ -152,6 +152,9 @@ describe('contexts adapter (C7)', () => {
     expect((await listContexts()).contexts).toEqual(rows);
     expect(await resumeContext(resumed.id)).toEqual(resumed);
     expect(await resumeContext('s_unknown')).toBeNull();
+    // A listed context the stand-in holds no card for still opens, with its totals.
+    const march = await resumeContext(rows[2].id);
+    expect(march).toMatchObject({ title: 'Backend Scaling', card: null, restore_options: ['summary'] });
   });
 
   describe('live', () => {
