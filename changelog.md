@@ -6,6 +6,33 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — R-4: embedding cache in memory_embeddings (R)
+
+### Added
+
+- `apps/api/app/engine/embeddings.py`:
+  - `tab_embedding_text()` = `"{title_clean} | {domain} | {source_type}"` (document types mapped with `leaf_source_type`, capped at 1,000 chars); `content_hash()` = SHA-256 hex of the exact UTF-8 string.
+  - `embed_texts(user_id, kind, items, pool)`: dedupes identical texts, one cache lookup (`WHERE user_id = $1 AND content_hash = ANY($2)`), misses embedded in batches of ≤ 64 per Azure call, then one `INSERT … ON CONFLICT (user_id, content_hash) DO NOTHING` (safe for concurrent grows). Nothing is written until every batch succeeded. Azure errors propagate. Vectors returned as numpy `float32`.
+  - Without a pool, or when `memory_embeddings` is missing, an in-process LRU cache (4,096 entries) is used with one warning.
+  - `embed_tabs()` (`kind='tab'`, `source_id = tab_ref`) also sets P's `tabs.embedding_hash` with UPDATE only (never INSERT); skipped with one debug log if the table or column is missing. `embed_queries()` (`kind='query'`) for R-6 query families.
+  - `EmbedStats` per call: `texts_requested`, `unique_texts`, `cache_hits`, `api_calls`, `inserted`, `store`, `tabs_hash_updated`.
+
+### Tests
+
+- `engine/tests/test_embeddings.py` (9, no network): dedupe, 150 texts → 3 calls (64/64/22), cache hit → 0 calls, a failed second batch writes nothing, LRU fallback without a pool (one warning), LRU fallback when the table is missing, no cache sharing between users, embedding text/hash, pgvector text round trip.
+- `engine/tests/test_embeddings_live.py` (2, real Azure + Tiger Cloud, test user `…00bb`, rows deleted before and after): 28 demo tabs twice and the 3 search queries twice; a similarity preview of the demo groups.
+
+### Verification
+
+- Live run 1: 28 texts, 27 unique (tabs 01/02 are the same page), 1 API call, 27 inserted, 1072 ms. Run 2: 0 API calls, 27 cache hits, 116 ms; run 1 vs run 2 cosine ≥ 0.9999999. Queries: 1 call, then 0. 0 rows left for the test user.
+- Similarity preview: Backend Authentication intra-group mean 0.478 vs 0.137 to Weeknight Dinner.
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 116 passed.
+
+### Notes
+
+- New dependency installed into `apps/api/.venv` for P's `pyproject.toml`: `numpy` (2.5.3).
+- P's `tabs` table exists with `embedding_hash`; the test user has no rows there, so `tabs_hash_updated` was 0.
+
 ## [2026-10-03] — Lane S-3 D3 Living Grove, and grove realigned to R's contract (S)
 
 ### Added
