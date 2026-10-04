@@ -15,7 +15,7 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Added
 
-- `public/tf-permissions.js`, added to `grove.html` by `scripts/bundle-grove.mjs` (once, also when run twice): the first time the user clicks a Restore, Resume or Open button in the Grove, the click is held, Chrome asks for `tabGroups`, and the click is repeated. Chrome only shows that prompt for a click, and the service worker has no click. The Grove code is not edited.
+- `public/tf-permissions.js`, added to `grove.html` by `scripts/bundle-grove.mjs` (once, also when run twice): the first time the user clicks a Restore button in the Grove, the click is held, Chrome asks for `tabGroups`, and the click is repeated. Chrome only shows that prompt for a click, and the service worker has no click. The Grove code is not edited.
 - Tests: 5 new (bridge: continue past a bad ref, grouping, declined permission, group failure, one window only, blank name; bundle: script added once).
 
 ### Verification

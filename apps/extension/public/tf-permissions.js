@@ -1,8 +1,8 @@
-// D-8: asks for the optional "tabGroups" permission the first time the user clicks a restore or resume button.
+// D-8: asks for the optional "tabGroups" permission the first time the user clicks a Restore button.
 // Chrome only shows the prompt for a click, and the service worker has no click, so this runs in the Grove page.
 // The click is held back until the question is answered, then repeated, so the first restore is already grouped.
 (function () {
-  var pattern = /\b(restore|resume|reopen|open (all|selected|these|tabs))\b/i;
+  var pattern = /\brestore\b/i;
   var permission = { permissions: ['tabGroups'] };
   var replaying = false;
   var decided = false;

@@ -50,4 +50,4 @@ Right-click a page (or selected text) and choose **Add page to Work Context**. T
 
 ## Restore (D-8)
 
-`RESTORE` reopens the chosen tabs from the local URL store (kept in `chrome.storage.local`, so it works after Chrome restarts), else from `fallback_urls`, and puts them in a named tab group when the optional `tabGroups` permission is granted. The first click on a Restore/Resume/Open button in the Grove asks for that permission (`public/tf-permissions.js`); if it is declined, plain tabs open.
+`RESTORE` reopens the chosen tabs from the local URL store (kept in `chrome.storage.local`, so it works after Chrome restarts), else from `fallback_urls`, and puts them in a named tab group when the optional `tabGroups` permission is granted. The first click on a "Restore ..." button in the Grove asks for that permission (`public/tf-permissions.js`); if it is declined, plain tabs open.
