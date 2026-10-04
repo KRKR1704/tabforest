@@ -6,6 +6,29 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — R-2: title normalization, source types, search queries, duplicates (R)
+
+### Added
+
+- `apps/api/app/engine/normalize.py` (pure functions, no I/O):
+  - `clean_title()` strips site suffixes and prefixes and `(n)` notification counters using tables (`TITLE_SUFFIXES` for any site, `DOMAIN_SUFFIXES` per site) plus a generic rule that removes a leading or trailing segment naming the site itself (e.g. `- FastAPI`, `GitHub - …`, `| Glassdoor`). Keeps casing; never empty (falls back to the domain). `norm_title()` gives the lowercased, punctuation-normalized form for embeddings.
+  - `classify_source()` returns a `SourceType` (`docs`, `qa`, `code`, `discussion`, `video`, `search`, `work_tool`, `article`, `other`, plus Work Context types `ticket`, `pull_request`, `account_note`, `transcript`) from a suffix-matched domain table, refined by title for GitHub issues/PRs, Jira ticket keys, Teams transcripts and on-site search pages; `docs.*`/`developer.*` hosts default to `docs`. `official_source()` flags vendor/project docs for R-6. `leaf_source_type()` maps document types onto grove leaf types.
+  - `parse_search_query()` returns the device-parsed query unchanged, else the query from Google, Bing or DuckDuckGo result titles (exact search-engine domains only, so `docs.google.com` is not a search page).
+  - `duplicate_groups()`, `normalize_for_match()` (for quote verification: compare normalized forms on both sides, store the source text) and `normalize_tab()` → `NormalizedTab`.
+- `apps/api/app/engine/scripts/check_db.py` (PRE-P2 database check from earlier, now committed).
+
+### Tests
+
+- `engine/tests/test_normalize.py` (63 tests): all 28 demo tabs classify to the grove contract's leaf `source_type` (sprout, meadow and fog tabs against an explicit list); the three search tabs recover their `search_query` from the title; 19 demo clean titles; 32 extra real-world titles covering every suffix rule and every `SourceType` (GitHub issue/repo/PR/gist, a Stack Overflow search page, YouTube `(3)` counter, Medium author and publication suffixes, a site-name-only title, a Spanish title, an empty title); demo duplicates are exactly tabs 01/02; `normalize_for_match` equates `we’ll`/`we'll`, also against the real 00:14:32 transcript cue.
+
+### Verification
+
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 103 passed.
+
+### Notes
+
+- Grove leaves allow only the nine tab types, so R-5/R-8 should pass document types through `leaf_source_type()` (`pull_request` → `code`; `ticket`, `account_note`, `transcript` → `work_tool`).
+
 ## [2026-10-03] — R-1: engine scaffold, adapters, fixtures and contract tests (R)
 
 ### Added
