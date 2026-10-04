@@ -47,6 +47,19 @@
     filter: brightness(1.45);
   }
 
+  /* Roots lit: the evidence leaves stay bright, the others step back. */
+  .grove-canvas [data-dimmed='true'] {
+    opacity: 0.28;
+  }
+  .grove-canvas [data-evidence='true'] {
+    filter: brightness(1.5);
+  }
+
+  /* Where a dragged leaf would land. */
+  .grove-canvas [data-drop-target='true'] {
+    filter: brightness(1.4);
+  }
+
   .forest-card {
     @apply bg-forest-900/80 backdrop-blur-sm border border-forest-800 rounded-xl transition-all duration-200;
   }

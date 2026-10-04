@@ -123,6 +123,28 @@ export interface GroveLayout {
   meadow: PatchLayout | null;
   fog: PatchLayout | null;
   sharedVines: SharedVineLayout[];
+  /** Where a dragged leaf is dropped to start a tree of its own. */
+  newTreeZone: DropZone;
+}
+
+export interface DropZone extends Point {
+  r: number;
+}
+
+export type DropTarget =
+  | { kind: 'tree'; treeId: string; branchLabel: string | null }
+  | { kind: 'new' };
+
+export interface RootsLayout {
+  treeId: string;
+  origin: Point;
+  paths: Array<{ tabRef: string; d: string }>;
+}
+
+/** The claim the roots grow from: a stone, a mushroom, or the trunk for tree-level claims. */
+export interface RootsAnchor {
+  kind: 'stone' | 'mushroom' | 'trunk';
+  id?: string;
 }
 
 const GROUND_Y = 432;
@@ -147,6 +169,7 @@ const fanFor = (leafCount: number) => clamp(50 + 13 * leafCount, 70, 165);
 const LOW_CONFIDENCE = 0.6;
 const STONE_WIDTH = 28;
 const GROUND_ITEM_GAP = 9;
+const NEW_TREE_RADIUS = 46;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -592,6 +615,15 @@ export function computeGroveLayout(grove: GroveResponse): GroveLayout {
     fog = layoutPatch(fogTabs, place(halfWidth), halfWidth, 'Unclear', [30, 22]);
   }
 
+  // The drop zone floats in the open sky above the meadow and fog; a grove
+  // without either gets a slot of its own at the far edge.
+  const patches = [meadow, fog].filter((patch): patch is PatchLayout => patch !== null);
+  const zoneX =
+    patches.length > 0
+      ? patches.reduce((sum, patch) => sum + patch.x, 0) / patches.length
+      : place(NEW_TREE_RADIUS + 8);
+  const newTreeZone: DropZone = { x: round(zoneX), y: GROUND_Y - 180, r: NEW_TREE_RADIUS };
+
   return {
     width: round(cursor - GAP + EDGE_PADDING),
     height: HEIGHT,
@@ -601,5 +633,64 @@ export function computeGroveLayout(grove: GroveResponse): GroveLayout {
     meadow,
     fog,
     sharedVines,
+    newTreeZone,
   };
+}
+
+/** What lies under a dropped leaf: another tree (and its nearest branch), or the new-tree zone. */
+export function resolveDrop(layout: GroveLayout, point: Point, fromTreeId: string): DropTarget | null {
+  const zone = layout.newTreeZone;
+  if (Math.hypot(point.x - zone.x, point.y - zone.y) <= zone.r + 8) return { kind: 'new' };
+
+  for (const tree of layout.trees) {
+    if (tree.id === fromTreeId) continue;
+    if (Math.abs(point.x - tree.x) > tree.halfWidth) continue;
+    if (point.y < 0 || point.y > layout.groundY + 60) continue;
+    let nearest: BranchLayout | null = null;
+    let best = Infinity;
+    for (const branch of tree.branches) {
+      const distance = Math.hypot(point.x - branch.tip.x, point.y - branch.tip.y);
+      if (distance < best) {
+        best = distance;
+        nearest = branch;
+      }
+    }
+    return { kind: 'tree', treeId: tree.id, branchLabel: nearest?.label ?? null };
+  }
+  return null;
+}
+
+/** Roots from a claim to exactly the leaves that are its evidence (SPEC §9.1). */
+export function computeRoots(
+  layout: GroveLayout,
+  treeId: string,
+  anchor: RootsAnchor,
+  tabRefs: string[]
+): RootsLayout | null {
+  const tree = layout.trees.find((t) => t.id === treeId);
+  if (!tree) return null;
+
+  let origin: Point = { x: tree.x, y: layout.groundY };
+  if (anchor.kind === 'stone') {
+    const stone = tree.stones.find((s) => s.id === anchor.id);
+    if (stone) origin = { x: stone.x, y: stone.y - 8 };
+  } else if (anchor.kind === 'mushroom') {
+    const mushroom = tree.mushrooms.find((m) => m.id === anchor.id);
+    if (mushroom) origin = { x: mushroom.x, y: mushroom.y - mushroom.capRadius };
+  }
+
+  const leaves = [...tree.branches.flatMap((branch) => branch.leaves), ...tree.fallenLeaves];
+  const paths = [...new Set(tabRefs)].flatMap((tabRef) => {
+    const leaf = leaves.find((l) => l.tabRef === tabRef);
+    if (!leaf) return [];
+    return [
+      {
+        tabRef,
+        d:
+          `M${round(origin.x)},${round(origin.y)}` +
+          `C${round(origin.x)},${round(origin.y - 60)} ${leaf.x},${round(leaf.y + 70)} ${leaf.x},${leaf.y}`,
+      },
+    ];
+  });
+  return { treeId, origin, paths };
 }

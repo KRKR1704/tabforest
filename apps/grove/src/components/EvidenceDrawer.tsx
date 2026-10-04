@@ -35,7 +35,7 @@ const KIND_LABELS: Record<EvidenceKind, string> = {
   document: 'Document',
 };
 
-function sourceLabel(item: EvidenceRef): string {
+export function sourceLabel(item: EvidenceRef): string {
   if (item.ref_kind) return KIND_LABELS[item.ref_kind];
   return SOURCE_LABELS[item.ref.charAt(0)] ?? 'Evidence';
 }

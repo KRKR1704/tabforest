@@ -25,6 +25,7 @@ export const PALETTE = {
   fallenLeaf: '#a8937e', // bark-400
   firefly: '#ffd54f', // firefly
   fireflyGlow: '#fff7a0', // firefly-glow
+  roots: '#efeae4', // bark-100
   fog: 'rgb(210, 225, 218)', // fog
   fogLeaf: '#78909c', // stoneGray
   text: '#f2f8f4', // forest-50
