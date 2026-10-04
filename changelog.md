@@ -6,6 +6,31 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S: Tabs panel with two-way hover (S)
+
+Not a BUILD_TASKS.md row. Part 1 of the tabs work; Chrome tab groups are not part of it.
+
+### Added
+- `apps/grove/src/components/TabsPanel.tsx`: a panel beside the grove that lists every tab, grouped by goal and then by path, followed by sprouts, the Wildflower Meadow and the Unclear tabs. Each row shows the title and site, and says when the tab is closed, not visited lately, a copy of another tab ("Copy of …", "Overlaps with …", "Kept · 3 overlapping tabs"), or also on another goal. Clicking a row opens the tab (`OPEN_TAB`).
+- Hover works both ways. Pointing at a row (or focusing it with the keyboard) lights that tab's leaf on the canvas, the branch it hangs on, and its copies on the same tree. Pointing at a leaf lights its row and scrolls it into view.
+- `apps/grove/src/lib/tabList.ts`: `listTabs` and `groupNote`, the pure functions behind the panel.
+- "Show tabs" / "Hide tabs" in the Current Grove bar, in the Grove view. The panel is closed until asked for.
+
+### Changed
+- `viz/GroveCanvas.tsx`: two optional props, `highlight` (the tab to point out) and `onHoverLeaf` (the leaf under the pointer). Both work through attributes and listeners on the `<svg>`; `render.ts` is not touched.
+- `screens/CurrentGrove.tsx`: the toggle, the panel and the shared hover state.
+- `index.css`: styles for the lit leaf, branch and copies.
+
+### Tests
+- `src/__tests__/tabsPanel.test.tsx` (23): every tab is listed once per place it sits and the count matches the grove; tabs sit under their path; kept tabs, copies and overlaps are named, including a tab kept for two groups; tabs with no copies are unmarked; shared tabs name the other goal; the Unclear reason; closed and stale tabs; the panel's rows, hover, focus, blur, click and Hide; only the row on the same tree is marked for a shared tab; the canvas lights the leaf, branch and copies and clears them; the canvas reports the leaf under the pointer and ignores other elements; in Current Grove the panel is closed by default, hover works in both directions, a click sends `OPEN_TAB`, the toggle is not offered in the Outline view, and nothing lights while the panel is closed; titles are written as text.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 23 files, 513 tests passing. `npm run build` passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server, mock mode): "Show tabs" opened the panel with 29 rows; pointing at the kept FastAPI tab lit one leaf, one branch and three copies on the canvas; the copies' rows were marked in the panel; no console errors.
+
+### Notes
+- With the panel, the left rail and Tree Detail all open, the canvas gets narrow on a small screen. The panel can be hidden.
+- Chrome tab groups (group names and colours) are not shown. That needs the extension to read them and a change to the frozen bridge contract; see the earlier discussion with lanes D and R.
 ## [2026-10-04] — Privacy sentence: search text is recorded (D)
 
 ### Changed

@@ -90,6 +90,21 @@
     opacity: 0.28;
   }
 
+  /* A tab pointed at in the Tabs panel: its leaf, its branch, and its copies. */
+  .grove-canvas [data-hover='true'] {
+    filter: brightness(1.7);
+    stroke: #f2f8f4;
+    stroke-width: 2.5;
+  }
+  .grove-canvas [data-hover-branch='true'] > path:not(.leaf) {
+    stroke: #efeae4;
+    stroke-width: 4.5;
+  }
+  .grove-canvas [data-hover-copy='true'] {
+    stroke: #f5c26b;
+    stroke-width: 2.5;
+  }
+
   /* Where a dragged leaf would land. */
   .grove-canvas [data-drop-target='true'] {
     filter: brightness(1.4);
