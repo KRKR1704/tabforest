@@ -106,6 +106,11 @@ async def _with_conn(fn):
         await conn.close()
 
 
+def db_run(fn) -> Any:
+    """Run an async fn(conn) on a fresh connection."""
+    return asyncio.run(_with_conn(fn))
+
+
 def db_fetch(sql: str, *args: Any) -> list[asyncpg.Record]:
     return asyncio.run(_with_conn(lambda c: c.fetch(sql, *args)))
 
