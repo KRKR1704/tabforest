@@ -6,6 +6,23 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — GET /api/grove serves the newest grow that has trees (R)
+
+D's live check: a 1-2 tab grow stores a run with a lone sprout and no trees, and GET /api/grove returned that newest run, hiding the user's real grove.
+
+### Fixed
+
+- `persist.LAST_GROVE_SQL` now orders by "has trees" first (`coalesce(jsonb_array_length(response->'trees'), 0) > 0`), then full before degraded, then newest. A degraded (Seedling) grove has trees, so it counts and beats a later sprout-only run; a full grove still beats a newer degraded one (an outage never hides the last good grove); only when no grow has trees does the newest grow answer. Every reader and writer of the "last grove" already goes through `last_grove_row` (GET /api/grove, prune, claims confirm/edit/dismiss/resolve, assign, notes, analyze), so a mutation edits the row GET returns; nothing else queries `analysis_runs.response`.
+
+### Tests
+
+- `test_grove_latest.py` (8, real database, no model): full then 2-tab grow serves the full grove, GET /api/grove through the app, only sprout runs serve the newest sprout run, a degraded grove with trees beats a later sprout-only run, a full grove beats a newer degraded one, other run kinds and other users are ignored, confirming a claim and assigning a tab after a sprout run edit the grove GET returns and leave the sprout run alone. Six of the eight fail on the old query.
+- `test_grove_latest_live.py` (real Azure OpenAI): demo grow (4 trees), a 2-tab grow (0 trees, 1 sprout), GET /api/grove returns the 4-tree run; 0 rows left. `test_claims.py`, `test_grow.py`, `test_grow_live.py`, `test_seedling.py`: all pass (68 passed with the new files; no full suite run).
+
+### Notes
+
+- Review of P's PR #64 (read-only, nothing of P's edited): (1) `engine/adapters/stats.py` ordering `ts, type rank (OPEN, BLUR, FOCUS, UPDATE, IDLE, ACTIVE), event_id` is a total order (the primary key makes `event_id` unique per user and timestamp), so equal timestamps come back in a fixed order; `DbStats.attention` and `attention_ms` sum in SQL and do not depend on order; `previous_tab_ref` and `session_id` are columns. `test_real_sql_reads_only_this_users_events_and_sums_their_dwell` passed 10 of 10. One edge: a FOCUS and a BLUR of the same tab with the same timestamp (a zero-length visit) now sort BLUR first, so `features.visits_from` drops that BLUR and pairs the FOCUS with the tab's next BLUR (wrong dwell); so does A to B to C inside one millisecond. Rare; not fixed. P changed a file of lane R (`engine/adapters/stats.py`). (2) `deploy.sh` sets `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_CHAT_DEPLOYMENT`, `AZURE_OPENAI_EMBED_DEPLOYMENT`, `DATABASE_URL`, `AUTH_MODE=prod`: all match the names `engine/settings.py` reads. `AZURE_OPENAI_API_VERSION` is not set, so the engine default `2024-10-21` applies (correct). The engine needs nothing else. The chat and embed values must be the deployment names (`chat`, `embed`). `app/main.py` still does not start `memory_loop` (R-12 note), so the memory pass runs only through the dev route until it is added to the lifespan.
+
 ## [2026-10-04] — Live findings: temporal bonus floor, prune gate on model groups (R)
 
 Fixes from D's live check of the deployed product. Only `apps/api/app/engine/**` and this file changed; nothing in `contracts/`.

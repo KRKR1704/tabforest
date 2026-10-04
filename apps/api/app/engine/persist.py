@@ -59,14 +59,20 @@ def budget_exceeded(tokens: int, calls: int) -> str | None:
     return None
 
 
+# One selection for every reader and writer of the "last grove" (GET /api/grove, claims, assign, notes, analyze, prune):
+# a grow that has trees beats one that has none (a 1-2 tab grow leaves only a sprout and must not hide the real grove;
+# a degraded Seedling grove has trees, so it counts), then a full grove beats a degraded one, then the newest.
+# Only when no grow has trees does the newest grow answer.
 LAST_GROVE_SQL = (
     "SELECT run_id, response, snapshot FROM analysis_runs WHERE user_id = $1 AND kind = 'grow' "
-    "AND response IS NOT NULL ORDER BY degraded, ts DESC LIMIT 1")
+    "AND response IS NOT NULL ORDER BY (coalesce(jsonb_array_length(response->'trees'), 0) > 0) DESC, degraded, ts DESC "
+    "LIMIT 1")
 
 
 async def last_grove_row(conn: Any, user_id: UUID, *, lock: bool = False) -> dict[str, Any] | None:
-    """The stored grove GET /api/grove serves: the newest full grove; a Seedling (degraded) grove only
-    when no full one exists, so an Azure outage never hides the last good grove (proposal §8).
+    """The stored grove GET /api/grove serves: the newest full grove that has trees; a Seedling (degraded) grove only
+    when no full one has trees, so an Azure outage never hides the last good grove (proposal §8); a grow with no trees
+    (a lone sprout) only when no grow has any.
     {run_id, response, snapshot}; lock=True takes the row lock for a mutation in the same transaction."""
     row = await conn.fetchrow(LAST_GROVE_SQL + (" FOR UPDATE" if lock else ""), user_id)
     if row is None:
