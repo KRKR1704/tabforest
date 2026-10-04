@@ -16,6 +16,20 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Notes
 - The rest of the README still describes the project as pre-implementation; rewriting it is task S-17.
+## [2026-10-04] — Bare address opens the landing page (P)
+
+### Added
+- `GET /` redirects (307) to `/welcome/` when the landing page is deployed, so the custom domain `tabforest.nyc` opens the page instead of an API 404. Without a build the route answers 404 as before. It is not in the OpenAPI schema.
+
+### Tests
+- Local: `test_e1_welcome.py` gains two (redirect and landing page content; 404 without a build).
+
+### Verification
+- 22 passed on the welcome and hardening tests; `ruff check` clean.
+
+### Notes
+- The custom domain itself is DNS at the registrar plus a hostname binding and certificate on the App Service; no repository change is needed for it.
+
 ## [2026-10-04] — Grove: signing in on the page no longer throws the stored grove away (D)
 
 The Grove still looked blank after signing in, although `GET /api/grove` returned the user's stored grove (two trees). Found by replaying the sign-in on the page against the built extension: the old build showed "No grove yet", the fixed build shows the stored grove.
