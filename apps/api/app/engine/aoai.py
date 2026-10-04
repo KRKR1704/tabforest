@@ -118,6 +118,12 @@ class AzureOpenAIClient:
     async def chat_structured(self, messages: Sequence[dict[str, Any]], model: type[T], *,
                               temperature: float = 0.0, max_tokens: int | None = None) -> T:
         """Strict json_schema Structured Outputs call; returns the parsed model instance."""
+        parsed, _ = await self.chat_structured_usage(messages, model, temperature=temperature, max_tokens=max_tokens)
+        return parsed
+
+    async def chat_structured_usage(self, messages: Sequence[dict[str, Any]], model: type[T], *,
+                                    temperature: float = 0.0, max_tokens: int | None = None) -> tuple[T, int]:
+        """chat_structured plus the call's total tokens (0 when the response has no usage)."""
         kwargs: dict[str, Any] = {"model": self._settings.azure_openai_chat_deployment,
                                   "messages": list(messages), "response_format": model,
                                   "temperature": temperature}
@@ -141,7 +147,8 @@ class AzureOpenAIClient:
             raise StructuredOutputError(f"model refused: {message.refusal}")
         if message.parsed is None:
             raise StructuredOutputError("no parsed output")
-        return message.parsed
+        usage = getattr(completion, "usage", None)
+        return message.parsed, int(getattr(usage, "total_tokens", 0) or 0)
 
     async def embed(self, texts: Sequence[str], *, batch_size: int = EMBED_BATCH) -> list[list[float]]:
         """Embed texts in batches; the result is in input order."""

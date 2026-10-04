@@ -25,6 +25,114 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - Reading a page works through the `activeTab` permission, which Chrome grants when the user clicks the menu item. The worker console helper has no such click, so on real sites it is refused; use the menu.
 - Items are not sent to the server yet (D-10 decides what, if anything, is synced).
+## [2026-10-03] — R-7 + R-8: inference, evidence validator, grove assembly, grow endpoints (R)
+
+### Added
+
+- `engine/model_schema.py`: Pydantic models for the model output (§15) used as the strict Structured Outputs schema: project_name, goal, branches, current_direction, decisions, unresolved_questions, blockers, next_actions, redundant_groups, important_tab_refs, hypotheses. Every claim carries provenance, confidence and evidence `[{ref, why}]` with short refs only.
+- `engine/infer.py`:
+  - The system prompt follows §14 "Prompt shape". The DATA block goes into the user message as an embedded document, JSON-escaped, between `""" <documents>` and `</documents> """`, following Microsoft's document-embedding guidance for Prompt Shields indirect-attack detection (URL cited in the code).
+  - `infer_cluster()` makes one call per cluster. Invalid output gets one repair retry. Content filter, still-invalid output or Azure down yield a per-cluster fallback; the function never raises.
+  - `infer_all()` runs all clusters in parallel and yields results as they complete. At most 8 clusters per run get a model call; the largest 8 are chosen.
+  - `retrieve_prior_research()` returns the top 3 research insights (memory_embeddings `kind='insight'`) by cosine similarity to the cluster centroid.
+- `engine/validate.py` (deterministic):
+  - Unknown refs are dropped.
+  - `stated` requires an n* ref that maps to one of this user's notes. The note's own words are stored.
+  - `sourced` requires a quote verified with `normalize_for_match` on both sides; the source's original wording is stored. In browser mode, sourced always downgrades.
+  - Confidence = min(model, 0.35 + 0.15·refs + 0.10·types, 0.95).
+  - `inferred` needs ≥ 2 refs and ≥ 0.60, otherwise the claim becomes a hypothesis.
+  - Display wording is set by provenance ("Appears to be …", "Likely still open: …", "Likely next: …", "Maybe: …").
+  - Downgrades are recorded with reasons.
+- `engine/grove.py`: `GrowRun.stream()` runs the pipeline end to end:
+  1. Cluster (R-5) and emit the `clusters` line.
+  2. Features (R-6), notes and prior research per cluster.
+  3. Model calls, emitting each `tree` line as its result lands.
+  4. Fireflies.
+  5. Persist, then emit the `done` line.
+  - `assemble_tree()` builds the exact contract tree shape: leaves get importance from `finalize_importance` with validated evidence counts, and `fallen` = stale and not cited. Stones are carved iff stated or sourced. Mushrooms come from model questions plus open-loop families no question covers; recurrence comes from the family. Next actions carry `unblocks`. Exact vines come from dup_key and semantic vines from validated redundant groups. Also attention, canopy (amber at ≥ 3 days), fogged, and hypotheses.
+  - `fallback_tree()` builds the deterministic fogged tree, following `grove.degraded.example.json`.
+  - Every line and the full response are validated against `engine/schemas` before they leave.
+- `engine/persist.py`: one transaction per run.
+  - Rows written: analysis_runs (response jsonb, latency, llm_calls, downgraded_claims, fallback_used, degraded, hollow_count), projects (insert, or touch the matched one), intent_clusters, intent_branches, cluster_tabs, decisions, unresolved_questions (blockers as `kind='blocker'`) and suggested_actions.
+  - `cluster_tabs` uses `ON CONFLICT … WHERE assigned_by <> 'user'`, and pinned tabs are written as `assigned_by='user'`.
+  - P's `tabs.title_norm` / `source_type` are updated with UPDATE only, inside a savepoint; the update is skipped if the table or columns are missing.
+  - Also: `last_grove()` and `llm_calls_today()`.
+- `engine/metrics.py`: OpenTelemetry API instruments `grow_latency_ms`, `claims_downgraded`, `fallback_used`, `validation_failures`. They are no-ops when telemetry isn't configured. Logs carry ids and counts only, never titles.
+- `engine/routes.py`:
+  - `POST /api/grove/grow`: plain JSON, or NDJSON with `?stream=1`. The request model `GrowRequest` uses `extra="forbid"`: `open_tabs` ≤ 60 (422 beyond), `hollow_count`. User from `get_user_id`.
+  - `GET /api/grove`: last stored grove; 404 problem if none.
+  - Limits: grow 10/min per user (R's own slowapi limiter; 429 problem with Retry-After) and a daily budget (429 problem).
+- `engine/aoai.py`: `chat_structured_usage()` returns the parsed model plus total tokens. `chat_structured()` is unchanged and delegates to it.
+- `engine/scripts/print_grove.py` (human-readable grove) and `engine/scripts/grow_report.py` (3 back-to-back runs with the downgrade report and p50).
+
+### Changed
+
+- R-6 follow-up: `test_importance_ranking_after_finalize` is now a normal test asserting the behavior-based order the §3.4 formula produces: the GitHub example first (0.597), the official FastAPI docs second (0.407). This deviates from the plan's R-6 verify line ("importance ranks the official docs first"). The contract's importance values are illustrative.
+
+### Tests
+
+- `test_model_schema.py`: the generated schema (Pydantic's and the openai SDK's strict version) has `additionalProperties: false` and every field required on all 11 objects. Optional values are nullable, without defaults. No unsupported keywords.
+- `test_validate.py` (19): unknown ref dropped; fake stated downgraded (no note, or an unknown n*); a real stated claim keeps the note's words; sourced downgrades in browser mode; a quote is verified on normalized text and stored verbatim; confidence cap and clamping; < 2 refs or < 0.60 → hypothesis; display wording per provenance; injected text never shown raw; gerunds.
+- `test_grow.py` (12, mocked Azure OpenAI): DATA block escaping and delimiters; stream order (clusters → trees as they land → done); a content filter on one cluster fogs only that cluster; all failing → degraded with the Seedling banner; repair retry; invalid twice → that cluster only; > 8 clusters → 8 calls and 2 `llm_cap` trees; 61 tabs → 422, `user_id` in body → 422, no header → 401; 11th grow in a minute → 429 (per user); daily budget → 429; pinned tabs never overwritten (real database).
+- `test_grow_live.py` (4, real Azure + Tiger Cloud, user `…00cc`, all rows deleted at the end, asserts 0 left):
+  - standalone app: plain grow, response validates, rows persisted, GET returns the same run (other user → 404), firefly on Backend Auth only;
+  - P's app (`create_app`, AUTH_MODE=dev, X-Dev-User): streaming grow, every line validates, GET returns the run, no auth → 401;
+  - stream timestamps, with the clusters line before any tree;
+  - prior-research similarities.
+
+### Verification
+
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 196 passed, 2 xfailed. The xfails are R-5's 4-tree test and the R-6 STEP 0 experiment.
+- curl on the standalone app (port 8100), demo snapshot, user `…00cc`: HTTP 200 in 7.8 s, and the response validates.
+- Stream: clusters at +0.57 s, trees at +2.61 to +4.80 s, done at +5.31 s.
+- 3 back-to-back runs: latency 4444 / 5574 / 6023 ms (p50 5574 ms), 5 LLM calls each, about 11.7k tokens each; 3 / 5 / 6 downgraded claims.
+
+### Notes (deviations, and how the real grove compares to the contract story)
+
+**Inference and validation**
+
+- Model schema vs §15:
+  - The model does not choose `is_existing_project_id`; R-5 matches projects deterministically.
+  - `next_actions.unblocks_question` is an index, not the string `"unresolved_questions[0]"`.
+  - Decisions name their note in `user_note_ref` (a short ref).
+  - Every claim, including next actions and hypotheses, carries provenance.
+  - Ranges such as confidence in [0, 1] are enforced by the validator, because strict mode does not support min/max keywords.
+- Prompt Shields: Microsoft's guidance was fetched and applied. The DATA JSON is itself JSON-escaped inside the document tags.
+- Prior-research threshold 0.35 (provisional) instead of the plan's 0.78:
+  - Seeded "Backend Scaling, 2026-03-12" vs real R-5 centroids: Backend Auth 0.3614, Dinner 0.1090, GirlHacks 0.2812, Hypertables 0.2645, Job 0.2328.
+  - Thin margin; R-12 calibrates it properly.
+- `stated` claims keep confidence 1.0 (the user's own words) instead of the evidence formula. Distinct source types count tab leaf types plus "query" and "note".
+
+**Fallbacks and the grove response**
+
+- Fallback per cluster:
+  - A content filter, invalid output after the repair retry, or Azure down yields a deterministic fogged tree for that cluster only, with the reason in the banner text, the `fallback_used` metric and logs.
+  - The response's `degraded` is true only when every AI-eligible cluster fell back.
+  - The per-cluster reason is not persisted, because there is no column for it.
+- Clusters past the 8-call cap become fogged deterministic trees with no banner; R-9 refines this as Seedling mode.
+- Embedding failure during clustering is not yet handled (R-9: domain + opener + time).
+- Downgraded stones, mushrooms, actions and directions move into the tree's `hypotheses` and keep their own ids, so R-10 can find their rows.
+- Blockers are persisted but not in the grove response, because the contract's Tree has no blockers field.
+- Open-loop families that no model question covers become deterministic `repeated_search` mushrooms.
+
+**Endpoints and data**
+
+- Request: `hollow_count` is optional (default 0). An optional `snapshot_at` is honored only when AUTH_MODE=dev, so the demo fixtures replay at their own time; otherwise the server clock is used.
+- Daily budget counts LLM calls (400 per user per day) because `analysis_runs` has no token column; tokens per run are logged. A real token budget needs a `tokens` column (a 2xx migration, outside this task's paths).
+- The rate limit uses R's slowapi limiter storage, checked in the handler with the token-derived user id, so it works the same in the standalone app and in P's app.
+- New projects get a random uuid. Later runs match them by centroid; run 2 matched all 5.
+- P's `main.py` needs no change: it already mounts the router with `dependency_overrides[get_user_id] = current_user`. The venv was synced from P's `pyproject.toml` (slowapi, OpenTelemetry, PyJWT were missing locally); no new dependencies.
+
+**Real grove vs contract story (prompt not tuned)**
+
+- Goal: the model writes "implementing secure JWT authentication with refresh token management in FastAPI" rather than "Choose an authentication architecture".
+- JWT direction: the model gives the JWT preference as a decision with one ref, so it becomes a mossy stone or a hypothesis. When it gives a direction, the direction is often about refresh-token storage.
+- Carved stone: appears only once a real note exists. After run 1 a user note was added to the Backend Auth project, and runs 2–3 show "Not using OAuth providers for v1" as a carved, stated stone.
+- Refresh-token mushroom: appears with recurrence 4. The model often labels it `unresolved_comparison` (cookie vs localStorage) where the contract has `repeated_search`.
+- Next action: usually cites one ref and is downgraded to a hypothesis.
+- Every downgrade in the 3 runs is a claim with one valid ref.
+- GirlHacks still splits into two trees (R-5).
+- p50 5.6 s is above the 4 s target (R-17).
 
 ## [2026-10-03] — D-11 Grove UI inside the extension (D)
 
