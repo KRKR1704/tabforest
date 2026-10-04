@@ -1,7 +1,16 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import type { GroveResponse } from '../types';
-import { computeGroveLayout, computeRoots, type RootsAnchor } from './layout';
+import {
+  GROW_TIMELINE,
+  hollowCountLine,
+  playArrivals,
+  playGrowFade,
+  playGrowIntro,
+  prefersReducedMotion,
+  type GrowAnimation,
+} from './growAnimation';
+import { computeGroveLayout, computeRoots, type GroveLayout, type RootsAnchor } from './layout';
 import { renderGrove, type GroveZoomControls, type LeafDrop } from './render';
 import type { GroveSelection } from './selection';
 
@@ -17,6 +26,10 @@ interface GroveCanvasProps {
   roots?: GroveRoots | null;
   /** The tree to zoom in on. */
   focusTreeId?: string | null;
+  /** Changes when a new grow plants its clusters; the grow animation plays once per value. */
+  growKey?: number;
+  /** Multiplies the animation's durations. Tests pass a small number. */
+  growTimeScale?: number;
 }
 
 export interface GroveRoots {
@@ -26,6 +39,10 @@ export interface GroveRoots {
 }
 
 const ZOOM_STEP = 1.3;
+
+// The last grow that was animated. Kept outside the component so that coming
+// back to this screen in the middle of a grow does not replay it.
+let playedGrowKey = 0;
 
 function describe(grove: GroveResponse): string {
   const parts = [`${grove.trees.length} ${grove.trees.length === 1 ? 'goal' : 'goals'}`];
@@ -43,10 +60,26 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
   onDropLeaf,
   roots = null,
   focusTreeId = null,
+  growKey = 0,
+  growTimeScale = 1,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const controlsRef = useRef<GroveZoomControls | null>(null);
-  const layout = useMemo(() => computeGroveLayout(grove), [grove]);
+  const lastLayoutRef = useRef<GroveLayout | null>(null);
+
+  // While the intro plays, the canvas keeps showing the grove as the clusters
+  // line planted it. Results that arrive meanwhile wait in `grove` and are
+  // drawn together when the intro ends, which is when the forest speaks.
+  const [intro, setIntro] = useState<{ key: number; grove: GroveResponse } | null>(() =>
+    growKey !== playedGrowKey && !prefersReducedMotion() ? { key: growKey, grove } : null
+  );
+  const [seenGrowKey, setSeenGrowKey] = useState(growKey);
+  if (growKey !== seenGrowKey) {
+    setSeenGrowKey(growKey);
+    setIntro(prefersReducedMotion() ? null : { key: growKey, grove });
+  }
+  const shown = intro ? intro.grove : grove;
+  const layout = useMemo(() => computeGroveLayout(shown), [shown]);
 
   // Kept in a ref so a new callback never forces D3 to redraw and lose the zoom.
   const onSelectRef = useRef(onSelect);
@@ -61,10 +94,34 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
       onDropLeaf: (drop) => onDropLeafRef.current?.(drop),
     });
     controlsRef.current = controls;
+
+    const previous = lastLayoutRef.current;
+    lastLayoutRef.current = layout;
+    let animation: GrowAnimation | null = null;
+    if (intro) {
+      playedGrowKey = intro.key;
+      animation = playGrowIntro(svgRef.current, layout, {
+        timeScale: growTimeScale,
+        onDone: () => setIntro(null),
+      });
+    } else if (growKey !== playedGrowKey) {
+      // Reduced motion: the new grove fades in and nothing moves.
+      playedGrowKey = growKey;
+      animation = playGrowFade(svgRef.current, growTimeScale);
+    } else if (previous) {
+      animation = playArrivals(svgRef.current, previous, layout, {
+        timeScale: growTimeScale,
+        reducedMotion: prefersReducedMotion(),
+      });
+    }
+
     return () => {
+      animation?.stop();
       controls.destroy();
       controlsRef.current = null;
     };
+    // The grow state is read as it was when this layout was drawn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
 
   useEffect(() => {
@@ -103,6 +160,19 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
         aria-label={describe(grove)}
         className="grove-canvas h-full w-full cursor-grab touch-none active:cursor-grabbing"
       />
+      {intro && (
+        // The Hollow count appears in the corner as the leaves start to gather (SPEC §9.3).
+        <p
+          data-kind="hollow-count"
+          className="grove-hollow-count pointer-events-none absolute left-6 top-4 text-sm text-forest-300"
+          style={{
+            animationDelay: `${GROW_TIMELINE.swirl.start * growTimeScale}ms`,
+            animationDuration: `${300 * growTimeScale}ms`,
+          }}
+        >
+          {hollowCountLine(shown.hollow_count)}
+        </p>
+      )}
       <div className="absolute bottom-4 right-4 flex divide-x divide-forest-800 overflow-hidden rounded-md border border-forest-800 bg-forest-900">
         <button
           type="button"

@@ -6,6 +6,39 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S-12 Grow animation (S)
+
+### Added
+- `apps/grove/src/viz/growAnimation.ts`: the grow animation of SPEC §9.3, timed from the moment the clusters line is drawn.
+  - 0–0.6 s: one leaf per open tab falls from above the canvas with a slight rotation, 15 ms apart, showing its domain initial.
+  - 0.6–1.6 s: the leaves swirl towards their cluster (`d3-force`, low alpha decay, stepped by elapsed time). The Hollow count appears in the corner of the canvas.
+  - 1.6–2.4 s: trunks rise from the ground (`stroke-dashoffset`) and thicken to their attention-based width; branches follow.
+  - 2.4–3.2 s: leaves move to their branch tips, canopy blobs scale from 0 with ease-back, and a dormant tree fades from green to amber.
+  - 3.2–4.2 s, per tree as its AI result is drawn: the goal name types in at 20 ms per character, mushrooms pop, stones settle, fog rolls in and a firefly drifts. Trees are 150 ms apart.
+- The drawn leaves are the ones that fall, so nothing is swapped at the end; when the animation ends or is stopped, the canvas is exactly what `renderGrove` draws.
+- Reduced motion (`prefers-reduced-motion`): the new grove fades in over 300 ms, a tree that gets its result fades in over 300 ms, and nothing moves.
+
+### Changed
+- `viz/GroveCanvas.tsx`: new props `growKey` and `growTimeScale`. While stages 1–4 play, the canvas keeps showing the grove as the clusters line planted it; results that arrive in that time are drawn together at 3.2 s. A result that arrives later is drawn when it arrives. Coming back to the screen in the middle of a grow does not replay it.
+- `store/useGroveStore.ts`: `growSeq` counts grows (one per clusters line). A listening tree now keeps `attention_min`, `days_since_active` and `canopy` from the clusters line, which the contract already sends, so trunk thickness and dormancy show before the AI answers. Before, they were dropped and every listening tree had the thinnest trunk and a green canopy.
+- `index.css`: the listening shimmer waits until the intro is over; `grove-fade-in` for the Hollow count.
+- `src/test/setup.ts`: tests run as a reduced-motion user (jsdom has no `matchMedia`), so a grow shows its result at once. The animation tests switch to full motion themselves.
+
+### Tests
+- `src/__tests__/growAnimation.test.tsx` (33): the stage times; one leaf per tab with its domain initial; 15 ms stagger, landing by 0.6 s also with 120 tabs; the swirl gathers each leaf at its own cluster and never dips under the ground; every leaf ends exactly where the grove draws it; the intro starts with trunks and canopy hidden, runs its stages in order, and leaves the drawing unchanged when it ends or is stopped; arrivals type the name in and bring in mushrooms, stones and the firefly; a tree with no result yet stays "listening…" with nothing invented; results that arrive during the intro are held and then shown; no replay on reopening; the reduced-motion paths; domain initials are written as text.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 18 files, 389 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server, mock mode), sampled from the page while it ran: leaves above the canvas at 0.3 s and all landed by 0.7 s; Hollow count visible from 0.9 s; trunk line growing 1.75–2.0 s and replaced by the real trunk by 2.45 s; amber fade 2.4–3.2 s; four listening trees until 3.2 s, then none; names typed in tree by tree and complete by 4.3 s; no leftover animation attributes afterwards; no console errors.
+- Not done: the screen recording the task asks for. Shriya records it.
+
+### Notes
+- The animation needs the page to be visible: browsers pause animation frames in a hidden tab, so a grow started in a background tab plays when the tab is shown.
+- The tree label that types in is the project name, which is the label drawn under each tree. The goal sentence itself is in Tree Detail.
+- If two results arrive less than about a second apart after the intro, the first tree's reveal is cut short by the redraw for the second and shows complete at once.
+- Reduced motion could not be switched on in the test browser; it is covered by the automated tests only.
+- BUILD_TASKS.md: S-12 row ticked only.
+
 ## [2026-10-03] — Lane S-11 Ask Memory and pruning (S)
 
 ### Added

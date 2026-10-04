@@ -133,7 +133,14 @@ export type WireStreamMessage =
       type: 'clusters';
       run_id: string;
       hollow_count: number;
-      clusters: Array<{ project_id: string; name: string; tab_refs: string[] }>;
+      clusters: Array<{
+        project_id: string;
+        name: string;
+        tab_refs: string[];
+        attention_min?: number;
+        days_since_active?: number;
+        canopy?: CanopyColor;
+      }>;
       sprouts: WireSprout[];
       meadow: string[];
       fog: WireFogTab[];
@@ -326,6 +333,9 @@ export function normalizeStreamMessage(
         project_name: cluster.name,
         tab_refs: cluster.tab_refs,
         tabs: cluster.tab_refs.map((ref) => looseTab(ref, index)),
+        attention_minutes: cluster.attention_min,
+        days_since_active: cluster.days_since_active,
+        canopy: cluster.canopy,
       })),
       sprouts: normalizeSprouts(wire.sprouts ?? [], index),
       meadow_tab_refs: wire.meadow ?? [],

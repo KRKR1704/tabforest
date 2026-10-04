@@ -229,6 +229,10 @@ export type StreamMessage =
         tab_refs: string[];
         /** The cluster's tabs, named from the snapshot. */
         tabs?: GroveTab[];
+        /** Known from clustering alone, before any AI result. */
+        attention_minutes?: number;
+        days_since_active?: number;
+        canopy?: TreeData['canopy'];
       }>;
       sprouts?: Array<{
         sprout_ref: string;
