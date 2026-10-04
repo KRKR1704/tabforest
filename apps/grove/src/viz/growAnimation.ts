@@ -84,6 +84,8 @@ export interface GrowLeaf {
   length: number;
   /** Centre of the leaf's cluster, where it gathers. */
   home: Point;
+  /** The ground line of the row the leaf belongs to. */
+  ground: number;
   /** Where the leaf sits once the grove is drawn. */
   final: Pose;
 }
@@ -101,28 +103,31 @@ function domainInitial(leaf: LeafLayout): string {
 /** One entry per leaf on the canvas: one per tab, in drawing order. */
 export function collectLeaves(layout: GroveLayout): GrowLeaf[] {
   const leaves: GrowLeaf[] = [];
-  const add = (owner: string, home: Point, group: LeafLayout[]) => {
+  const add = (owner: string, home: Point, ground: number, group: LeafLayout[]) => {
     for (const leaf of group) {
       leaves.push({
         key: `${owner}|${leaf.tabRef}`,
         initial: domainInitial(leaf),
         length: leaf.length,
         home,
+        ground,
         final: { x: leaf.x, y: leaf.y, angle: leaf.angle },
       });
     }
   };
-  const patchHome = (x: number): Point => ({ x, y: layout.groundY - 60 });
+  const patchHome = (patch: { x: number; groundY: number }): Point => ({ x: patch.x, y: patch.groundY - 60 });
 
-  for (const sprout of layout.sprouts) add(`sprout:${sprout.ref}`, patchHome(sprout.x), sprout.leaves);
+  for (const sprout of layout.sprouts) {
+    add(`sprout:${sprout.ref}`, patchHome(sprout), sprout.groundY, sprout.leaves);
+  }
   for (const tree of layout.trees) {
-    add(`tree:${tree.id}`, tree.crown, [
+    add(`tree:${tree.id}`, tree.crown, tree.groundY, [
       ...tree.branches.flatMap((branch) => branch.leaves),
       ...tree.fallenLeaves,
     ]);
   }
-  if (layout.meadow) add('meadow', patchHome(layout.meadow.x), layout.meadow.leaves);
-  if (layout.fog) add('fog', patchHome(layout.fog.x), layout.fog.leaves);
+  if (layout.meadow) add('meadow', patchHome(layout.meadow), layout.meadow.groundY, layout.meadow.leaves);
+  if (layout.fog) add('fog', patchHome(layout.fog), layout.fog.groundY, layout.fog.leaves);
   return leaves;
 }
 
@@ -141,6 +146,8 @@ interface SwirlNode extends SimulationNodeDatum {
   vx: number;
   vy: number;
   home: Point;
+  /** Leaves stay above the ground of their own row. */
+  floor: number;
 }
 
 export interface LeafChoreography {
@@ -184,7 +191,8 @@ export function createLeafChoreography(layout: GroveLayout): LeafChoreography {
       start: { x: startX, y: -30 - noise(index, 3) * 50, angle: startAngle },
       landing: {
         x: startX + (noise(index, 5) - 0.5) * 70,
-        y: layout.groundY * (0.3 + noise(index, 6) * 0.5),
+        // Within the leaf's own row: a grove stacked in rows gathers each row above its ground.
+        y: leaf.ground - layout.groundY * (0.7 - noise(index, 6) * 0.5),
         angle: startAngle + (noise(index, 7) - 0.5) * 140,
       },
       fallAt: rank[index] * stagger,
@@ -199,8 +207,8 @@ export function createLeafChoreography(layout: GroveLayout): LeafChoreography {
     vx: 0,
     vy: 0,
     home: plan.leaf.home,
+    floor: plan.leaf.ground - 10,
   }));
-  const floor = layout.groundY - 10;
   // Stepped by hand so the swirl depends on elapsed time, not on the frame rate.
   const simulation = forceSimulation(nodes)
     .alphaDecay(0.01)
@@ -214,8 +222,8 @@ export function createLeafChoreography(layout: GroveLayout): LeafChoreography {
         node.vx -= (node.y - node.home.y) * 0.025 * alpha;
         node.vy += (node.x - node.home.x) * 0.025 * alpha;
         // Leaves stay in the air; none dips under the forest floor.
-        if (node.y > floor) {
-          node.y = floor;
+        if (node.y > node.floor) {
+          node.y = node.floor;
           node.vy = -Math.abs(node.vy) * 0.3;
         }
       }
@@ -416,13 +424,13 @@ export function playGrowIntro(
     const tree = treeById.get(this.getAttribute('data-tree-id') ?? '');
     if (!tree) return;
     const group = select(this);
-    const height = layout.groundY - tree.crown.y;
+    const height = tree.groundY - tree.crown.y;
 
     const sapling = group
       .append('line')
       .attr('data-kind', 'grow-trunk')
       .attr('x1', tree.x)
-      .attr('y1', layout.groundY)
+      .attr('y1', tree.groundY)
       .attr('x2', tree.crown.x)
       .attr('y2', tree.crown.y)
       .attr('stroke', PALETTE.trunk)

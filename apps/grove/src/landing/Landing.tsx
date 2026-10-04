@@ -4,6 +4,7 @@ import { GUIDE_KEY, GUIDE_SHOWCASE, GUIDE_STEPS } from '../lib/guideGrove';
 import { countGroveTabs } from '../lib/grove';
 import { GUIDE_PAUSE_MS, KeyIcon } from '../screens/GroveGuide';
 import { GroveCanvas } from '../viz/GroveCanvas';
+import { EnchantedBackdrop } from './EnchantedBackdrop';
 import {
   DEMO_ACTIONS,
   EXTENSION_ZIP_URL,
@@ -68,7 +69,9 @@ export const Landing: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-forest-950 font-sans text-[15px] leading-relaxed text-forest-50">
+    <div className="relative min-h-screen bg-forest-950 font-sans text-[15px] leading-relaxed text-forest-50">
+      <EnchantedBackdrop />
+      <div className="relative z-10">
       <header>
         <div className={`${wrap} flex flex-wrap items-center gap-x-7 gap-y-3 py-5`}>
           <div className="flex items-center gap-2.5 font-serif text-xl font-semibold">
@@ -106,7 +109,7 @@ export const Landing: React.FC = () => {
               <span className="text-[13px] text-forest-300">Free. Tested in Google Chrome.</span>
             </div>
 
-            <div id="demo" className="mt-9 overflow-hidden rounded-lg border border-forest-700">
+            <div id="demo" className="mt-9 overflow-hidden rounded-lg border border-forest-700 bg-forest-950">
               <div
                 aria-hidden="true"
                 data-sorted={growKey > 0 ? 'true' : 'false'}
@@ -132,9 +135,10 @@ export const Landing: React.FC = () => {
                     grove={changed ? step.after : step.before}
                     growKey={growKey}
                     growTimeScale={1.25}
+                    fit="scale"
                   />
                 ) : (
-                  <GroveCanvas key="showcase" grove={grove} growKey={growKey} />
+                  <GroveCanvas key="showcase" grove={grove} growKey={growKey} fit="scale" />
                 )}
               </div>
 
@@ -306,6 +310,7 @@ export const Landing: React.FC = () => {
       <footer className="border-t border-forest-800 pb-10 pt-6 text-[13px] text-forest-300">
         <div className={wrap}>TabForest · built at GirlHacks 2026</div>
       </footer>
+      </div>
     </div>
   );
 };

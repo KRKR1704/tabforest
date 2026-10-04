@@ -6,6 +6,38 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Lane S: responsive grove, text collisions, tour as a dialog, enchanted backdrop (S)
+
+UI only. No adapter, store, bridge, API or extension code changed. Not a BUILD_TASKS.md row.
+
+### Changed
+- **Responsive grove** (`viz/layout.ts`, `viz/render.ts`, `viz/GroveCanvas.tsx`): the canvas measures its width. A grove that would have to shrink by more than a fifth to fit is stacked in rows at natural size, each row with its own ground line, and the panel scrolls. `computeGroveLayout(grove, { maxWidth })`; every tree and patch carries its own `groundY`; `layout.rows`. In stacked rows the wheel and dragging are left to the page; the zoom buttons still work.
+- **Text collisions** (`viz/layout.ts`): each path's label is written outside the canopy, in the direction its branch grows, wrapped to lines of about 22 characters and moved apart from other labels; no label sits on a leaf. Long tree names wrap onto two lines. A tree reserves width for its name, the line under it and its labels, so neighbours never overlap. Nothing is cut off.
+- **Vines**: a vine no longer runs from the canopy down to a copy lying on the ground (the long thick lines in the screenshot). Copies in the tree get one vine, copies on the ground another.
+- **Tree size**: the canopy grows with the number of tabs between a smallest and a largest size (radius 84 to 180, was 80 to 135), and the trunk height follows.
+- **Leaf size**: every leaf is one size (20). Before, a leaf was longer the longer its tab was read (11 to 30), which made most leaves tiny when reading time was low.
+- **Tour** (`screens/GroveGuide.tsx`, `App.tsx`): "How to read your grove" is a centred dialog over the app, about 58% of a desktop screen and 94% of a phone's, with a backdrop, a close button, Escape to close and a progress indicator. Steps, wording and buttons are unchanged. The 3-step onboarding is unchanged.
+- **Shell on narrow screens** (`shell/LeftRail.tsx`, `shell/TopBar.tsx`): the left rail narrows to icons below 768 px (labels stay for screen readers) and the top bar wraps, so the page no longer scrolls sideways on a phone.
+- **Animations** (`viz/growAnimation.ts`, `viz/groveMotion.ts`): use each tree's own ground line, so they work in stacked rows.
+
+### Added
+- `landing/EnchantedBackdrop.tsx` and styles in `index.css`: seven slowly falling leaves, eight fireflies and a faint haze (muted violet in one corner, green in the other) behind the landing page. Hidden from assistive technology, never in the way of the pointer, still for reduced motion.
+- `GroveCanvas` prop `fit`: `'wrap'` (default) or `'scale'`, used by the tour and the landing demo, whose small example groves are shown whole.
+
+### Tests
+- `src/__tests__/responsiveGrove.test.tsx` (17): wrapping keeps every word; no label touches another label or a leaf, in the grove from the screenshot and in the sample grove; neighbours never overlap at four widths; no canopy-to-ground vine; tree size grows with tabs between bounds; one leaf size everywhere; one row when there is room; more rows as the space narrows, at the same size; rows stack without overlap; every tab and relationship is kept when wrapping; a ground line per row; the tour is a modal dialog with progress and close, and closes on Escape; the backdrop is small, slow, hidden and still for reduced motion.
+- Updated 4 existing tests for the new presentation: leaf size (was "longer the longer it was read"), a long name now written on two lines, and two that expected the tour to replace the app.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 27 files, 550 tests passing. `npm run build` and `npm run build:landing` pass; `check-dist` reports dist/ extension-safe.
+- Run with `npm run dev` and `npm run dev:landing` and checked in the browser at 1440, 768 and 390 px wide, on the sample grove and on a copy of the grove from the screenshot (17, 21 and 8 tabs with long names): no overlapping text, no sideways scrolling, one leaf size, rows stacking as the width narrows. The tour dialog measured 58% of the width at 1440 and 94% at 390, centred, with 11 progress marks; closing it returned to the grove. The landing page showed the backdrop behind the content. No console errors.
+- Not seen moving: the grow animation and the change animations in stacked rows. The browser pane used for checking was hidden, which pauses animation frames; they are covered by the existing animation tests, which pass.
+
+### Notes
+- Leaf size no longer shows reading time on the canvas (SPEC §9.1 and the moodboard say it does). The minutes are still in the leaf's tooltip, the Outline and the Tabs panel. Decided with Shriya for readability; SPEC.md is not changed here.
+- The muted violet haze and the fireflies' soft glow are on the landing page only, and only faintly; the moodboard rules out purple gradients and ungrounded glows in the app itself, and the app is unchanged in that respect.
+- Tree Detail and the Tabs panel are still fixed-width side panels; on a phone they leave little room for the grove.
+
 ## [2026-10-04] — Landing page: "Try a change" buttons on the demo (S)
 
 ### Added

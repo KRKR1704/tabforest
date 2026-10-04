@@ -210,7 +210,7 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
       <div
         role="group"
         aria-label="Grove view"
-        className="flex shrink-0 items-center gap-5 border-b border-forest-800 px-6"
+        className="flex shrink-0 flex-wrap items-center gap-x-5 border-b border-forest-800 px-4 md:px-6"
       >
         {VIEWS.map((option) => (
           <button

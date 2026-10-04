@@ -26,12 +26,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-6 border-b border-forest-800 bg-forest-950 px-6">
+    <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-6 gap-y-2 border-b border-forest-800 bg-forest-950 px-4 py-2 md:px-6">
       <h1 className="shrink-0 whitespace-nowrap font-serif text-xl font-semibold text-forest-50">
         {title}
       </h1>
 
-      <form role="search" onSubmit={submit} className="ml-auto w-full max-w-sm">
+      <form role="search" onSubmit={submit} className="order-last w-full lg:order-none lg:ml-auto lg:max-w-sm">
         <label className="flex items-center gap-2 border-b border-forest-700 pb-1 focus-within:border-forest-400">
           <Search className="h-4 w-4 shrink-0 text-forest-400" aria-hidden="true" />
           <span className="sr-only">Have I researched this before?</span>
@@ -45,7 +45,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </label>
       </form>
 
-      <p className="flex shrink-0 items-center gap-1.5 text-sm text-forest-200">
+      <p className="ml-auto flex shrink-0 items-center gap-1.5 text-sm text-forest-200 lg:ml-0">
         <MushroomIcon className="h-4 w-4 text-amberCanopy-light" />
         <span>
           <span className="font-semibold text-forest-50">{openQuestionCount}</span>{' '}

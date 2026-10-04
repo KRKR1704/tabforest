@@ -158,9 +158,9 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
       />
     );
   }
-  if (guide) return <GroveGuide onDone={() => setGuide(false)} />;
 
   return (
+    <>
     <AppShell
       activeScreen={activeScreen}
       onNavigate={(screen) => {
@@ -226,6 +226,9 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
         <ScreenPlaceholder description={navItemFor(activeScreen).description} />
       )}
     </AppShell>
+    {/* The tour opens over the app, as a dialog. */}
+    {guide && <GroveGuide onDone={() => setGuide(false)} />}
+    </>
   );
 };
 
