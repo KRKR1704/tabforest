@@ -6,6 +6,26 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — D-10 Privacy wiring: exclusions and pause synced (D)
+
+### Added
+
+- `apps/extension/src/background/privacy-sync.ts`: `EXCLUDE_DOMAIN` and `PAUSE` still change the local setting at once (the Hollow uses it immediately); the change is also remembered (`tf_privacy_pending`) and sent with `PATCH /api/privacy` (`excluded_domains_add`, `paused_until`, with the bearer token). Pause values map to the contract: a time becomes an ISO timestamp, "until resumed" becomes `9999-12-31T23:59:59Z`, resume sends `null`.
+- Anything that cannot be sent (no token, offline, 401, 404 while the endpoint is not deployed, 429, 5xx) stays waiting and is retried every 60 seconds and after sign-in. A 422 is dropped (the server will never accept it) and the local setting stays. A change made while a request is in flight is not lost.
+- After sign-in (and once per worker start with a token) `GET /api/privacy` is read: server exclusions are added to the local ones (never removed; invalid domains ignored), and a pause set on another device applies here when this device has no pause of its own and no unsent change.
+- `SIGN_IN` triggers the send and read right away; `SIGN_OUT` makes the next sign-in read again. Worker console helper `syncPrivacy()`.
+- `tests/privacy-sync.test.mjs`: 16 tests. The fake Chrome storage `get` now accepts a list of keys, like the real one.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (206 of 206), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo) against a stand-in API, 11 of 11: local settings apply at once; a 404 keeps both changes waiting; once the API answers, one PATCH carries both with the bearer token and nothing stays waiting; server exclusions are merged back; resume sends `null`; `WIPE_LOCAL` leaves no queue, URLs, work items, exclusions, pause or pending changes in local storage. Open (6), bridge (15), sync (13), Hollow (13) and sign-in (15) checks still pass.
+
+### Notes
+
+- `PATCH /api/privacy` is not on the deployed API yet (P-10); until it is, changes simply wait. There is no bridge message to remove an exclusion, so removal is not synced.
+- `WIPE_LOCAL` also clears the session token (the user is signed out) and the local pause/exclusions; the server copy of both survives until `DELETE /api/me`, and the next sign-in reads it back.
+
 ## [2026-10-04] — D-9 Work Context capture (D)
 
 ### Added

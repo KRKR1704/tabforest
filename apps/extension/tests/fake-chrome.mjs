@@ -8,7 +8,8 @@ function event() {
 export function fakeStorage() {
   const area = () => {
     const data = {};
-    return { data, get: vi.fn(async key => structuredClone({ [key]: data[key] })),
+    return { data, get: vi.fn(async key => structuredClone(Array.isArray(key)
+      ? Object.fromEntries(key.map(k => [k, data[k]])) : { [key]: data[key] })),
       set: vi.fn(async items => Object.assign(data, structuredClone(items))),
       remove: vi.fn(async keys => { for (const key of [].concat(keys)) delete data[key]; }) };
   };
