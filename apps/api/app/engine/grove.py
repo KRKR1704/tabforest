@@ -137,7 +137,8 @@ def fallback_tree(cluster: Cluster, project_id: str, features: ClusterFeatures,
 def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, block: DataBlock,
                   inference: ClusterInference, snapshot_tabs: Mapping[str, Mapping[str, Any]],
                   snapshot_at: datetime, notes: Mapping[str, str], shared: set[str]) -> TreeBuild:
-    ctx = ValidationContext(block.refs, {r: f.source_type for r, f in features.tabs.items()}, notes)
+    ctx = ValidationContext(block.refs, {r: f.source_type for r, f in features.tabs.items()}, notes,
+                            anchors=block.anchors)
     short_of = {real: short for short, real in block.refs.items()}
     families = {f.id: f for f in features.families}
     build = TreeBuild(cluster.id, project_id, bool(cluster.is_existing_project_id), cluster.label, {},
@@ -177,9 +178,10 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
     mushrooms, question_ids = [], []
     for q in inf.unresolved_questions:
         c = check("question", q.question, q.provenance, q.confidence, q.evidence)
-        recurrence = max([families[e["ref"]].rephrasings for e in c.evidence
-                          if e["ref_kind"] == "query" and e["ref"] in families] or [1])
-        item = {**_claim_dict("q_", c), "kind": q.kind, "status": "open", "answer": None, "resolved_at": None,
+        cited = [families[block.refs[r]] for r in c.short_refs if r[0] == "q" and block.refs[r] in families]
+        recurrence = max([f.rephrasings for f in cited] or [1])
+        item = {**_claim_dict("q_", c), "kind": mushroom_kind(q.kind, c.short_refs, block, features),
+                "status": "open", "answer": None, "resolved_at": None,
                 "recurrence": recurrence}
         build.questions.append(item)
         if c.provenance == "hypothesis":
@@ -271,6 +273,19 @@ def assemble_tree(cluster: Cluster, project_id: str, features: ClusterFeatures, 
         "shared_tab_refs": [r for r in features.tab_refs if r in shared],
     }
     return build
+
+
+def mushroom_kind(model_kind: str, short_refs: Sequence[str], block: DataBlock, features: ClusterFeatures) -> str:
+    """Deterministic kind (overrides the model): a question citing an open-loop search family is a
+    repeated_search; else one citing an unresolved comparison is an unresolved_comparison."""
+    families = {f.id: f for f in features.families}
+    comparisons = {c.id: c for c in features.comparisons}
+    real = [block.refs[r] for r in short_refs if r in block.refs]
+    if any(r in families and families[r].open_loop for r in real):
+        return "repeated_search"
+    if any(r in comparisons and not comparisons[r].resolved for r in real):
+        return "unresolved_comparison"
+    return model_kind
 
 
 @dataclass
