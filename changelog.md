@@ -6,6 +6,14 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Extension 0.1.2 (D)
+
+### Changed
+- `apps/extension/package.json`, `manifest.config.ts`: version 0.1.1 to 0.1.2. It carries the Grove fix that keeps the restored grove on open (#84). The store needs a new version for every upload.
+
+### Verification
+- Extension tests (225) pass. Built `tabforest-extension-0.1.2.zip` (dev key, for the team) and `tabforest-extension-0.1.2-store.zip` (no key, for the Chrome Web Store); manifests checked.
+
 ## [2026-10-04] — The restored grove stays on open (D, in S's App.tsx)
 
 ### Fixed
