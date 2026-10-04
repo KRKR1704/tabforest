@@ -5,7 +5,6 @@ import {
   getMe,
   getSessions,
   getTimeline,
-  getPrivacy,
 } from '../adapters/platform';
 import { mockSnapshot } from '../mocks/mockData';
 import { StreamMessage } from '../types';
@@ -62,7 +61,5 @@ describe('Adapters Suite (C3–C7)', () => {
     const timeline = await getTimeline('p_10000000-0000-4000-8000-000000000001', '24h');
     expect(timeline.status).toBe('ok');
 
-    const privacy = await getPrivacy();
-    expect(privacy.excluded_domains.length).toBeGreaterThan(0);
   });
 });

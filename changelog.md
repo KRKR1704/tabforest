@@ -6,6 +6,43 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-10 Privacy (S)
+
+### Added
+- `apps/grove/src/screens/Privacy.tsx`, with six sections:
+  - Capture: status in words, "Pause for 1 hour", "Pause until tomorrow", "Pause until I resume" and "Resume capture", sent as `PAUSE {until}` over the bridge (`9999-12-31T23:59:59Z` for until resumed, `null` to resume).
+  - The Hollow: the count from `GET_HOLLOW_COUNT` and the built-in categories from SPEC §6.3.
+  - Never analyze these sites: add a site (`EXCLUDE_DOMAIN {domain}`), list, and remove (`PATCH /api/privacy` with `excluded_domains_remove`).
+  - Retention: 7 / 30 / 90 days (`PATCH /api/privacy` with `retention_days`).
+  - What we send: the next batch from `GET_SEND_PREVIEW` (count and a table of event, site, time), refreshed every 5 seconds and on demand.
+  - Delete: one forest (`DELETE /api/projects/{id}`, after an inline confirm) and "Delete all my memory" (a confirm dialog, then `DELETE /api/me`, then `WIPE_LOCAL`).
+- `apps/grove/src/adapters/privacy.ts` (C7): `getPrivacy`, `patchPrivacy`, `deleteForest`, `deleteAccount` in the shapes of `contracts/privacy.example.json` and the `delete_account` example of `contracts/me.example.json`.
+- `apps/grove/src/lib/privacy.ts`: `pauseUntil`, `isPaused`, `describeCapture`, `normalizeDomain`, `HOLLOW_CATEGORIES`.
+
+### Changed
+- "Delete all" also clears what the Grove page keeps on this device: the last grove (S-6), saved work contexts (S-9), the grove in memory and any pinned resume card. Deleting a forest removes its tree and a resume card for that project.
+- `App.tsx` shows the Privacy screen for its rail item.
+
+### Removed
+- S-1 `getPrivacy`, `updatePrivacy`, `deleteProject`, `deleteMe` in `adapters/platform.ts`: their response shapes did not match P's contracts, and they reported success when the call had failed.
+
+### Tests
+- `src/__tests__/privacy.test.tsx` (34): pause times, capture wording, domain normalization; the adapter's stand-in; live requests against the contract examples (GET, five PATCH bodies, the 422 wording, both DELETEs) and that a failed call is reported instead of replaced by stand-in data; the screen's sections, pause / resume, exclude (and a refused non-site), remove exclusion, retention, the live preview and its cleanup on close, forest delete with confirm and cancel, delete-all dialog and cancel; in live mode: retention and removal go to PATCH, pause and exclusion send no PATCH, `DELETE /api/me` happens before `WIPE_LOCAL`, a failed delete wipes nothing, a failed forest delete keeps the tree, and a failed load is shown with "Try again".
+- Updated 1 test for the removed functions.
+
+### Verification
+- `npm test`: 16 files, 324 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): all six sections render; the delete-all dialog opens and cancels.
+
+### Notes
+- Privacy calls never fall back to stand-in data on failure. A failed load, change or delete is shown as an error, and the device is not wiped unless the server delete succeeded.
+- Pause and exclusion go to the extension, which syncs them to the server (contract note 10); the page sends no PATCH for them. In mock mode, with no extension to do that, the page records them in the stand-in itself.
+- Removing an exclusion is sent to the API because the bridge has no message for it; the extension picks it up when it next reads the settings.
+- Hollow categories are shown read-only: SPEC §6.3 calls them editable and the contract says they go through the bridge, but `contracts/bridge.types.ts` has no message to read or change them.
+- "Pause until tomorrow" ends at the next local midnight.
+- The Local Grove toggle (`cloud_ai_enabled`) is P2 and not shown.
+- BUILD_TASKS.md: S-10 row ticked only.
+
 ## [2026-10-03] — Lane S-9 Work Context (S)
 
 ### Added

@@ -10,6 +10,7 @@ import { ScreenPlaceholder } from './screens/ScreenPlaceholder';
 import { Timeline } from './screens/Timeline';
 import { SavedGroves } from './screens/SavedGroves';
 import { WorkContext } from './screens/WorkContext';
+import { Privacy } from './screens/Privacy';
 import { ResumeCard } from './components/ResumeCard';
 import { resumeContext } from './adapters/contexts';
 import { sendBridgeMessage } from './adapters/bridge';
@@ -142,6 +143,8 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
         <SavedGroves onResume={startResume} />
       ) : activeScreen === 'work-context' ? (
         <WorkContext />
+      ) : activeScreen === 'privacy' ? (
+        <Privacy />
       ) : (
         <ScreenPlaceholder description={navItemFor(activeScreen).description}>
           {activeScreen === 'memory' && memoryQuery && (
