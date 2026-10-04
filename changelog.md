@@ -6,6 +6,26 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Landing page: "Try a change" buttons on the demo (S)
+
+### Added
+- `apps/grove/src/landing/Landing.tsx`: a row of eleven buttons under the demo grove: New tab, More time, New path, Open question, Answer it, Confirm a decision, Close a copy, Move a tab, Leave it alone, Come back, New goal. Each plays one change on the example grove with the real grove animations (the grove is shown as it was, then the change happens), and the line under the buttons says what you did in your browser and what the grove did.
+- `apps/grove/src/landing/content.ts`: `DEMO_ACTIONS`, the button labels, one per step of the tour in `lib/guideGrove.ts`.
+
+### Changed
+- Every press starts from the same example grove, so each change is seen by itself. Pressing a button again replays it. "Watch tabs become a grove" goes back to the full example.
+
+### Tests
+- `src/__tests__/landingDemo.test.tsx` (5): one button per tour step, with these labels; a press shows the grove before and then after the change and the explaining line; pressing again replays; each change starts from the same example and not from the last one; watching the grow returns to the full example.
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 26 files, 533 tests passing. `npm run build:landing` and `npm run build` pass; `check-dist` reports dist/ extension-safe.
+- Manual (landing dev server): eleven buttons under the demo; "Leave it alone" turned the Job search tree amber with loose leaves falling and the explaining line shown; no sideways scrolling at phone width.
+
+### Notes
+- The page redeploys by itself when this reaches `main` (lane P's workflow), so the buttons appear on tabforest.nyc a few minutes after the merge.
+- The buttons reuse the tour's steps and wording, so a change to a step in `lib/guideGrove.ts` changes both.
+
 ## [2026-10-04] — Extension version 0.1.1 (D)
 
 ### Changed
