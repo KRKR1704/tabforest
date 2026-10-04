@@ -24,6 +24,60 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Browsing the 28 tabs for real and the recording are people tasks; the runbook only removes the typing.
 - The Grove's `index.html` asks Google Fonts for a stylesheet (the Grove's own check-dist warns about it). That is a request from the user's browser to Google each time the Grove opens, which `docs/privacy.md` does not mention. Shriya to decide: bundle the fonts or accept and document.
 
+## [2026-10-04] — D-14 docs/privacy.md (D)
+
+### Added
+
+- `docs/privacy.md`: what leaves the device (field by field, from the events contract), what stays, what is never collected, the Hollow rules, user controls, a per-permission justification table, suggested Chrome Web Store text for the `tabs` warning, the Limited Use statement, and a list of known gaps.
+
+### Verification
+
+- Every claim was checked against `manifest.config.ts`, `hollow.ts`, `work-context.ts`, `privacy-sync.ts`, `contracts/events.example.json` and SPEC §5.2 and §6.
+
+### Notes
+
+- The retention and "no human reads user data" lines depend on the platform configuration; P should confirm before a Web Store submission.
+
+## [2026-10-04] — D-10 Privacy wiring: exclusions and pause synced (D)
+
+### Added
+
+- `apps/extension/src/background/privacy-sync.ts`: `EXCLUDE_DOMAIN` and `PAUSE` still change the local setting at once (the Hollow uses it immediately); the change is also remembered (`tf_privacy_pending`) and sent with `PATCH /api/privacy` (`excluded_domains_add`, `paused_until`, with the bearer token). Pause values map to the contract: a time becomes an ISO timestamp, "until resumed" becomes `9999-12-31T23:59:59Z`, resume sends `null`.
+- Anything that cannot be sent (no token, offline, 401, 404 while the endpoint is not deployed, 429, 5xx) stays waiting and is retried every 60 seconds and after sign-in. A 422 is dropped (the server will never accept it) and the local setting stays. A change made while a request is in flight is not lost.
+- After sign-in (and once per worker start with a token) `GET /api/privacy` is read: server exclusions are added to the local ones (never removed; invalid domains ignored), and a pause set on another device applies here when this device has no pause of its own and no unsent change.
+- `SIGN_IN` triggers the send and read right away; `SIGN_OUT` makes the next sign-in read again. Worker console helper `syncPrivacy()`.
+- `tests/privacy-sync.test.mjs`: 16 tests. The fake Chrome storage `get` now accepts a list of keys, like the real one.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (206 of 206), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo) against a stand-in API, 11 of 11: local settings apply at once; a 404 keeps both changes waiting; once the API answers, one PATCH carries both with the bearer token and nothing stays waiting; server exclusions are merged back; resume sends `null`; `WIPE_LOCAL` leaves no queue, URLs, work items, exclusions, pause or pending changes in local storage. Open (6), bridge (15), sync (13), Hollow (13) and sign-in (15) checks still pass.
+
+### Notes
+
+- `PATCH /api/privacy` is not on the deployed API yet (P-10); until it is, changes simply wait. There is no bridge message to remove an exclusion, so removal is not synced.
+- `WIPE_LOCAL` also clears the session token (the user is signed out) and the local pause/exclusions; the server copy of both survives until `DELETE /api/me`, and the next sign-in reads it back.
+## [2026-10-04] — D-8 Restore into a named tab group (D)
+
+### Changed
+
+- `RESTORE` (bridge) now opens every ref it can, brings only the first tab to the front and opens the rest quietly behind it, and answers `not_found` only when nothing could be opened (before, one bad ref stopped the whole restore). Tabs already open are reused, as before. URLs come from the local store in `chrome.storage.local` (so they survive a Chrome restart), else from `fallback_urls`; only http(s) is opened.
+- With `group_name`, the restored tabs of one window are put in one green group with that name, but only when the optional `tabGroups` permission is granted. If it was declined, or the group call fails, plain tabs stay open and the restore still succeeds.
+
+### Added
+
+- `public/tf-permissions.js`, added to `grove.html` by `scripts/bundle-grove.mjs` (once, also when run twice): the first time the user clicks a Restore button in the Grove, the click is held, Chrome asks for `tabGroups`, and the click is repeated. Chrome only shows that prompt for a click, and the service worker has no click. The Grove code is not edited.
+- Tests: 5 new (bridge: continue past a bad ref, grouping, declined permission, group failure, one window only, blank name; bundle: script added once).
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (195 of 195), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo): three pages captured, Chrome quit and reopened on the same profile, `RESTORE` with a group name reopened all three from the stored URLs; with `tabGroups` granted they are in one group named "Backend Authentication"; without it they are plain tabs; an unknown ref answers `not_found`. Open (6), bridge (15), sync (13) and Hollow (13) checks still pass.
+
+### Notes
+
+- The permission prompt itself cannot be driven by Playwright; try it once by hand in the Grove. Restored tabs may appear in reverse order in the tab strip (Chrome places background tabs next to the active one).
+
 ## [2026-10-03] — Lane S-11 Ask Memory and pruning (S)
 
 ### Added

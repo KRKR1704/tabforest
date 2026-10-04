@@ -159,3 +159,57 @@ test('WIPE_LOCAL clears both stores and live capture memory without restart', as
   h.api.tabs.onCreated.fire(page); await h.capture.settled();
   expect(h.events.at(-1).tab_ref).not.toBe(oldRef);
 });
+
+test('RESTORE opens every ref, brings only the first to the front, and keeps going when one cannot be opened', async () => {
+  const h = await setup();
+  h.api.tabs.update = vi.fn(async () => {}); h.api.windows.update = vi.fn(async () => {});
+  expect(await h.message({ type: 'RESTORE', tab_refs: ['a', 'b', 'c'],
+    fallback_urls: ['https://one.test/', 'javascript:alert(1)', 'https://three.test/'] })).toEqual({ ok: true, data: null });
+  expect(h.api.tabs.create.mock.calls.map(([x]) => x)).toEqual([
+    { url: 'https://one.test/' }, { url: 'https://three.test/', active: false }]);
+});
+
+test('RESTORE groups the opened tabs under the name when tabGroups was granted', async () => {
+  const h = await setup();
+  let id = 10;
+  h.api.tabs.create = vi.fn(async () => ({ id: ++id, windowId: 1 }));
+  h.api.tabs.group = vi.fn(async () => 77);
+  h.api.tabGroups = { update: vi.fn(async () => ({})) };
+  h.api.permissions = { contains: vi.fn(async () => true) };
+  const urls = ['https://one.test/', 'https://two.test/', 'https://three.test/'];
+  expect(await h.message({ type: 'RESTORE', tab_refs: ['a', 'b', 'c'], fallback_urls: urls, group_name: 'Backend Authentication' }))
+    .toEqual({ ok: true, data: null });
+  expect(h.api.permissions.contains).toHaveBeenCalledWith({ permissions: ['tabGroups'] });
+  expect(h.api.tabs.group).toHaveBeenCalledExactlyOnceWith({ tabIds: [11, 12, 13] });
+  expect(h.api.tabGroups.update).toHaveBeenCalledExactlyOnceWith(77, { title: 'Backend Authentication', color: 'green', collapsed: false });
+});
+
+test('RESTORE opens plain tabs when tabGroups was declined, and a failing group call does not fail the restore', async () => {
+  const h = await setup();
+  h.api.tabs.create = vi.fn(async () => ({ id: 5, windowId: 1 }));
+  h.api.tabs.group = vi.fn(async () => 77);
+  h.api.tabGroups = { update: vi.fn() };
+  h.api.permissions = { contains: vi.fn(async () => false) };
+  const body = { type: 'RESTORE', tab_refs: ['a'], fallback_urls: ['https://one.test/'], group_name: 'Name' };
+  expect(await h.message(body)).toEqual({ ok: true, data: null });
+  expect(h.api.tabs.group).not.toHaveBeenCalled();
+  h.api.permissions.contains = vi.fn(async () => true);
+  h.api.tabs.group = vi.fn(async () => { throw new Error('boom'); });
+  expect(await h.message(body)).toEqual({ ok: true, data: null });
+});
+
+test('RESTORE only groups tabs of one window and ignores a blank group name', async () => {
+  const h = await setup();
+  const windows = [1, 2];
+  let id = 20;
+  h.api.tabs.create = vi.fn(async () => ({ id: ++id, windowId: windows[id - 21] }));
+  h.api.tabs.group = vi.fn(async () => 1);
+  h.api.tabGroups = { update: vi.fn(async () => ({})) };
+  h.api.permissions = { contains: vi.fn(async () => true) };
+  const urls = ['https://one.test/', 'https://two.test/'];
+  await h.message({ type: 'RESTORE', tab_refs: ['a', 'b'], fallback_urls: urls, group_name: 'G' });
+  expect(h.api.tabs.group).toHaveBeenCalledExactlyOnceWith({ tabIds: [21] });
+  h.api.tabs.group.mockClear();
+  await h.message({ type: 'RESTORE', tab_refs: ['a', 'b'], fallback_urls: urls, group_name: '   ' });
+  expect(h.api.tabs.group).not.toHaveBeenCalled();
+});
