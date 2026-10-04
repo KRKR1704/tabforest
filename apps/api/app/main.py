@@ -109,7 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["Cache-Control"] = response.headers.get("Cache-Control", "no-store")
         return response
 
-    @app.get("/health", tags=["system"])
+    @app.api_route("/health", methods=["GET", "HEAD"], tags=["system"])
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
