@@ -6,6 +6,40 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Privacy sentence: search text is recorded (D)
+
+### Changed
+
+- `docs/privacy.md` "In one paragraph" now says the extension records the words of a search on known search engines (it did say "never what you type", which was too broad), and the landing page quote and the store listing use the same words. Found by lane S while writing the landing page. The landing test that compares the page with the document passes.
+
+## [2026-10-04] — Lane S: public landing page (S)
+
+Not a BUILD_TASKS.md row. A page for people who do not have the extension yet.
+
+### Added
+- `apps/grove/src/landing/Landing.tsx`: the landing page. A headline and "Get TabForest for Chrome"; a demo (a strip of 20 example tabs above the real grove canvas, with "Watch tabs become a grove" playing the grow animation); how it works in three steps; what each thing in the grove means (the same key as the tour); the privacy statement; and the install section.
+- `apps/grove/src/landing/content.ts`: everything the page says. The seven install steps and the notes beside them are lane D's, as sent on 2026-10-04. The download link is `https://github.com/KRKR1704/tabforest/releases/latest/download/tabforest-extension.zip` and can be changed at build time with `VITE_EXTENSION_ZIP_URL`.
+- A separate build: `apps/grove/landing/index.html`, `landing/entry.ts`, `vite.landing.config.ts`, and the scripts `npm run dev:landing` (port 3100) and `npm run build:landing` (output in `apps/grove/build/landing`, relative paths, for any static host). Nothing from it goes into `dist/`, so the extension bundle is unchanged.
+- `lib/guideGrove.ts`: `GUIDE_SHOWCASE`, one example grove with an open question, an answered one, a confirmed decision and a dormant tree.
+
+### Changed
+- `screens/GroveGuide.tsx`: `KeyIcon` is exported so the landing page uses the same pictures.
+- `tailwind.config.js`, `tsconfig.node.json`, `package.json`: include the landing page's files and scripts.
+
+### Tests
+- `src/__tests__/landing.test.tsx` (13): the seven steps in order; the download link; the privacy paragraph equals the "In one paragraph" section of `docs/privacy.md` (the test reads the document); "should", not "will", for other browsers; the example grove has everything in the key; the headline and both "Get TabForest" links; the four sections the page links to; one tab in the strip per tab in the grove; the grow plays only when asked; the key; the download link and Chrome's own words marked in the steps; and that the page promises nothing lane D said not to (no Prompt Shields, no "any Microsoft account", no fallback login, one mention of the Web Store saying it is not there yet).
+
+### Verification
+- `npx tsc --noEmit` clean. `npm test`: 23 files, 503 tests passing. `npm run build` passes and `check-dist` reports dist/ extension-safe. `npm run build:landing` passes.
+- Manual (landing dev server): the page rendered with the three trees and the 20-tab strip; "Watch tabs become a grove" played the grow; the install section showed the seven steps and the notes; no horizontal scrolling at phone width; no console errors.
+
+### Notes
+- The download link answers 404 until lane D attaches the zip to a GitHub release.
+- The page is not hosted anywhere yet. Where it lives on the web is still to be decided with lane P.
+- The buttons say "Get TabForest for Chrome", not "Add to Chrome", because installing is seven manual steps and not one click.
+- `docs/privacy.md` says TabForest never records "what you type" in its summary paragraph, and lists the text of a search as something that is sent. The page quotes the paragraph as written and leaves search text out of its lists. For lane D to settle.
+- Lane D will send final steps and screenshots; only `landing/content.ts` needs to change.
+
 ## [2026-10-04] — Chrome Web Store package: icons, listing, privacy page (D)
 
 ### Added

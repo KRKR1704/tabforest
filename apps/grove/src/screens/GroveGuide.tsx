@@ -16,7 +16,7 @@ const quiet =
 const primary =
   'rounded-md bg-forest-600 px-4 py-2 text-sm font-medium text-forest-50 hover:bg-forest-500';
 
-const KeyIcon: React.FC<{ id: (typeof GUIDE_KEY)[number]['id'] }> = ({ id }) => (
+export const KeyIcon: React.FC<{ id: (typeof GUIDE_KEY)[number]['id'] }> = ({ id }) => (
   <svg viewBox="0 0 26 26" className="h-6 w-6 shrink-0" aria-hidden="true">
     {id === 'tree' && (
       <>

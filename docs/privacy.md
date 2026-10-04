@@ -4,7 +4,7 @@ Owner: lane D (extension). Describes what the extension in `apps/extension/` doe
 
 ## In one paragraph
 
-TabForest watches which tabs you open, switch to and close, so it can show why you opened them. It records only the site name (domain), a cleaned-up page title and timings. It never records full addresses, page contents, passwords, cookies or what you type into pages. The only words of yours it records are the text of a search you make on a known search engine, so it can notice when you keep searching for the same thing. Private sites (banking, health, personal email, password managers, sign-in pages) and Incognito windows are never recorded at all. You can pause, exclude a site, or delete everything.
+TabForest watches which tabs you open, switch to and close, so it can show why you opened them. It records only the site name (domain), a cleaned-up page title, timings and, on known search engines, the words of a search, so it can notice when you keep searching for the same thing. It never records full addresses, page contents, passwords, cookies or what you type into pages. Private sites (banking, health, personal email, password managers, sign-in pages) and Incognito windows are never recorded at all. You can pause, exclude a site, or delete everything.
 
 ## What leaves the device
 
