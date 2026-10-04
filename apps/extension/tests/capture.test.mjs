@@ -122,7 +122,8 @@ test('install/startup snapshot sorts eligible tabs, caps at 60 and maps openers 
   expect(new Set(h.events.map(e => e.tab_ref)).size).toBe(60);
   expect(new Set(h.events.map(e => e.event_id)).size).toBe(60);
   h.api.tabs.onUpdated.fire(1, { status: 'complete' }, items[0]); await h.settle();
-  expect(opens[0].opener_tab_ref).toBe(h.events.at(-1).tab_ref);
+  // Opener tab 1 is outside the 60-tab cap and never had an OPEN, so Step 3 requires null.
+  expect(opens[0].opener_tab_ref).toBeNull();
 });
 
 test('idle/active without a focused tab emits nothing; locked uses IDLE', async () => {
@@ -146,7 +147,7 @@ test('ignores background activation and irrelevant updates; handles a new-tab HT
   h.api.tabs.onUpdated.fire(1, { status: 'complete' }, ready); await h.settle();
   h.tabs.set(2, tab(2, { windowId: 2 }));
   h.api.tabs.onActivated.fire({ tabId: 2, windowId: 2 }); await h.settle();
-  expect(h.events.map(e => e.type)).toEqual(['UPDATE']);
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'FOCUS']);
   h.api.idle.onStateChanged.fire('idle'); await h.settle();
   expect(h.events.at(-1).tab_ref).toBe(h.events[0].tab_ref);
 });
@@ -169,4 +170,136 @@ test('emit logs exactly one contract event; toolbar listener still opens grove',
   await import('../src/background/index');
   api.action.onClicked.fire();
   expect(api.tabs.create).toHaveBeenCalledWith({ url: 'chrome-extension://test/grove.html' });
+});
+
+test.each(['chrome://newtab/', 'about:blank'])('D-2b opens observed %s once with current opener and focus', async initialUrl => {
+  const h = await setup();
+  const parent = tab(50);
+  h.tabs.set(50, parent); h.api.tabs.onCreated.fire(parent); await h.settle();
+  const parentRef = h.events[0].tab_ref;
+  const blank = tab(51, { url: initialUrl, active: true });
+  h.tabs.set(51, blank); h.api.tabs.onCreated.fire(blank);
+  h.api.tabs.onActivated.fire({ tabId: 51, windowId: 1 }); await h.settle();
+  expect(h.events).toHaveLength(1);
+  const ready = tab(51, { active: true, openerTabId: 50, url: 'https://www.google.com/search?q=forest+research' });
+  h.tabs.set(51, ready);
+  h.api.tabs.onUpdated.fire(51, { url: ready.url, status: 'complete' }, ready); await h.settle();
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'OPEN', 'FOCUS']);
+  const opened = h.events[1];
+  expect(opened).toMatchObject({ opener_tab_ref: parentRef, domain: 'www.google.com', title: 'Page 51', search_query: 'forest research' });
+  expect(opened.dup_key).toMatch(/^[0-9a-f]{64}$/);
+  expect(h.events[2]).toMatchObject({ tab_ref: opened.tab_ref, previous_tab_ref: null });
+  expect(h.api.storage.session.data.tf_capture_session.awaitingOpen).toEqual([]);
+  expect(h.api.storage.session.data.tf_capture_session.openedRefs).toContain(opened.tab_ref);
+  h.api.tabs.onUpdated.fire(51, { title: 'Later' }, { ...ready, title: 'Later' }); await h.settle();
+  expect(h.events.at(-1)).toMatchObject({ type: 'UPDATE', tab_ref: opened.tab_ref, title: 'Later' });
+  expect(h.events.filter(e => e.type === 'OPEN' && e.tab_ref === opened.tab_ref)).toHaveLength(1);
+});
+
+test('D-2b banking navigation stays silent and an unobserved eligible tab remains UPDATE-only', async () => {
+  const h = await setup([tab(1, { url: 'about:blank', active: true })]);
+  const bank = tab(1, { url: 'https://chase.com/', active: true });
+  h.tabs.set(1, bank); h.api.tabs.onUpdated.fire(1, { url: bank.url, status: 'complete' }, bank);
+  await h.settle(); expect(h.events).toEqual([]);
+  const ordinary = tab(2); h.tabs.set(2, ordinary);
+  h.api.tabs.onUpdated.fire(2, { status: 'complete' }, ordinary); await h.settle();
+  expect(h.events.map(e => e.type)).toEqual(['UPDATE']);
+});
+
+test('D-2b awaitingOpen survives restart and URL-only update emits OPEN without background FOCUS', async () => {
+  const first = await setup([tab(1, { url: 'chrome://newtab/' })]);
+  expect(first.api.storage.session.data.tf_capture_session.awaitingOpen).toEqual([1]);
+  const ready = tab(1);
+  const next = fakeChrome([ready], { id: 1, focused: true }, first.api.storage);
+  const events = [];
+  const capture = registerCapture(next.api, event => events.push(event));
+  await capture.settled();
+  expect(events).toEqual([]);
+  next.api.tabs.onUpdated.fire(1, { url: ready.url }, ready); await capture.settled();
+  expect(events.map(e => e.type)).toEqual(['OPEN']);
+  expect(next.api.storage.session.data.tf_capture_session.awaitingOpen).toEqual([]);
+});
+
+test.each(['removed', 'disappeared'])('D-2b awaitingOpen drops a tab that is %s', async reason => {
+  const first = await setup([tab(1, { url: 'about:blank' })]);
+  if (reason === 'removed') {
+    first.tabs.delete(1); first.api.tabs.onRemoved.fire(1); await first.settle();
+  } else {
+    const next = fakeChrome([], { id: 1, focused: true }, first.api.storage);
+    await registerCapture(next.api, () => {}).settled();
+  }
+  expect(first.api.storage.session.data.tf_capture_session.awaitingOpen).toEqual([]);
+});
+
+test('D-2b does not enroll privacy-blocked tabs or trigger OPEN on activation', async () => {
+  const h = await setup([tab(1, { url: 'about:blank', incognito: true }), tab(2, { url: 'https://chase.com/' })]);
+  expect(h.api.storage.session.data.tf_capture_session.awaitingOpen).toEqual([]);
+  const blank = tab(3, { url: 'about:blank' });
+  h.tabs.set(3, blank); h.api.tabs.onCreated.fire(blank); await h.settle();
+  const ready = tab(3, { active: true }); h.tabs.set(3, ready);
+  h.api.tabs.onActivated.fire({ tabId: 3, windowId: 1 }); await h.settle();
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'FOCUS']);
+  h.api.tabs.onUpdated.fire(3, { status: 'complete' }, ready); await h.settle();
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'FOCUS', 'UPDATE']);
+});
+
+test.each([
+  ['http://localhost:3000/one', 'localhost:3000/one', null],
+  ['https://www.example.com/a/b?token=abc', 'www.example.com/a/b?token=abc', null],
+  ['https://example.com/', 'example.com', null],
+  ['https://example.com/', 'other.example/path', null],
+  ['https://example.com/', 'Security - FastAPI', 'Security - FastAPI'],
+  ['https://example.com/', 'OAuth 2.0 / OpenID overview', 'OAuth 2.0 / OpenID overview'],
+])('D-2c title privacy in OPEN and UPDATE: %s, %s', async (url, title, expected) => {
+  const h = await setup();
+  const page = tab(90, { url, title });
+  h.tabs.set(90, page); h.api.tabs.onCreated.fire(page); await h.settle();
+  h.api.tabs.onUpdated.fire(90, { title }, page); await h.settle();
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'UPDATE']);
+  expect(h.events.map(e => e.title)).toEqual([expected, expected]);
+  const realTitle = 'Real page title';
+  h.api.tabs.onUpdated.fire(90, { title: realTitle }, { ...page, title: realTitle }); await h.settle();
+  expect(h.events.at(-1)).toMatchObject({ type: 'UPDATE', title: realTitle });
+});
+
+test.each([true, false])('D-2c awaiting tab OPEN precedes one FOCUS, HTTP at activation: %s', async httpAtActivation => {
+  const h = await setup();
+  const blank = tab(70, { url: 'about:blank', active: true });
+  h.tabs.set(70, blank); h.api.tabs.onCreated.fire(blank); await h.settle();
+  const ready = tab(70, { active: true });
+  if (httpAtActivation) h.tabs.set(70, ready);
+  h.api.tabs.onActivated.fire({ tabId: 70, windowId: 1 }); await h.settle();
+  if (!httpAtActivation) {
+    expect(h.events).toEqual([]);
+    h.tabs.set(70, ready);
+    h.api.tabs.onUpdated.fire(70, { url: ready.url, status: 'complete' }, ready); await h.settle();
+  }
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'FOCUS']);
+  const ref = h.events[0].tab_ref;
+  expect(h.events[1]).toMatchObject({ tab_ref: ref, previous_tab_ref: null });
+  h.api.tabs.onUpdated.fire(70, { status: 'complete' }, ready);
+  h.api.tabs.onUpdated.fire(70, { title: 'Ready' }, { ...ready, title: 'Ready' }); await h.settle();
+  expect(h.events.map(e => e.type)).toEqual(['OPEN', 'FOCUS', 'UPDATE', 'UPDATE']);
+  const other = tab(71); h.tabs.set(71, other); h.api.tabs.onCreated.fire(other); await h.settle();
+  const otherRef = h.events.at(-1).tab_ref;
+  h.advance(1000); h.api.tabs.onActivated.fire({ tabId: 71, windowId: 1 }); await h.settle();
+  h.advance(1000); h.api.tabs.onActivated.fire({ tabId: 70, windowId: 1 }); await h.settle();
+  expect(h.events.slice(-4).map(e => e.type)).toEqual(['BLUR', 'FOCUS', 'BLUR', 'FOCUS']);
+  expect(h.events.at(-1)).toMatchObject({ tab_ref: ref, previous_tab_ref: otherRef });
+  expect(h.events.filter(e => e.type === 'FOCUS' && e.tab_ref === ref)).toHaveLength(2);
+  expect(h.events.find(e => e.tab_ref === ref).type).toBe('OPEN');
+});
+
+test.each(['blank', 'internal', 'opened', 'excluded', 'unknown', 'focused-only'])('D-2c opener must already have OPEN: %s', async kind => {
+  const parent = tab(80, { url: kind === 'blank' ? 'about:blank' : kind === 'internal' ? 'chrome://newtab/'
+    : kind === 'excluded' ? 'https://chase.com/' : 'https://example.com/parent', active: kind === 'focused-only' });
+  const h = await setup(kind === 'unknown' ? [] : [parent]);
+  if (kind === 'opened') { h.api.tabs.onCreated.fire(parent); await h.settle(); }
+  const parentOpen = h.events.find(e => e.type === 'OPEN');
+  const child = tab(81, { openerTabId: 80 });
+  h.tabs.set(81, child); h.api.tabs.onCreated.fire(child); await h.settle();
+  expect(h.events.at(-1)).toMatchObject({ type: 'OPEN', opener_tab_ref: kind === 'opened' ? parentOpen.tab_ref : null });
+  if (['blank', 'internal', 'excluded', 'unknown'].includes(kind)) {
+    expect(h.api.storage.session.data.tf_capture_session.refs.some(([id]) => id === 80)).toBe(false);
+  }
 });
