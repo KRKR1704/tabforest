@@ -11,6 +11,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlsplit
 
 from pydantic import SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,16 @@ class Settings(BaseSettings):
         if not re.fullmatch(r"chrome-extension://[a-p]{32}", value):
             raise ValueError("must be chrome-extension://<32-letter extension id>")
         return value
+
+    @model_validator(mode="after")
+    def _database_uses_tls(self) -> Settings:
+        """A remote database must be reached over TLS (SPEC 12): sslmode=require or stronger."""
+        url = urlsplit(self.database_url.get_secret_value())
+        if url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            mode = parse_qs(url.query).get("sslmode", [""])[0]
+            if mode not in {"require", "verify-ca", "verify-full"}:
+                raise ValueError("DATABASE_URL for a remote database needs sslmode=require")
+        return self
 
     @model_validator(mode="after")
     def _fallback_needs_secret_and_accounts(self) -> Settings:
