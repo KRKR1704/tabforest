@@ -9,6 +9,7 @@ Deterministic; the model never gets the final word:
 - confidence = min(model_conf, 0.35 + 0.15·valid_refs + 0.10·distinct_source_types, 0.95);
   a stated claim is the user's own words and keeps confidence 1.0;
 - inferred needs ≥ 2 valid refs and final confidence ≥ 0.60, else it becomes a hypothesis (fog);
+- a hypothesis never shows confidence >= 0.60: min(model_conf, evidence_cap, 0.59);
 - display_text is set from the provenance, never the model's wording alone.
 """
 
@@ -26,6 +27,7 @@ RANK = {"hypothesis": 0, "inferred": 1, "sourced": 2, "stated": 3}
 REF_KIND = {"t": "tab", "q": "query", "n": "note", "d": "doc", "c": "comparison"}
 CAP_BASE, CAP_PER_REF, CAP_PER_TYPE, CAP_MAX = 0.35, 0.15, 0.10, 0.95
 INFERRED_MIN_REFS, INFERRED_MIN_CONFIDENCE = 2, 0.60
+HYPOTHESIS_MAX_CONFIDENCE = 0.59  # just below INFERRED_MIN_CONFIDENCE
 _SHORT_REF = re.compile(r"^[tqndc]\d+$")
 
 
@@ -241,6 +243,9 @@ def validate_claim(kind: Kind, text: str, provenance: str, confidence: float, ev
             claim.provenance = "hypothesis"
     else:
         claim.provenance = "hypothesis"
+    if claim.provenance == "hypothesis":
+        # A "Maybe" never shows a confidence at or above the inferred threshold (model-authored or downgraded).
+        claim.confidence = min(claim.confidence, HYPOTHESIS_MAX_CONFIDENCE)
     claim.display_text = display_text(kind, claim.provenance, claim.text)
     return claim
 

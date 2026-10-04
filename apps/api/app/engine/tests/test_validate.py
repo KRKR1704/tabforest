@@ -63,7 +63,9 @@ def test_confidence_is_capped_by_evidence() -> None:
     assert validate_claim("goal", "Choose", "inferred", 0.99, ev("t1", "t2", "t3", "t4"), CTX).confidence == 0.95
     # model below the cap wins; out-of-range model confidence is clamped
     assert validate_claim("goal", "Choose", "inferred", 0.7, ev("t1", "t2"), CTX).confidence == 0.7
-    assert validate_claim("goal", "Choose", "hypothesis", 7.0, ev("t1"), CTX).confidence == 0.6
+    # out-of-range model confidence is clamped to 1.0, then by the evidence cap (0.60 for 1 ref), then a
+    # hypothesis never shows 0.60 or more
+    assert validate_claim("goal", "Choose", "hypothesis", 7.0, ev("t1"), CTX).confidence == 0.59
     assert evidence_cap([], CTX) == 0.35
 
 
@@ -138,3 +140,28 @@ def test_unknown_or_unanchored_comparison_ref_is_dropped() -> None:
     no_anchor = ValidationContext({"c1": CMP, "t1": T[0]}, CTX.tab_types, {})
     c = validate_claim("direction", "JWT", "inferred", 0.9, ev("c1", "t1"), no_anchor)
     assert c.short_refs == ["t1"] and any("unknown ref" in r for r in c.reasons)
+
+
+# --- hypothesis confidence cap (a "Maybe" never shows >= 0.60) -------------------------------------------
+
+def test_every_hypothesis_is_capped_below_the_inferred_threshold() -> None:
+    four = ev("t1", "t2", "t3", "t4")                                   # evidence cap 0.95
+    model_authored = validate_claim("hypothesis", "May host on Azure", "hypothesis", 0.9, four, CTX)
+    downgraded = validate_claim("goal", "Choose", "inferred", 0.9, ev("t1"), CTX)   # 1 ref -> hypothesis
+    low_conf = validate_claim("hypothesis", "May host on Azure", "hypothesis", 0.4, four, CTX)
+    for c in (model_authored, downgraded):
+        assert c.provenance == "hypothesis" and c.confidence == 0.59
+    assert low_conf.confidence == 0.4                                    # only capped, never raised
+    thin = validate_claim("hypothesis", "May host on Azure", "hypothesis", 0.9, ev("t1"), CTX)
+    assert thin.confidence == 0.59                                      # evidence cap is 0.60, then 0.59
+    assert validate_claim("hypothesis", "May", "hypothesis", 0.9, [], CTX).confidence == 0.35  # cap wins when lower
+
+
+def test_the_inferred_threshold_is_unchanged() -> None:
+    just_enough = validate_claim("goal", "Choose", "inferred", 0.60, ev("t1", "t3"), CTX)
+    just_short = validate_claim("goal", "Choose", "inferred", 0.59, ev("t1", "t3"), CTX)
+    one_ref = validate_claim("goal", "Choose", "inferred", 0.99, ev("t1"), CTX)
+    assert (just_enough.provenance, just_enough.confidence) == ("inferred", 0.60)
+    assert (just_short.provenance, just_short.confidence) == ("hypothesis", 0.59)
+    assert one_ref.provenance == "hypothesis"
+    assert validate_claim("goal", "Choose", "inferred", 0.99, ev("t1", "t2", "t3", "t4"), CTX).confidence == 0.95
