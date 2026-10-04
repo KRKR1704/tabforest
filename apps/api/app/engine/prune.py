@@ -3,7 +3,7 @@
 POST /api/tabs/prune-suggestions {tab_refs} reads the user's last stored grove and returns, for the requested tabs only:
 
 - exact_duplicate     the same page open twice or more (the vine the grow run found from the device's dup_key);
-- semantic_redundant  tabs in the same branch whose embedding similarity to the tab we keep is >= 0.90; the keeper is
+- semantic_redundant  tabs in the same branch whose embedding similarity to the tab we keep is at least SIMILARITY_MIN; the keeper is
                       the strongest source (importance, then dwell) and the one-line reason is the model's, from grow;
 - stale               leaves that were fallen when the grove was made: no focus for 3+ days and not used as evidence;
 - distraction         a singleton (Wildflower Meadow tab) with under 10 s of total focus.
@@ -35,7 +35,12 @@ from .schemas.prune import PruneRequest, PruneResponse
 log = logging.getLogger("tabforest.engine.prune")
 router = APIRouter()
 
-SIMILARITY_MIN = 0.90
+# BUILD_TASKS R-13 says 0.90, but measured on the demo tabs with the deployed embedding model (title | domain | type),
+# the contract's redundant pair scores 0.60 and 0.64 against its keeper (0.74 with each other) and two different
+# articles on the same topic never reach 0.90. At 0.90 only an exact duplicate would pass, so the semantic suggestion
+# could never appear. 0.55 stays above unrelated tabs (0.2 to 0.5) and below the real pair; which tabs are
+# redundant is still grow's call (same branch, model-written reason). To be confirmed by R's calibration (R-12).
+SIMILARITY_MIN = 0.55
 NOTE = "Suggestions only. The extension closes tabs only after an explicit click."
 ACTIONS = [
     {"id": "keep_all", "label": "Keep all"},

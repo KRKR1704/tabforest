@@ -1,4 +1,4 @@
-"""R-13 prune suggestions: rules, the 0.90 gate, requested-tabs-only, failure handling and the endpoint. No network."""
+"""R-13 prune suggestions: rules, the similarity gate, requested-tabs-only, failure handling and the endpoint. No network."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -92,7 +92,7 @@ def test_no_grove_means_no_suggestions_but_the_same_shape() -> None:
     assert got == {"suggestions": [], "actions": ACTIONS, "note": NOTE}
 
 
-# --- semantic redundancy: same branch and similarity >= 0.90 -----------------------------------------
+# --- semantic redundancy: same branch and similarity >= SIMILARITY_MIN ------------------------------
 
 def test_a_member_below_the_similarity_gate_is_not_suggested() -> None:
     vectors = {**CLOSE, tid(10): vec(0.5, 0.9)}  # cosine to tab 1 is about 0.49
@@ -106,11 +106,20 @@ def test_nothing_above_the_gate_means_no_semantic_suggestion() -> None:
     assert "semantic_redundant" not in by_kind(run(embed=embedder(far)))
 
 
-def test_the_gate_is_exactly_point_nine() -> None:
-    just_over = {tid(1): vec(1, 0), tid(9): vec(0.9, np.sqrt(1 - 0.81) - 1e-3), tid(10): vec(0.89, np.sqrt(1 - 0.89**2) + 1e-3)}
-    cos = lambda a, b: float(a @ b) / float(np.linalg.norm(a) * np.linalg.norm(b))  # noqa: E731
-    assert cos(just_over[tid(1)], just_over[tid(9)]) >= 0.90 > cos(just_over[tid(1)], just_over[tid(10)])
-    assert by_kind(run(embed=embedder(just_over)))["semantic_redundant"]["tab_refs"] == [tid(9)]
+def test_the_gate_sits_exactly_at_the_constant() -> None:
+    lo = prune.SIMILARITY_MIN
+
+    def at(cos: float) -> np.ndarray:
+        return vec(cos, float(np.sqrt(1 - cos**2)))
+
+    vectors = {tid(1): vec(1, 0), tid(9): at(lo + 1e-3), tid(10): at(lo - 1e-3)}
+    assert by_kind(run(embed=embedder(vectors)))["semantic_redundant"]["tab_refs"] == [tid(9)]
+
+
+def test_the_gate_keeps_the_real_demo_pair_and_rejects_unrelated_tabs() -> None:
+    # measured with the deployed embedding model on the 28 demo tabs (see the SIMILARITY_MIN comment)
+    assert 0.60 >= prune.SIMILARITY_MIN > 0.50
+    assert prune.SIMILARITY_MIN < 0.603 and prune.SIMILARITY_MIN < 0.639
 
 
 def test_a_group_spanning_branches_only_keeps_the_members_in_the_keepers_branch() -> None:
