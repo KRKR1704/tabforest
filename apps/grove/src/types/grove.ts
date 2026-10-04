@@ -195,6 +195,10 @@ export interface PastConnection {
   past_project_title: string;
   similarity: number;
   summary: string;
+  /** The day of that research, as YYYY-MM-DD. */
+  past_date?: string;
+  /** The saved grove to open for it, when there is one. */
+  saved_context_id?: string | null;
 }
 
 export interface GroveResponse {

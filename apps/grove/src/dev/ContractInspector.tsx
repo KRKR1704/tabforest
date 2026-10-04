@@ -439,7 +439,7 @@ export const ContractInspector: React.FC = () => {
                 GET /api/memory/search, POST /api/tabs/prune-suggestions
               </p>
               <div className="bg-forest-950 p-3 rounded text-xs font-mono text-forest-300 border border-forest-800">
-                Memory search test: "{memoryData?.results[0]?.summary.substring(0, 45)}..."
+                Memory search: {memoryData?.ok ? `${memoryData.result.matches.length} match for "${memoryData.result.query}"` : 'unavailable'}
               </div>
             </div>
 

@@ -287,6 +287,8 @@ function normalizeFireflies(fireflies: WireFirefly[] | undefined) {
     past_project_title: firefly.past_project_name,
     similarity: firefly.similarity,
     summary: firefly.display_text,
+    past_date: firefly.past_date,
+    saved_context_id: firefly.saved_context_id ?? null,
   }));
 }
 

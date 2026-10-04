@@ -1,78 +1,63 @@
-import {
-  MemorySearchResponse,
-  PruneSuggestionsResponse,
-  TokenData,
-} from '../types';
-import {
-  mockMemorySearchResponse,
-  mockPruneSuggestionsResponse,
-} from '../mocks/mockData';
-import { isMockMode } from './grove';
-import { sendBridgeMessage } from './bridge';
+// Memory search and prune suggestions (connection C5).
+import memoryContract from '@contracts/memory-search.example.json';
+import pruneContract from '@contracts/prune.example.json';
+import type { MemorySearchResponse, PruneSuggestionsResponse } from '../types';
+import { apiBaseUrl, authHeaders, isMockMode } from './grove';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const FOUND = memoryContract.examples[0].response.body as unknown as MemorySearchResponse;
+const SAMPLE_PRUNE = pruneContract.examples[0].response.body as unknown as PruneSuggestionsResponse;
 
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const tokenRes = await sendBridgeMessage<void, TokenData>('GET_TOKEN');
-  const token = tokenRes.data?.token;
-  if (token) return { Authorization: `Bearer ${token}` };
-  return { 'X-Dev-User': 'usr-5d0a-9b1e-3f4a' };
+/** Words the stand-in's one remembered project (Backend Scaling, March 12) is about. */
+const REMEMBERED = ['session', 'storage', 'redis', 'postgres', 'scaling', 'scale'];
+
+function standInSearch(query: string): MemorySearchResponse {
+  const words = query.toLowerCase().split(/\W+/).filter(Boolean);
+  if (words.some((word) => REMEMBERED.includes(word))) return { ...FOUND, query };
+  // Nothing close enough: say so, never stretch a match (SPEC §3.5).
+  return { found: false, query, message: 'No related research found', matches: [] };
 }
 
-export async function searchMemory(query: string): Promise<MemorySearchResponse> {
-  if (isMockMode()) {
-    const qLower = query.toLowerCase().trim();
-    if (qLower.includes('session') || qLower.includes('auth') || qLower.includes('redis') || qLower.includes('cookie')) {
-      return {
-        query,
-        results: mockMemorySearchResponse.results,
-      };
-    }
-    return {
-      query,
-      results: [],
-      message: 'No related research found in your forest history',
-    };
-  }
+export type MemoryOutcome =
+  | { ok: true; result: MemorySearchResponse }
+  | { ok: false; message: string };
 
+/** GET /api/memory/search?q=: "Have I researched this before?" */
+export async function searchMemory(query: string): Promise<MemoryOutcome> {
+  if (isMockMode()) return { ok: true, result: standInSearch(query) };
   try {
-    const headers = await getAuthHeader();
-    const url = new URL(`${API_BASE_URL}/api/memory/search`);
-    url.searchParams.set('q', query);
-
-    const res = await fetch(url.toString(), {
+    const res = await fetch(`${apiBaseUrl()}/api/memory/search?q=${encodeURIComponent(query)}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
+      headers: await authHeaders(),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return { ok: true, result: (await res.json()) as MemorySearchResponse };
   } catch (err) {
-    console.warn('[Memory Adapter] searchMemory failed, using mock fallback:', err);
-    return mockMemorySearchResponse;
+    // A sample match here would claim research the user never did.
+    console.warn('[Memory Adapter] searchMemory failed:', err);
+    return { ok: false, message: 'Your memory could not be searched right now.' };
   }
 }
 
-export async function getPruneSuggestions(): Promise<PruneSuggestionsResponse> {
-  if (isMockMode()) {
-    return mockPruneSuggestionsResponse;
-  }
+export type PruneOutcome =
+  | { ok: true; result: PruneSuggestionsResponse }
+  | { ok: false; message: string };
 
+/**
+ * POST /api/tabs/prune-suggestions with the open tabs' refs. Suggestions lead
+ * to closing tabs, so a failure is reported and never replaced by sample data.
+ */
+export async function getPruneSuggestions(tabRefs: string[]): Promise<PruneOutcome> {
+  if (isMockMode()) return { ok: true, result: SAMPLE_PRUNE };
   try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/tabs/prune-suggestions`, {
+    const res = await fetch(`${apiBaseUrl()}/api/tabs/prune-suggestions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ tab_refs: tabRefs }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return { ok: true, result: (await res.json()) as PruneSuggestionsResponse };
   } catch (err) {
-    console.warn('[Memory Adapter] getPruneSuggestions failed, using mock fallback:', err);
-    return mockPruneSuggestionsResponse;
+    console.warn('[Memory Adapter] getPruneSuggestions failed:', err);
+    return { ok: false, message: 'Prune suggestions are unavailable right now.' };
   }
 }

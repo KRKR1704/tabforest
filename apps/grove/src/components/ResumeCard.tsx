@@ -122,7 +122,9 @@ export const ResumeCard: React.FC<ResumeCardProps> = ({
         </dl>
       ) : (
         <p className="mt-3 text-sm text-forest-200">
-          {totalCount} saved {totalCount === 1 ? 'reference' : 'references'}, kept so the tabs could be closed.
+          {totalCount === 0
+            ? 'No summary or tabs were saved with this context.'
+            : `${totalCount} saved ${totalCount === 1 ? 'reference' : 'references'}, kept so the tabs could be closed.`}
         </p>
       )}
 
