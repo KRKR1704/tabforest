@@ -500,3 +500,46 @@ def test_the_endpoints_need_a_user(api) -> None:
     client, _ = api
     assert client.post("/api/work-context/analyze", json={"items": []}).status_code == 401
     assert client.post("/api/work-context/upload", files=[("files[]", ("a.txt", b"x", "text/plain"))]).status_code == 401
+
+
+# --- formatting slips in model quotes (found with the real model) -----------------------------------------
+
+def one_doc(text: str):
+    return wc.make_docs([WorkItem(kind="paste", title="Doc", text=text)])
+
+
+def test_a_quote_that_drops_markdown_is_resolved_to_the_documents_own_words() -> None:
+    docs = one_doc("# Ticket\n\n**Goal:** Migrate customer authentication to Azure before go-live.\n")
+    assert wc.resolve_quote("Goal: Migrate customer authentication to Azure", docs) == \
+        "Migrate customer authentication to Azure"  # the label and its marker are dropped, the words are the document's
+    assert wc.resolve_quote("Migrate customer authentication to Azure", docs) == "Migrate customer authentication to Azure"
+    docs = one_doc("Going with `TOKEN_TTL_SECONDS`, will fix in the next push")
+    assert wc.resolve_quote("Going with TOKEN TTL SECONDS will fix", docs) is None  # underscores are not spaces
+    assert wc.resolve_quote("going with TOKEN_TTL_SECONDS, will fix in the next push", docs) is None  # case still matters
+    assert wc.resolve_quote("Going with TOKEN_TTL_SECONDS, will fix", docs) == "Going with `TOKEN_TTL_SECONDS`, will fix"
+
+
+def test_a_json_escape_in_a_quote_is_decoded_before_matching() -> None:
+    docs = one_doc("| Session storage design (§3) | ? | TBD |")
+    assert wc.resolve_quote("Session storage design (\\u00a73) | ? | TBD", docs) == "Session storage design (§3) | ? | TBD"
+
+
+def test_a_resolved_quote_is_always_a_real_substring_and_a_made_up_one_never_resolves() -> None:
+    docs = one_doc("**Bold** claim: the answer is forty-two, as agreed on Monday.")
+    for quote in ("claim: the answer is forty-two", "Bold claim: the answer is forty-two, as agreed", "the answer is 43"):
+        found = wc.resolve_quote(quote, docs)
+        assert found is None or found in docs[0].text
+    assert wc.resolve_quote("the answer is 43, as agreed on Monday", docs) is None
+    assert wc.resolve_quote(None, docs) is None and wc.resolve_quote("short", docs) is None
+
+
+def test_the_goal_quoted_without_its_markdown_is_still_sourced() -> None:
+    goal = scripted().goal.model_copy(update={"quote": "Goal: " + KEY["goal"]["quote"]})
+    out = analyze(tampered(goal=goal))[0]["goal"]
+    assert out["provenance"] == "sourced" and out["source"] == "CAM-142 · Customer Authentication Migration"
+    assert KEY["goal"]["quote"] in out["quote"] and out["quote"] in ITEMS[0].text
+
+
+def test_the_prompt_tells_the_model_what_to_leave_out() -> None:
+    assert "renewals" in wc.SYSTEM_PROMPT and "another ticket" in wc.SYSTEM_PROMPT
+    assert "\\u00a7" in wc.SYSTEM_PROMPT and "§" not in wc.SYSTEM_PROMPT

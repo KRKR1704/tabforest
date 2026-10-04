@@ -6,7 +6,24 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
-## [2026-10-04] — R-14 Prompt-injection suite (R lane, built by D)
+## [2026-10-04] — Live verification fixes for R-11 and R-13 (R)
+
+### Fixed
+
+- Work Context quotes (`work_context.py`): run against the deployed chat model, a correct quote of `**Goal:** Migrate ...` came back as `Goal: Migrate ...` (the model drops markdown) and failed verification, so the goal was downgraded to a hypothesis; another quote came back with a literal `\u00a7` copied from the escaped data block. `resolve_quote` now tolerates markdown markers and JSON escapes, drops a leading label such as `Goal:**`, and always returns a real substring of a document, which the validator then verifies again. A made-up quote, a changed word or a changed case still fails.
+- Work Context prompt: quote plain words only, never escape sequences, and keep only what bears on the goal (leave out renewals, pricing and support plans, scheduling, and problems tracked in another ticket). In the live runs the Fabrikam renewal question, which the SAMPLE answer key lists as noise, no longer appears.
+- Prune similarity gate (`prune.py`): measured with the deployed embedding model on the 28 demo tabs, the contract's redundant pair scores 0.60 and 0.64 against its keeper (0.74 with each other), and no two different articles reach 0.90, so the 0.90 of BUILD_TASKS R-13 could never let a semantic suggestion through. `SIMILARITY_MIN` is now 0.55 (above unrelated tabs, below the real pair), documented next to the constant. Which tabs are redundant is still the grow run's decision (same branch, model-written reason). The value should be confirmed by the R-12 calibration.
+
+### Tests
+
+- 5 tests for quote resolution (markdown, JSON escape, label, a resolved quote is always a substring, made-up and case-changed quotes never resolve), 2 for the gate; 351 engine tests pass.
+
+### Verification
+
+- Live, deployed Azure OpenAI: the SAMPLE documents through `analyze_documents`, 6 runs in total. After the fix: the goal is sourced with a clean quote, the Azure Functions decision comes back sourced with cue time 00:14:32 and speaker Marcus Lee, the credentials blocker is found, no claim is downgraded, and `test_work_context_live.py` passed 3 of 3 (about 9 s and 11,000 tokens per run).
+- Observed and accepted: the flaky-test item still appears as an owner and a next action, because the migration plan lists it in a table; the answer key's noise rule is about it being a project blocker, which it no longer is. A verbatim quote proves the words exist in the document, not that they support the claim; the prompt asks for a quote that says what the claim says, and a reviewer should read the claims.
+
+## [2026-10-04] — R-14 Prompt-injection suite (R)
 
 ### Fixed
 
@@ -23,9 +40,9 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Notes
 
-- Not verified against Azure Prompt Shields: that needs the deployment's filter setting and a real call (PRE-R1 says to turn it on; someone with portal access should confirm). Documents have no Prompt Shields "document" flag per item; the whole request is refused when the filter fires.
+- Azure Prompt Shields itself is not exercised by these tests (they cover our side of each layer). The deployment's filter setting (PRE-R1) and one real hostile prompt still need to be checked in the Azure portal. Documents have no per-item Prompt Shields flag, so the whole request is refused when the filter fires.
 
-## [2026-10-04] — R-11 Work Context: analyze and upload (R lane, built by D)
+## [2026-10-04] — R-11 Work Context: analyze and upload (R)
 
 ### Added
 
@@ -45,7 +62,7 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Notes
 
-- Not run against real Azure: no key was available. `test_work_context_live.py` checks the R-11 acceptance line (Azure Functions decision at 00:14:32, credentials blocker, verbatim quotes, noise not extracted); someone with the key should run it with `-s` and read the claims.
+- Live verification against the deployed Azure OpenAI model is recorded in the entry "Live verification fixes for R-11 and R-13" above.
 - A prompt blocked by the content filter fails the whole request (422); the offending document is not singled out yet (R-14).
 
 ## [2026-10-04] — Lane S-14 Adapters to the real API, one by one (S)
@@ -80,7 +97,7 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Build for today's deployed API: `VITE_MOCK=0 VITE_API_BASE_URL=https://tabforest.azurewebsites.net VITE_LIVE_ENDPOINTS=me`. Add `grove` when the engine routes are deployed, then the others as P and R ship them.
 - A failed grow (401, 429 limit or budget, 5xx) still shows the generic "service is unreachable" notice; the reason is not shown.
 - The live paths for endpoints the server does not have yet (claims, contexts, timeline, sessions, privacy, memory, prune, work context) follow the `contracts/` examples and are tested against them, but have never met a real server.
-## [2026-10-04] — R-13 Prune suggestions (R lane, built by D with Roopesh's agreement to be confirmed)
+## [2026-10-04] — R-13 Prune suggestions (R)
 
 ### Added
 
@@ -96,7 +113,7 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Notes
 
-- Not run against a real database or real Azure embeddings. The stale reason is generic ("3 days or more"), because the stored grove has no per-tab last-focus date (the contract example says "4 days").
+- Verified with the deployed embedding model (see \"Live verification fixes for R-11 and R-13\"); not yet run against the database, where the grove is read from. The stale reason is generic ("3 days or more"), because the stored grove has no per-tab last-focus date (the contract example says "4 days").
 - When R-15 switches the stats adapter to P's tables, distraction uses the same `attention` call.
 
 ## [2026-10-04] — Lane S-13 Sign-in, onboarding, outline, keyboard, few tabs (S)

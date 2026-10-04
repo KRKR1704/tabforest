@@ -72,23 +72,27 @@ Rules:
   [{ref, why}] with a short reason. Cite EVERY document that supports the claim.
 - provenance "sourced": the claim is written in a document. Then quote must be copied EXACTLY, character for character,
   from ONE document: a single sentence or phrase of at most 300 characters, no paraphrase, no ellipsis, no added words.
-  If you cannot copy an exact quote, do not use "sourced".
+  Copy plain words only: start after any label or markdown symbol (such as ** or | or `) and do not cross a table
+  cell or a line break. Write real characters, never escape sequences such as \\u00a7. The quote must itself say what
+  the claim says. If you cannot copy an exact quote, do not use "sourced".
 - provenance "inferred": a conclusion drawn from at least two documents; quote is null.
 - provenance "hypothesis": weak or single-document guesses; quote is null. Never use "stated".
 - confidence is between 0 and 1. If evidence is thin, lower it.
 - project_name: a short human name (2-5 words) for the project the documents are about.
 - goal: one imperative phrase starting with a verb, the goal of the whole body of work.
+- Scope: keep only what bears on that goal. Leave out commercial or account matters (renewals, pricing, support plans),
+  scheduling, facilities, jokes, and problems that belong to another ticket (for example a flaky test tracked
+  elsewhere) unless a document says they block this goal.
 - decisions: choices that were made (not options still being discussed). speaker is the person who said or made it,
   or null if no document names them.
-- blockers: things that currently stop progress. Not routine risks, not out-of-scope items, not test flakiness that
-  nobody calls a blocker.
-- owners: a named person who owns a task, with the task. person must be a name that appears in the documents.
-- open_questions: questions asked and not answered anywhere in the documents. recurrence is how many times it is
-  raised across the documents (at least 1). answered is true only if a document answers it; then answer holds the
-  answer and quote is the sentence that answers it.
-- next_actions: concrete next steps in order of priority, at most 5. unblocks_blocker is the 0-based index of the
-  blocker it resolves, or null.
-- Ignore noise: unrelated chatter, scheduling, side topics, other customers' deals, jokes.
+- blockers: things that currently stop progress. Not routine risks, not out-of-scope items.
+- owners: a named person who owns a task that serves the goal, with the task. person must be a name that appears in
+  the documents.
+- open_questions: questions about the work that were asked and not answered anywhere in the documents. recurrence is
+  how many times it is raised across the documents (at least 1). answered is true only if a document answers it; then
+  answer holds the answer and quote is the sentence that answers it.
+- next_actions: concrete next steps for the work in order of priority, at most 5. unblocks_blocker is the 0-based
+  index of the blocker it resolves, or null.
 - Do not write timestamps.
 """
 USER_INSTRUCTION = ("Extract the working context from the documents in the DATA block below and answer with the "
@@ -208,6 +212,43 @@ def _prefix(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4()}"
 
 
+_MARKDOWN = frozenset("*_`~")
+_LABEL = re.compile(r"^\w[\w ]{0,29}:[*_`~]+\s*")
+_ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})")
+
+
+def _without_markdown(text: str) -> tuple[str, list[int]]:
+    kept = [(i, c) for i, c in enumerate(text) if c not in _MARKDOWN]
+    return "".join(c for _, c in kept), [i for i, _ in kept]
+
+
+def resolve_quote(quote: str | None, docs: Sequence[Doc]) -> str | None:
+    """The document's own wording of a model quote, or None.
+
+    The model often drops markdown (`**Goal:** x` becomes `Goal: x`) or copies a JSON escape from the data block
+    (`\\u00a7` for a section sign). Those are formatting slips, not different words, so they are tolerated here;
+    what comes back is always a real substring of a document, which validate_claim then checks again.
+    """
+    if not quote:
+        return None
+    candidate = _ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), quote)
+    for doc in docs:
+        found = verify_quote(candidate, [doc.text])
+        if found is not None:
+            return found
+    plain, _ = _without_markdown(candidate)
+    for doc in docs:
+        stripped, index = _without_markdown(doc.text)
+        found = verify_quote(plain, [stripped])
+        if found is not None:
+            at = stripped.find(found)
+            span = doc.text[index[at]:index[at + len(found) - 1] + 1]
+            # "**Goal:** Migrate ..." quoted as "Goal: Migrate ...": drop the label and its marker, keep the words.
+            bare = _LABEL.sub("", span)
+            return bare if len(bare) >= 8 else span
+    return None
+
+
 def _locate(quote: str, docs: Sequence[Doc], cited: Sequence[str]) -> tuple[Doc, int] | None:
     """The document (cited ones first) and character position where the verified quote sits."""
     ordered = sorted(docs, key=lambda d: d.id not in cited)
@@ -224,8 +265,9 @@ class _Built:
 
 
 def build_claim(kind: str, out: WcClaimOut, docs: Sequence[Doc], ctx: ValidationContext) -> _Built:
+    quote = resolve_quote(out.quote, docs) or out.quote
     claim = validate_claim(kind, _clean(out.text, 300), out.provenance, out.confidence, out.evidence,  # type: ignore[arg-type]
-                           ctx, quote=out.quote)
+                           ctx, quote=quote)
     if claim.provenance != "sourced":
         claim.quote = None
         return _Built(claim, None, None, None)
