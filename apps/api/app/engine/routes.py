@@ -129,3 +129,8 @@ async def whoami(user_id: UUID = Depends(get_user_id)) -> dict[str, str]:
 from .prune import router as _prune_router  # noqa: E402
 
 router.include_router(_prune_router)
+
+# R-11: Work Context lives in work_context.py.
+from .work_context import router as _work_context_router  # noqa: E402
+
+router.include_router(_work_context_router)

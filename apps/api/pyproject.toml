@@ -21,6 +21,8 @@ dependencies = [
     "openai>=1.50",
     "numpy>=2.0",
     "scikit-learn>=1.5",
+    "python-multipart>=0.0.9",
+    "pypdf>=5.0",
 ]
 
 [dependency-groups]

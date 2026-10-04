@@ -6,6 +6,29 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — R-11 Work Context: analyze and upload (R lane, built by D)
+
+### Added
+
+- `apps/api/app/engine/work_context.py`, `wc_schema.py`: `POST /api/work-context/analyze` (JSON items) and `POST /api/work-context/upload` (multipart `files[]` of PDF, TXT, MD or VTT, at most 5 MB each and 30 PDF pages, plus optional `items_json`). Both run the same extractor and return the existing `WorkContextResponse` (`contracts/work-context.example.json`).
+- One Structured Outputs call over the documents (untrusted-DATA framing, documents embedded as in the grove, refs `d1..dN`, one repair retry), then the grove's evidence validator in work_context mode: a claim is `sourced` only when its quote is found verbatim (quote-style and whitespace tolerant, case sensitive) in a document, and the stored quote and `source` are that document's own. The cue time and speaker of a transcript quote are read from the WebVTT cues by the server, never by the model. `stated` does not exist here, so nothing a document says becomes the user's own word. An `inferred` claim needs two documents and confidence 0.60, otherwise it is a hypothesis.
+- Deterministic guards on top: an owner or speaker must be a name the documents contain, a question is `resolved` only with a verified answer quote, duplicates are merged, lists are capped, `unblocks` can only point at a real blocker. The handoff brief is built from the validated claims, not by the model. Source type (ticket, pull request, account note, transcript, document) is set from title, file name and text.
+- Limits (§4.9): 5 requests a minute shared by analyze and upload, at most 10 documents per request, 12,000 characters per document, daily token budget. Over 5 MB answers 413 with the contract wording; wrong type, over 30 pages, unreadable or empty files answer 422; a blocked prompt answers 422; model failure answers 503 with Retry-After.
+- Text is parsed in memory and never stored. Each run adds an `analysis_runs` row (kind `work_context`, tokens, response with the short quotes) so the daily budget counts it.
+- `pyproject.toml` and `uv.lock`: `python-multipart` and `pypdf` (P owns these files; two dependency lines, please confirm).
+- `routes.py`: four lines at the end include the new router.
+- `tests/test_work_context.py` (50 tests, scripted fake model from the SAMPLE answer key) and `tests/test_work_context_live.py` (real Azure, skipped without a key).
+
+### Verification
+
+- From `apps/api/`: `pytest app/engine/tests tests` 270 passed, 30 skipped (live tests); `check_sample_docs.py` passes; ruff clean on the new files; the model schema passes the OpenAI strict-schema converter with no unsupported keywords.
+- Twelve deliberate breaks (owner name check, 5 MB boundary, page limit, rate limit, budget check, resolved-question rule, speaker check, list cap, 12,000-character cut, binary check, ...) were each caught by a test; two survivors are equivalent mutants.
+
+### Notes
+
+- Not run against real Azure: no key was available. `test_work_context_live.py` checks the R-11 acceptance line (Azure Functions decision at 00:14:32, credentials blocker, verbatim quotes, noise not extracted); someone with the key should run it with `-s` and read the claims.
+- A prompt blocked by the content filter fails the whole request (422); the offending document is not singled out yet (R-14).
+
 ## [2026-10-04] — Lane S-14 Adapters to the real API, one by one (S)
 
 ### Added
