@@ -42,6 +42,11 @@
 }
 
 @layer components {
+  /* The element picked in the grove, brightened in place. */
+  .grove-canvas [data-selected='true'] {
+    filter: brightness(1.45);
+  }
+
   .forest-card {
     @apply bg-forest-900/80 backdrop-blur-sm border border-forest-800 rounded-xl transition-all duration-200;
   }

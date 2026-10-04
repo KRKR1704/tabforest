@@ -18,14 +18,18 @@ describe('computeGroveLayout', () => {
     expect(layout.sprouts).toHaveLength(grove.sprouts.length);
   });
 
-  it('gives every tab exactly one leaf on its own branch', () => {
+  it('gives every tab exactly one leaf: on its own branch, or on the ground if it has fallen', () => {
     layout.trees.forEach((tree, i) => {
       const source = grove.trees[i];
+      const fallen = new Set(source.tabs.filter((tab) => tab.fallen).map((tab) => tab.tab_ref));
       expect(tree.leafCount).toBe(source.tabs.length);
       tree.branches.forEach((branch, b) => {
         expect(branch.label).toBe(source.branches[b].label);
-        expect(branch.leaves.map((leaf) => leaf.tabRef)).toEqual(source.branches[b].tab_refs);
+        expect(branch.leaves.map((leaf) => leaf.tabRef)).toEqual(
+          source.branches[b].tab_refs.filter((ref) => !fallen.has(ref))
+        );
       });
+      expect(new Set(tree.fallenLeaves.map((leaf) => leaf.tabRef))).toEqual(fallen);
     });
   });
 
@@ -128,9 +132,11 @@ describe('GroveCanvas', () => {
   it('draws one leaf per tab on the trees', () => {
     const { container } = render(<GroveCanvas grove={grove} />);
     const tabCount = grove.trees.reduce((total, tree) => total + tree.tabs.length, 0);
-    expect(container.querySelectorAll('[data-kind="tree"] [data-kind="leaf"]')).toHaveLength(
-      tabCount
-    );
+    expect(
+      container.querySelectorAll(
+        '[data-kind="tree"] [data-kind="leaf"], [data-kind="tree"] [data-kind="fallen-leaf"]'
+      )
+    ).toHaveLength(tabCount);
   });
 
   it('names every tree and writes dormancy in words, not color alone', () => {

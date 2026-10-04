@@ -6,6 +6,34 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-4 Forest elements (S)
+
+### Added
+- `apps/grove/src/viz/layout.ts`: geometry for mushrooms (cap radius from recurrence), flowers (resolved questions), stones (carved or mossy), fallen leaves, vines per redundant group, hypothesis wisps and fireflies above the crown, tree fog, and a faint vine joining the two leaves of a tab shared by two trees. Questions stand left of the trunk, decisions right, stale tabs beyond them; the tree's footprint widens to fit.
+- `apps/grove/src/viz/render.ts`: draws each element with its own shape and a `<title>` naming its kind (for example "Open question · … · came up 4 times"). Carved stones have a solid edge and chisel marks, mossy stones a dashed edge and a moss cap; exact-duplicate vines are thicker than semantic ones. Every element is clickable and reports `{kind, id, treeId}`; empty ground clears the selection.
+- `apps/grove/src/viz/selection.ts`: `describeSelection` turns a click into a label, text and, for claims, the evidence to show.
+- Fog density = 1 − confidence (`fogOpacityFor`): used for hypothesis wisps and for mist over a tree whose goal is fogged or below 0.60 (every tree in the degraded example).
+
+### Changed
+- `apps/grove/src/viz/GroveCanvas.tsx`: takes `selected` and `onSelect`; marks the selected element without redrawing, so zoom and pan are kept.
+- `apps/grove/src/screens/CurrentGrove.tsx`: clicking a tree, stone, mushroom, flower or hypothesis opens the existing evidence drawer; clicking anything else shows a caption (kind, text, detail) at the bottom left and closes the drawer. `App.tsx` passes the close handler.
+- Fallen tabs now lie on the ground under their tree instead of hanging on a branch (S-3 drew them as ordinary leaves). Canvas is 60 px taller to make room above the crowns.
+- `apps/grove/src/viz/palette.ts`, `src/index.css`: element colors from the moodboard; a brightness highlight for the selected element.
+
+### Tests
+- `src/__tests__/forestElements.test.tsx` (37): layout of each element (mushroom size vs recurrence, flower, carved vs mossy, vines, fallen leaves, ground spacing, firefly, shared vine, fog density, degraded grove), canvas counts per kind, stone and vine differences by shape, a tooltip on every clickable element, tooltip wording per kind, one click report per element, selection marking, zoom kept on selection, hostile text, `describeSelection`, and drawer / caption behavior through `App`.
+- Updated 2 S-3 tests for fallen leaves moving to the ground.
+
+### Verification
+- `npm test`: 9 files, 126 tests passing. `npm run build`: passes with zero TypeScript errors.
+- Manual (dev server): all eight element kinds visible on the contract grove; no overlapping labels (bounding boxes); clicking the mushroom opened its evidence and clicking the canopy opened the goal; zoom and pan still work.
+
+### Notes
+- Fireflies are static; the drifting animation belongs to the wow animation (S-12).
+- The Unclear patch keeps a fixed mist: the contract gives its tabs a reason but no confidence.
+- Clicks only select and explain. Opening tabs, Confirm / Mark resolved, the prune dialog and Tree Detail are S-5 and S-11.
+- Keyboard access to canvas elements is not added here (S-13).
+- BUILD_TASKS.md: S-4 row ticked only.
 ## [2026-10-03] — R-4: embedding cache in memory_embeddings (R)
 
 ### Added
