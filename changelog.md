@@ -34,6 +34,32 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Clicks only select and explain. Opening tabs, Confirm / Mark resolved, the prune dialog and Tree Detail are S-5 and S-11.
 - Keyboard access to canvas elements is not added here (S-13).
 - BUILD_TASKS.md: S-4 row ticked only.
+## [2026-10-03] — R-4: embedding cache in memory_embeddings (R)
+
+### Added
+
+- `apps/api/app/engine/embeddings.py`:
+  - `tab_embedding_text()` = `"{title_clean} | {domain} | {source_type}"` (document types mapped with `leaf_source_type`, capped at 1,000 chars); `content_hash()` = SHA-256 hex of the exact UTF-8 string.
+  - `embed_texts(user_id, kind, items, pool)`: dedupes identical texts, one cache lookup (`WHERE user_id = $1 AND content_hash = ANY($2)`), misses embedded in batches of ≤ 64 per Azure call, then one `INSERT … ON CONFLICT (user_id, content_hash) DO NOTHING` (safe for concurrent grows). Nothing is written until every batch succeeded. Azure errors propagate. Vectors returned as numpy `float32`.
+  - Without a pool, or when `memory_embeddings` is missing, an in-process LRU cache (4,096 entries) is used with one warning.
+  - `embed_tabs()` (`kind='tab'`, `source_id = tab_ref`) also sets P's `tabs.embedding_hash` with UPDATE only (never INSERT); skipped with one debug log if the table or column is missing. `embed_queries()` (`kind='query'`) for R-6 query families.
+  - `EmbedStats` per call: `texts_requested`, `unique_texts`, `cache_hits`, `api_calls`, `inserted`, `store`, `tabs_hash_updated`.
+
+### Tests
+
+- `engine/tests/test_embeddings.py` (9, no network): dedupe, 150 texts → 3 calls (64/64/22), cache hit → 0 calls, a failed second batch writes nothing, LRU fallback without a pool (one warning), LRU fallback when the table is missing, no cache sharing between users, embedding text/hash, pgvector text round trip.
+- `engine/tests/test_embeddings_live.py` (2, real Azure + Tiger Cloud, test user `…00bb`, rows deleted before and after): 28 demo tabs twice and the 3 search queries twice; a similarity preview of the demo groups.
+
+### Verification
+
+- Live run 1: 28 texts, 27 unique (tabs 01/02 are the same page), 1 API call, 27 inserted, 1072 ms. Run 2: 0 API calls, 27 cache hits, 116 ms; run 1 vs run 2 cosine ≥ 0.9999999. Queries: 1 call, then 0. 0 rows left for the test user.
+- Similarity preview: Backend Authentication intra-group mean 0.478 vs 0.137 to Weeknight Dinner.
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 116 passed.
+
+### Notes
+
+- New dependency installed into `apps/api/.venv` for P's `pyproject.toml`: `numpy` (2.5.3).
+- P's `tabs` table exists with `embedding_hash`; the test user has no rows there, so `tabs_hash_updated` was 0.
 
 ## [2026-10-03] — Lane S-3 D3 Living Grove, and grove realigned to R's contract (S)
 
@@ -67,6 +93,33 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Still on the S-1 shape and to be realigned when their tasks start: the snapshot / bridge mock (`{tabs}` vs the contract's `{open_tabs}`, needed for S-6), timeline, saved contexts, work context, memory, prune, privacy.
 - BUILD_TASKS.md: S-3 row ticked only.
 
+## [2026-10-03] — R-3: R's migrations on Tiger Cloud (R)
+
+### Added
+
+- `db/migrations/200_engine_core.sql`: `projects`, `analysis_runs` (normal table, not a hypertable), `intent_clusters` (goal claim, direction, hypotheses, vines, query families, important tabs, fogged, run), `intent_branches`, `cluster_tabs` (PK `(cluster_id, tab_ref)`, importance, `assigned_by` ai/user, fallen), `decisions`, `unresolved_questions`, `suggested_actions`, `user_notes`, `research_insights`. Every table has `user_id uuid NOT NULL` and an index leading with `user_id`; no foreign keys to P's tables (`user_id`, `tab_ref`, `saved_context_id` are plain uuids); foreign keys only between R's tables (cascade where a child cannot outlive its parent). CHECK constraints on every enum-like column, on confidences (0..1), stated → `user_note_id`, sourced → `quote`, and resolved → `resolved_at`.
+- `db/migrations/201_engine_memory.sql`: `memory_embeddings` (`kind` insight/context/tab/query, `vector(1536)`, `content_hash` SHA-256), DiskANN index (`vector_cosine_ops`, pgvectorscale) and `(user_id, kind)` btree; fails with a clear message if `vector`/`vectorscale` are missing (it does not create extensions).
+- `db/migrations/README.md`: R's files (no README existed).
+- `apps/api/app/engine/scripts/apply_r_migrations.py`: applies only `2xx_*.sql`, each file in one transaction, then prints R's tables (column counts), indexes and CHECK constraints, and the schema diff. Never drops anything.
+
+### Tests
+
+- `engine/tests/test_schema.py` (live, only with `DATABASE_URL`): every persisted contract field maps to an existing column, or is listed as DERIVED or held in P's tables (mapping table printed with `-s`); in ONE rolled-back transaction: the Backend Authentication tree round-trips unchanged (project, cluster, 3 branches, 10 cluster_tabs, carved + mossy stones, the mushroom, the next action, the user note), 51 vectors with the known one nearest under a `user_id` filter (EXPLAIN printed), bad provenance and bad status rejected by CHECK, per-user delete across all R tables leaves 0 rows; 0 rows for the test user after rollback.
+
+### Verification
+
+- `apply_r_migrations.py` run twice: first run 316 schema items added; second run "0 added, 0 removed".
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 105 passed, both schema tests ran against Tiger Cloud.
+- Secret check before starting: commit `328d7a8` adds only `apps/api/.env.example` with empty values, placeholders and public identifiers; no other commit adds a key or a postgres URL with a password; `apps/api/.env` was never committed.
+
+### Notes
+
+- `memory_embeddings` uses `UNIQUE (user_id, content_hash)` instead of a global `UNIQUE (content_hash)`: a global key would stop a second user from caching the same tab string and would reveal, through the conflict, that another user embedded it.
+- Work Context results reuse the claim tables: `decisions`/`unresolved_questions`/`suggested_actions` have `quote`, `source`, `source_timestamp` (+ `speaker` on decisions); blockers are `unresolved_questions.kind = 'blocker'`; owners are `suggested_actions.kind = 'ownership'` with `owner` and `task`; `intent_clusters.origin` and `goal_quote/source/source_timestamp` cover the Work Context goal. Document text is never stored; the full response is kept in `analysis_runs.response`.
+- Ids are plain uuids; the API adds the contract prefixes (`p_`, `dec_`, `q_`, `a_`, `n_`, `g_`, `r_`). `user_note_id` is not a foreign key so notes survive cluster re-analysis.
+- At 51 rows the planner uses the `(user_id, kind)` index or a seq scan plus sort, not DiskANN; that is expected at this size (proposal §16: exact scan over one user's rows).
+- Leaf title, domain and source_type are not in R's tables: they come from P's `browser_events` and `tabs` (`tabs.title_norm`, `source_type`, `embedding_hash` are R-written columns that P's migration must create, §4.5).
+
 ## [2026-10-03] — R-2: title normalization, source types, search queries, duplicates (R)
 
 ### Added
@@ -89,6 +142,38 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 ### Notes
 
 - Grove leaves allow only the nine tab types, so R-5/R-8 should pass document types through `leaf_source_type()` (`pull_request` → `code`; `ticket`, `account_note`, `transcript` → `work_tool`).
+## [2026-10-03] — D-3 worker lifecycle (D)
+
+### Added
+
+- Injectable `CaptureStateStore`: session-only Chrome tab refs, eligible IDs, focus state, previous ref and lastSeenAt under `tf_capture_session`; device-local URL pairs under `tf_capture_urls`. Local URLs survive a fresh browser session.
+- Focus checkpoint/restore methods accumulate pre-persist time once and reconcile the interval since lastSeenAt with a 60-second cap. New timing starts at wake, preventing repeat reconciliation from double-counting.
+- Seven lifecycle tests for repeated worker restarts, capped/idle intervals, disappeared/unknown tabs, storage separation, fresh browser sessions, synchronous listeners and serialized writes, including activation that wakes the worker.
+
+### Changed
+
+- Extended D-2's existing callback chain to await each state save. Listeners remain synchronously registered; callbacks arriving during hydration wait for it.
+- Warm wake queries live tabs, drops disappeared session mappings and emits OPEN only for previously unmapped eligible tabs. Known tabs keep refs and do not get duplicate startup FOCUS. Cold startup retains D-2 snapshot behavior with fresh refs.
+
+### Fixed
+
+- Persist `openedRefs` in session state and suppress repeated OPEN emission from wake reconciliation, onCreated and overlapping snapshots. UPDATE remains unchanged. Remove entries on tab removal or disappearance during wake; older session records without this field start with an empty set.
+- Added four regression cases in lifecycle.test.mjs covering duplicate wake OPEN, persisted suppression, UPDATE preservation and cleanup on removal/disappearance. Reproduced duplicate emissions before the fix.
+
+### Verification
+
+- Branch `feat/d-3-lifecycle`, required capture/focus files present; Node v20.20.2.
+- From apps/extension, using `PATH="/opt/homebrew/opt/node@20/bin:$PATH"`: `pnpm test` passed 6 files / 41 tests; `pnpm typecheck` exited 0; `pnpm build` transformed 10 modules and completed in 124ms. Tests ran with loopback access for the existing mock API tests.
+- With Deep's approval, changed only the snapshot test's conflicting assertions to require no additional startup events, 60 distinct tab refs and 60 unique event IDs, preserving its cap, ordering, skip and opener/UPDATE checks.
+- Final review-fix verification: 6/6 test files and 45/45 tests pass (including 11 lifecycle tests); typecheck exits 0; build exits 0 (10 modules, 79ms), all using the Node 20 PATH prefix.
+- All other test assertions unchanged in this follow-up. `git diff --check` passed; contracts, manifest and dependencies unchanged. No commit or push.
+
+### Notes
+
+- Save URL storage before session checkpoints; saves are serialized, but the two Chrome storage areas do not provide a cross-area transaction. lastSeenAt uses the callback/checkpoint timestamp so async write latency does not shift event timing.
+- Retain local URLs when tabs disappear for later restore. If the stored focused tab disappeared, select the current eligible tab and emit FOCUS using the previous ref; otherwise preserve old focus for the waking activation's BLUR.
+- No event queue or persisted events added. D-2 temporary console logging is unchanged; D-4/D-5 must sanitize/remove it as already recorded.
+- Chrome was not run. Manual check: reload extension, inspect worker console and note a focused tab_ref, close worker DevTools, wait about 40 seconds for inactive status, switch tabs to wake it, reopen worker console and compare refs and BLUR active_ms. Keeping DevTools open can prevent worker sleep.
 
 ## [2026-10-03] — R-1: engine scaffold, adapters, fixtures and contract tests (R)
 

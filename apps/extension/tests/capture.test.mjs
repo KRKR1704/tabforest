@@ -118,8 +118,9 @@ test('install/startup snapshot sorts eligible tabs, caps at 60 and maps openers 
   expect(h.events.map(e => e.title)).toEqual(items.slice(0, 65).reverse().slice(0, 60).map(t => t.title));
   const opens = [...h.events];
   h.api.runtime.onStartup.fire(); await h.settle();
-  expect(h.events.slice(60).map(e => e.tab_ref)).toEqual(opens.map(e => e.tab_ref));
-  expect(new Set(h.events.map(e => e.event_id)).size).toBe(120);
+  expect(h.events).toHaveLength(60);
+  expect(new Set(h.events.map(e => e.tab_ref)).size).toBe(60);
+  expect(new Set(h.events.map(e => e.event_id)).size).toBe(60);
   h.api.tabs.onUpdated.fire(1, { status: 'complete' }, items[0]); await h.settle();
   expect(opens[0].opener_tab_ref).toBe(h.events.at(-1).tab_ref);
 });
