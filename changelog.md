@@ -6,6 +6,12 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Extension version 0.1.1 (D)
+
+### Changed
+
+- Version 0.1.1 (`manifest.config.ts`, `package.json`): the first Chrome Web Store upload was 0.1.0, and the store only accepts an update with a higher version. It carries the Grove fixes since then: the stored grove shown on open (#63, #65) and kept when signing in on the page (#74). `pnpm build:zip` gives the team test build (with the development extension ID), `pnpm build:store` the store build (no manifest key).
+
 ## [2026-10-04] — README: the landing page is at tabforest.nyc (S)
 
 ### Changed
@@ -98,7 +104,6 @@ The Grove still looked blank after signing in, although `GET /api/grove` returne
 
 ### Notes
 - The cancelled run Deep mentioned (37195439618) was a pull-request run cancelled after 20 seconds, before any database test started: a pending run replaced by a newer one, not a run stopped midway. No test rows were left behind; the only rows with the contracts' ids belong to the demo account and are kept.
->>>>>>> 2f78cb7 (Changelog for the CI test id fix)
 
 ## [2026-10-04] — Lane S: empty-state wording and Prompt Shields removed from README and Devpost (S)
 
