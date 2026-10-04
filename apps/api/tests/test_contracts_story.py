@@ -172,7 +172,9 @@ def test_saved_contexts_save_list_resume(story_user: UUID) -> None:
     listed = example(CONTEXTS, "list_contexts")
     response = get(story_user, listed["request"]["path"])
     assert response.status_code == 200
-    got = [dict(c, id=minted.get(c["id"], c["id"])) for c in response.json()["contexts"]]
+    swap = {**minted, **story.contract_ids(story_user)}      # this user's own ids back to the contracts' ids
+    got = [dict(c, id=swap.get(c["id"], c["id"]), project_id=swap.get(c["project_id"], c["project_id"]))
+           for c in response.json()["contexts"]]
     assert got == listed["response"]["body"]["contexts"]
 
     ex = example(CONTEXTS, "resume_next_morning")

@@ -44,9 +44,8 @@ from app.db import repository as repo  # noqa: E402
 from app.schemas import EventIn  # noqa: E402
 from tests import story  # noqa: E402 - the contracts' events
 
-PAST_PROJECT = story.SCALING                       # (p_…099, "Backend Scaling")
-PAST_CONTEXT = story.OLD_CONTEXT                   # s_…003
-NOTE_ID = "n_40000000-0000-4000-8000-000000000003"
+PAST_NAME = story.SCALING[1]                       # "Backend Scaling"
+NOTE_ID = "n_40000000-0000-4000-8000-000000000003"          # the contracts' ids; each user gets its own, see Ids
 DECISION_ID = "dec_30000000-0000-4000-8000-000000000901"
 SEED_NS = uuid.UUID("5eed5eed-0000-4000-8000-000000000015")
 
@@ -74,10 +73,6 @@ def det(kind: str, *parts: object) -> uuid.UUID:
     return uuid.uuid5(SEED_NS, ":".join([kind, *map(str, parts)]))
 
 
-def bare(prefixed: str) -> uuid.UUID:
-    return story.bare(prefixed)
-
-
 def resolve_user(args: argparse.Namespace) -> uuid.UUID:
     if args.user_id:
         return uuid.UUID(args.user_id)
@@ -91,10 +86,10 @@ def _event(session: int, tab: int, at: datetime, typ: str, tab_ref: str, **field
             "type": typ, "tab_ref": tab_ref, **fields}
 
 
-def march_events() -> list[dict[str, Any]]:
-    """Two sessions, 100 minutes in all: OPEN, FOCUS and BLUR per tab, switching in order."""
+def march_events(ctx: uuid.UUID) -> list[dict[str, Any]]:
+    """Two sessions, 100 minutes in all: OPEN, FOCUS and BLUR per tab, switching in order. Tab refs come
+    from the context id, as story.seed_old_context makes them."""
     events: list[dict[str, Any]] = []
-    ctx = bare(PAST_CONTEXT)                         # tab refs as story.seed_old_context makes them
     for session in (0, 1):
         t, previous = SESSION_START[session], None
         for i, (domain, title, which, ms) in enumerate(MARCH_TABS):
@@ -127,21 +122,45 @@ async def ingest(conn: asyncpg.Connection, user: uuid.UUID, events: list[dict[st
     return accepted
 
 
-async def seed_past_project(conn: asyncpg.Connection, user: uuid.UUID) -> None:
-    pid, ctx = bare(PAST_PROJECT[0]), bare(PAST_CONTEXT)
+class Ids:
+    """The ids of one user's Backend Scaling rows. Project, context, note and decision ids are global primary
+    keys, so they are derived from the user (the contracts' ids made only the first account seeded get a
+    project, and collided with the test fixture). What the user already has is reused as it is: an account
+    seeded with the contracts' ids earlier keeps them and a re-run adds nothing."""
+
+    def __init__(self, project: uuid.UUID, context: uuid.UUID, note: uuid.UUID, decision: uuid.UUID) -> None:
+        self.project, self.context, self.note, self.decision = project, context, note, decision
+
+
+async def resolve_ids(conn: asyncpg.Connection, user: uuid.UUID) -> Ids:
+    project = await conn.fetchval(
+        "SELECT id FROM projects WHERE user_id = $1 AND name = $2 ORDER BY created_at LIMIT 1",
+        user, PAST_NAME) or story.scaling_project_id(user)
+    context = await conn.fetchval(
+        "SELECT id FROM saved_contexts WHERE user_id = $1 AND title = $2 AND kind = 'resume' ORDER BY saved_at LIMIT 1",
+        user, PAST_NAME) or story.old_context_id(user)
+    note = await conn.fetchval(
+        "SELECT id FROM user_notes WHERE user_id = $1 AND project_id = $2 AND kind = 'decision' AND text = $3 LIMIT 1",
+        user, project, CONCLUSION) or uuid.uuid5(user, NOTE_ID)
+    decision = await conn.fetchval("SELECT id FROM decisions WHERE user_id = $1 AND text = $2 LIMIT 1",
+                                   user, CONCLUSION) or uuid.uuid5(user, DECISION_ID)
+    return Ids(project, context, note, decision)
+
+
+async def seed_past_project(conn: asyncpg.Connection, user: uuid.UUID, ids: Ids) -> None:
+    pid, ctx, note, decision = ids.project, ids.context, ids.note, ids.decision
     cluster, branch = det("cluster", user), det("branch", user)
-    note, decision = bare(NOTE_ID), bare(DECISION_ID)
     saved_at = datetime.fromisoformat("2026-03-12T21:40:00+00:00")
     insight = det("insight", user)
     async with conn.transaction():
         await conn.execute(
             "INSERT INTO projects (id, user_id, name, status, created_at, last_active_at) "
             "VALUES ($1, $2, $3, 'dormant', $4, $5) ON CONFLICT DO NOTHING",
-            pid, user, PAST_PROJECT[1], SESSION_START[0], SESSION_START[1] + timedelta(minutes=35))
+            pid, user, PAST_NAME, SESSION_START[0], SESSION_START[1] + timedelta(minutes=35))
         await conn.execute(
             "INSERT INTO intent_clusters (id, user_id, project_id, label, goal, goal_provenance, goal_confidence, "
             "created_at) VALUES ($1, $2, $3, $4, $5, 'stated', 1.0, $6) ON CONFLICT DO NOTHING",
-            cluster, user, pid, PAST_PROJECT[1], GOAL, saved_at)
+            cluster, user, pid, PAST_NAME, GOAL, saved_at)
         await conn.execute(
             "INSERT INTO intent_branches (id, user_id, cluster_id, label, status, position, created_at) "
             "VALUES ($1, $2, $3, 'Session storage', 'explored', 0, $4) ON CONFLICT DO NOTHING",
@@ -160,24 +179,24 @@ async def seed_past_project(conn: asyncpg.Connection, user: uuid.UUID) -> None:
             "confirmed_at, created_at) VALUES ($1, $2, $3, $4, 'stated', 1.0, $5::jsonb, $6, $7, $7) "
             "ON CONFLICT DO NOTHING",
             decision, user, cluster, CONCLUSION,
-            json.dumps([{"ref_kind": "note", "ref": NOTE_ID, "why": "user note, March 12"}]), note, saved_at)
+            json.dumps([{"ref_kind": "note", "ref": f"n_{note}", "why": "user note, March 12"}]), note, saved_at)
         await conn.execute(
             "INSERT INTO research_insights (id, user_id, project_id, saved_context_id, summary, compared, conclusion, "
             "rejected, open_questions, period_start, period_end, created_at) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, '[]'::jsonb, $9, $10, $11) ON CONFLICT DO NOTHING",
             insight, user, pid, ctx, INSIGHT, COMPARED,
-            json.dumps({"id": DECISION_ID, "text": CONCLUSION, "provenance": "stated", "confidence": 1.0,
-                        "user_note_id": NOTE_ID}),
+            json.dumps({"id": f"dec_{decision}", "text": CONCLUSION, "provenance": "stated", "confidence": 1.0,
+                        "user_note_id": f"n_{note}"}),
             json.dumps([{"option": "Redis", "reason": "Adds a service to run and secure at this scale"}]),
             SESSION_START[0], SESSION_START[1] + timedelta(minutes=35), saved_at)
-        await story.seed_old_context(conn, user)        # the saved context s_…003, ON CONFLICT-safe below
+        await story.seed_old_context(conn, user, context_id=ctx, project_id=pid)      # skips an existing row
 
 
-async def embed(pool: asyncpg.Pool, user: uuid.UUID) -> dict[str, int]:
+async def embed(pool: asyncpg.Pool, user: uuid.UUID, ids: Ids) -> dict[str, int]:
     from app.engine.embeddings import DbStore, embed_texts
     stats = {}
     for kind, source, text in (("insight", str(det("insight", user)), INSIGHT),
-                               ("context", str(bare(PAST_CONTEXT)), f"{PAST_PROJECT[1]}: {GOAL}. {CONCLUSION}.")):
+                               ("context", str(ids.context), f"{PAST_NAME}: {GOAL}. {CONCLUSION}.")):
         result = await embed_texts(user, kind, [(source, text)], pool, store=DbStore(pool))
         stats[kind] = result.stats.inserted
     return stats
@@ -199,18 +218,19 @@ async def run(url: str, user: uuid.UUID, *, shift_days: int, do_embed: bool, dry
     try:
         async with pool.acquire() as conn:
             before = await counts(conn, user)
+            ids = await resolve_ids(conn, user)
             if dry:
                 return {"dry_run": True, "user_id": str(user), "before": before,
-                        "would_send": len(story.events()) + len(march_events())}
+                        "would_send": len(story.events()) + len(march_events(ids.context))}
             await repo.ensure_user(user, conn, entra_tid=tid, entra_oid=oid, display_name="Demo user")
             history = await ingest(conn, user, shifted(story.events(), shift_days))
-            march = await ingest(conn, user, march_events())
-            await seed_past_project(conn, user)
+            march = await ingest(conn, user, march_events(ids.context))
+            await seed_past_project(conn, user, ids)
             await story.refresh_attention(conn)      # history window (Oct 2-5)
             await conn.execute("CALL refresh_continuous_aggregate('tab_attention_15m', '2026-03-12', '2026-03-13')")
             await conn.execute("CALL refresh_continuous_aggregate('user_attention_daily', '2026-03-12', '2026-03-13')")
             after_rows = await counts(conn, user)
-        embedded = await embed(pool, user) if do_embed else {}
+        embedded = await embed(pool, user, ids) if do_embed else {}
         async with pool.acquire() as conn:
             after = await counts(conn, user)
         return {"user_id": str(user), "events_new": history + march, "embeddings_new": embedded,

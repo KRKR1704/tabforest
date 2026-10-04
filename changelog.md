@@ -6,6 +6,31 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — CI database tests: per-user ids, research memory loop (P)
+
+### Fixed
+- "Database tests" failed with 13 `projects_pkey` errors (`test_contracts_story`, `test_isolation`). Cause: project, saved-context, note and decision ids are global primary keys, and both the demo seed and the test fixture put Backend Scaling under the contracts' fixed ids (`p_…099`, `s_…003`), so once the demo account was seeded every test user collided with it. There were no leftover test rows to delete: the only rows holding those ids are the demo account's, and they are kept (the memory search and the firefly use them).
+- `tests/story.py`: the Backend Scaling project and the March 12 context get ids derived from the test user (`scaling_project_id`, `old_context_id`, `contract_ids` to map them back for the contract comparison). The four story projects keep the contracts' ids, so `seed_intents` removes any left over from a killed run first (cascade).
+- `apps/demo-seed/seed.py`: ids are derived from the user too, and what an account already has is reused (a project named Backend Scaling, its resume context, its decision note and decision). Re-running on the existing demo account adds nothing and keeps the contracts' ids; every other account gets its own copy.
+
+### Added
+- `main.py` starts Roopesh's `memory_loop` in the lifespan (first pass after 5 minutes) and cancels it on shutdown, so the research-memory pass runs and `/api/memory/search` has something to find for live users. An import failure leaves the app running.
+
+- Test users now take turns: `tests/story.py` holds a Postgres advisory lock from `seed_intents` to `purge_intents`, so a local run beside a CI run, or two CI runs, cannot collide on the four story projects' fixed ids. Checked with two processes (the second waited until the first released it). The lock is released if a process dies.
+
+- `.github/workflows/api.yml`: serialization moved from the whole run to the jobs. Database tests queue in `api-database`, deploys queue in `api-deploy`, both with `cancel-in-progress: false`. GitHub keeps one running and one pending run per group and replaces the older pending one; with one group per run, a pull-request run could replace a deploy waiting its turn.
+
+### Tests
+- Local: `test_another_account_and_the_test_fixture_do_not_collide_with_the_contract_id_rows`; the seed tests use the per-user ids.
+
+### Verification
+- Full suite with the database while the demo account holds Backend Scaling under the contracts' ids: 272 passed in the P suite and 494 passed, 1 xfailed in `app/engine/tests` (separate runs; engine tests first, then my test, also pass). `ruff check` clean.
+- Seed run on the existing demo account with the new code: 0 new events, 0 new embeddings, counts unchanged, project and context ids unchanged.
+
+### Notes
+- The cancelled run Deep mentioned (37195439618) was a pull-request run cancelled after 20 seconds, before any database test started: a pending run replaced by a newer one, not a run stopped midway. No test rows were left behind; the only rows with the contracts' ids belong to the demo account and are kept.
+>>>>>>> 2f78cb7 (Changelog for the CI test id fix)
+
 ## [2026-10-04] — Lane S: empty-state wording and Prompt Shields removed from README and Devpost (S)
 
 ### Changed

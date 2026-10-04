@@ -56,6 +56,18 @@ def mount_engine(app: FastAPI) -> bool:
     return True
 
 
+def _start_memory_loop() -> asyncio.Task | None:
+    """Roopesh's research-memory pass (writes insights for dormant clusters and new saved contexts). Without
+    it /api/memory/search has nothing to find for live users. An import failure leaves the app running."""
+    try:
+        from app.engine.memory import memory_loop
+    except Exception as exc:  # noqa: BLE001
+        log.warning("memory loop not started (%s: %s)", type(exc).__name__, exc)
+        return None
+    log.info("memory loop started (first pass in 5 minutes)")
+    return asyncio.create_task(memory_loop())
+
+
 async def _close_engine_pool() -> None:
     try:
         from app.engine.db import close_pool
@@ -81,10 +93,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except StorageUnavailable as exc:
             log.warning("database unreachable at startup (%s); requests get 503 until it is back", exc)
         retention = asyncio.create_task(retention_loop(app.state.db.pool))  # nightly per-user retention (P-10)
+        memory = _start_memory_loop() if app.state.engine_mounted else None   # R-12: a pass every 5 minutes
         yield
-        retention.cancel()
-        with suppress(asyncio.CancelledError):
-            await retention
+        for task in (retention, memory):
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
         await app.state.db.close()
         if app.state.engine_mounted:
             await _close_engine_pool()

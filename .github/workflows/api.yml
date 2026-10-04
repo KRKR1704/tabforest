@@ -13,10 +13,10 @@ on:
 permissions:
   contents: read
 
-# One run at a time: the database tests share Tiger Cloud, and the demo story uses fixed project ids.
-concurrency:
-  group: api-database
-  cancel-in-progress: false
+# Serialized, never cancelled while running. GitHub keeps one running and one pending run per concurrency group
+# and replaces the older pending one, so the groups are per job: database tests queue among themselves (they
+# share Tiger Cloud; the story fixture also takes a database lock), and deploys queue in their own group where
+# a pull-request run can never replace a deploy that is waiting.
 
 jobs:
   test:
@@ -38,6 +38,9 @@ jobs:
   # The database tests run against Tiger Cloud and take a while from a runner, so they run beside the
   # fast gate instead of in front of the deploy. One workflow run at a time (see concurrency above).
   database-tests:
+    concurrency:
+      group: api-database
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
     defaults:
@@ -55,6 +58,9 @@ jobs:
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: api-deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
