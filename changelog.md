@@ -173,6 +173,27 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Excluding a domain does not remove its leaves from the current grove; it takes effect on later captures.
 - Not here: Save context (S-8), the prune dialog and "Save as references" (S-11), keyboard access to canvas elements (S-13).
 - BUILD_TASKS.md: S-5 row ticked only.
+## [2026-10-03] — D-2b First OPEN after observed blank tabs (D)
+
+### Fixed
+
+- Persist `awaitingOpen` Chrome tab IDs alongside `openedRefs` for observed non-HTTP tabs, excluding incognito tabs; remove IDs on OPEN, removal or disappearance during wake.
+- On the first eligible update of an awaiting tab, emit OPEN with current opener mapping and page metadata instead of UPDATE, followed by FOCUS when active in the focused window without existing focus; retain Hollow checks before and after hashing.
+- Keep never-observed-ineligible tabs unchanged; restore awaiting IDs across worker restart without a premature wake OPEN.
+- D-2c sends URL-like titles as null in OPEN and UPDATE, preserving normal titles and later real-title updates.
+- D-2c emits OPEN before exactly one FOCUS when an awaitingOpen tab becomes eligible at activation or update, preserving later updates and away/back focus transitions.
+- D-2c includes opener_tab_ref only for a non-excluded opener already in openedRefs, otherwise null, without minting an opener ref.
+
+### Tests
+
+- Added seven cases for New Tab/about:blank navigation, opener mapping, OPEN/FOCUS ordering, repeat updates, banking exclusion, unchanged ordinary updates, restart, removal/disappearance and activation without an OPEN trigger.
+- Changed only Deep's approved assertions: the D-2b new-tab event sequence, D-2c activation event sequences, and the capped snapshot opener expectation (with its explanatory comment).
+- Added 14 D-2c cases covering title privacy, activation/update ordering, away/back focus and known/unknown/private openers.
+
+### Verification
+
+- Node 20 PATH prefix: pnpm test 7/7 files and 89/89 tests; pnpm typecheck exit 0; pnpm build exit 0 (11 modules).
+- Session extension type is local to capture.ts to keep state.ts unchanged; contracts and dependencies unchanged, no commit. Real-Chromium follow-up remains with Deep after merge.
 
 ## [2026-10-03] — Lane S-4 Forest elements (S)
 
