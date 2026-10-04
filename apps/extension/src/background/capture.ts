@@ -1,6 +1,7 @@
 import { emit, type CaptureEvent } from './emit';
 import { FocusTracker } from './focus-tracker';
 import { dupKey, httpUrl, searchQuery } from './url';
+import { CaptureStateStore } from './state';
 
 export function registerCapture(
   api: typeof chrome = chrome,
@@ -9,18 +10,24 @@ export function registerCapture(
 ): { settled: () => Promise<void> } {
   // Chrome IDs and full URLs remain private to this capture instance.
   const refs = new Map<number, string>();
+  const openedRefs = new Set<string>();
   const localUrls = new Map<string, string>();
   const eligible = new Set<number>();
   const tracker = new FocusTracker(now);
+  const store = new CaptureStateStore(api.storage);
   let focusedWindow: number = api.windows.WINDOW_ID_NONE;
   let previousRef: string | null = null;
   let pending = Promise.resolve();
 
   // Serialize async Chrome lookups/hashes, keeping callback timestamps for timing.
-  // This is not the D-5 event queue: there is no persistence, retry or delivery.
+  // Only capture state is persisted here; D-5 owns event storage/retry/delivery.
   function run(work: (at: number) => void | Promise<void>): void {
     const at = now();
-    pending = pending.then(() => work(at)).catch(() => {
+    pending = pending.then(async () => {
+      await work(at);
+      await store.save({ refs: [...refs], openedRefs: [...openedRefs], eligible: [...eligible], focus: tracker.checkpoint(at),
+        previousTabRef: previousRef, lastSeenAt: at }, [...localUrls]);
+    }).catch(() => {
       console.warn('[tf-capture] Capture callback failed');
     });
   }
@@ -48,6 +55,7 @@ export function registerCapture(
   async function pageEvent(type: 'OPEN' | 'UPDATE', tab: chrome.tabs.Tab, at: number): Promise<void> {
     const ref = remember(tab);
     if (!ref) return;
+    if (type === 'OPEN' && openedRefs.has(ref)) return;
     // An activated new-tab page may only acquire its HTTP URL on update.
     if (type === 'UPDATE' && tab.active && tab.windowId === focusedWindow && tracker.tabRef === null) {
       tracker.select(ref, at);
@@ -60,6 +68,7 @@ export function registerCapture(
     };
     if (type === 'OPEN') {
       output({ ...fields, type, opener_tab_ref: tab.openerTabId === undefined ? null : refFor(tab.openerTabId) });
+      openedRefs.add(ref);
     } else output({ ...fields, type });
   }
 
@@ -78,10 +87,38 @@ export function registerCapture(
 
   api.idle.setDetectionInterval(60);
   run(async at => {
+    const saved = await store.load();
+    for (const [ref, url] of saved.urls) localUrls.set(ref, url);
+    if (saved.session) {
+      for (const [id, ref] of saved.session.refs) refs.set(id, ref);
+      for (const ref of saved.session.openedRefs ?? []) openedRefs.add(ref);
+      for (const id of saved.session.eligible) eligible.add(id);
+      previousRef = saved.session.previousTabRef;
+      tracker.restore(saved.session.focus, saved.session.lastSeenAt, at);
+      const tabs = await api.tabs.query({});
+      const liveIds = new Set(tabs.map(tab => tab.id));
+      for (const [id, ref] of refs) {
+        if (!liveIds.has(id)) { refs.delete(id); openedRefs.delete(ref); eligible.delete(id); tracker.remove(ref, at); }
+      }
+      const unknown = tabs.filter(tab => tab.id !== undefined && !refs.has(tab.id));
+      for (const tab of tabs) remember(tab);
+      for (const tab of unknown) await pageEvent('OPEN', tab, at);
+    }
     tracker.setActive((await api.idle.queryState(60)) === 'active', at);
     const window = await api.windows.getLastFocused();
-    if (window.focused && window.id !== undefined) await selectWindow(window.id, at);
-    if (tracker.tabRef) {
+    if (saved.session) {
+      // Preserve the old focus until the waking onActivated callback emits BLUR.
+      focusedWindow = window.focused && window.id !== undefined ? window.id : api.windows.WINDOW_ID_NONE;
+      tracker.setWindowFocused(focusedWindow !== api.windows.WINDOW_ID_NONE, at);
+      if (!tracker.tabRef && focusedWindow !== api.windows.WINDOW_ID_NONE) {
+        await selectWindow(focusedWindow, at);
+        if (tracker.tabRef) {
+          output({ ...base(tracker.tabRef, at), type: 'FOCUS', previous_tab_ref: previousRef });
+          previousRef = tracker.tabRef;
+        }
+      }
+    } else if (window.focused && window.id !== undefined) await selectWindow(window.id, at);
+    if (!saved.session && tracker.tabRef) {
       output({ ...base(tracker.tabRef, at), type: 'FOCUS', previous_tab_ref: null });
       previousRef = tracker.tabRef;
     }
@@ -122,7 +159,7 @@ export function registerCapture(
       previousRef = ref;
     }
     if (ref && eligible.has(id)) output({ ...base(ref, at), type: 'CLOSE' });
-    if (ref) tracker.remove(ref, at);
+    if (ref) { tracker.remove(ref, at); openedRefs.delete(ref); }
     refs.delete(id);
     eligible.delete(id);
   }));
