@@ -7,9 +7,10 @@ Run locally (PowerShell, from apps/api):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,8 +19,11 @@ from slowapi.errors import RateLimitExceeded
 from app.auth import EntraVerifier, current_user
 from app.config import Settings, load_settings
 from app.db.pool import Database, StorageUnavailable
+from app.deletion import router as deletion_router
 from app.errors import install_error_handlers
 from app.limits import limiter, rate_limited
+from app.privacy import router as privacy_router
+from app.retention import retention_loop
 from app.routes import login_router, router
 from app.telemetry import instrument, setup_telemetry
 
@@ -72,7 +76,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.db.pool()
         except StorageUnavailable as exc:
             log.warning("database unreachable at startup (%s); requests get 503 until it is back", exc)
+        retention = asyncio.create_task(retention_loop(app.state.db.pool))  # nightly per-user retention (P-10)
         yield
+        retention.cancel()
+        with suppress(asyncio.CancelledError):
+            await retention
         await app.state.db.close()
         if app.state.engine_mounted:
             await _close_engine_pool()
@@ -94,6 +102,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(router)
+    app.include_router(privacy_router)
+    app.include_router(deletion_router)
     if settings.fallback_login:
         app.include_router(login_router)
         log.warning("fallback login is on (POST /api/auth/login)")

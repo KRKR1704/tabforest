@@ -45,5 +45,20 @@ uv run ruff check .
 | `GET /api/me` | Creates the user and default privacy settings on the first call |
 | `POST /api/events` | Up to 500 events; idempotent by `(user_id, ts, event_id)`; 60 requests per minute per user |
 | `POST /api/auth/login` | Fallback login; only when `FALLBACK_LOGIN=true` |
+| `GET /api/privacy`, `PATCH /api/privacy` | Excluded domains, pause, retention (7/30/90 days), cloud AI. PATCH changes only the fields sent |
+| `DELETE /api/projects/{id}` | Deletes a forest and everything derived from it; counts per table |
+| `DELETE /api/me` | Deletes every row the user owns in every table, in one transaction; counts per table |
 
-Contracts: `contracts/me.example.json` and `contracts/events.example.json`.
+Contracts: `contracts/me.example.json`, `contracts/events.example.json` and `contracts/privacy.example.json`.
+
+## Retention job
+
+Users who chose 7 or 30 days of retention have their older events and sessions deleted nightly at 03:00 UTC, inside the API
+process (the 90-day limit is the database policy's job). To run it once by hand: `uv run python -m app.retention`.
+
+## Testing the database code without TimescaleDB
+
+The tests that need `DATABASE_URL` create their own users and remove them again. To run them against a throwaway local
+Postgres with pgvector instead of the shared database, load `db/migrations` into it without the TimescaleDB statements
+(`create_hypertable`, the policies, the compression block, the `diskann` index; the continuous aggregates can be plain
+materialized views with a `time_bucket` function and a `refresh_continuous_aggregate` procedure that refreshes them).

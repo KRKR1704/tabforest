@@ -81,6 +81,6 @@ TabForest's use of information received from Chrome APIs adheres to the Chrome W
 
 - The Hollow's built-in categories cannot be switched off or edited from the Grove yet; there is no bridge message for it.
 - An exclusion cannot be removed through the bridge, so removal is not synced.
-- `PATCH /api/privacy` and the account deletion endpoint depend on the platform lane (P-10, P-11); until deployed, changes stay on the device and wait.
+- The API side of privacy sync (`PATCH /api/privacy`) and account deletion (`DELETE /api/me`, `DELETE /api/projects/{id}`) is implemented; until the API version that contains it is deployed, changes stay on the device and wait.
 - Work Context text is not uploaded anywhere today. If analysis of it is added later, it needs its own explicit action and an update to this page.
 - The data-retention and "who can read user data" statements describe the API lane's configuration; confirm with P before submitting to the Web Store.

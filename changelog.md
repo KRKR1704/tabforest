@@ -6,6 +6,29 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — P-10 Privacy settings and retention, P-11 Deletion (P)
+
+### Added
+
+- `GET /api/privacy` and `PATCH /api/privacy` (`app/privacy.py`, `app/db/privacy_repository.py`, contract `contracts/privacy.example.json`). PATCH changes only the fields sent: `excluded_domains_add` / `excluded_domains_remove` (bare lowercase domains; trimmed, lowercased, deduplicated; at most 100 per request and 500 in the list; the same domain in both lists is a 422), `paused_until` (null resumes, a time pauses, 9999-12-31T23:59:59Z means until resumed), `retention_days` (7, 30 or 90), `cloud_ai_enabled`. An empty body changes nothing, not even `updated_at`. The settings row is locked while it changes, so two devices adding domains at once lose nothing. A first call to `/api/privacy` provisions the user, like `/api/me`.
+- `DELETE /api/projects/{id}` ("Delete forest") and `DELETE /api/me` (`app/deletion.py`, `app/db/deletion_repository.py`): every table in dependency order in one transaction, with an exact count per table (the shape of `contracts/me.example.json` and the delete_forest example). A project that does not exist or belongs to someone else is a 404. The forest's tree is also removed from the stored last grove, so it cannot reappear in `GET /api/grove`; raw events and tabs stay, as the contract says. After the commit the continuous aggregates are refreshed over the affected range (best effort, outside the transaction). A table that R's migrations never created counts as 0. The per-user advisory lock is the one ingest uses, so a batch in flight cannot re-create rows during a deletion.
+- Nightly retention job (`app/retention.py`): at 03:00 UTC users with 7 or 30 days lose older events and sessions; users with 90 days are left to the database policy. An advisory lock keeps a second process from running it. `uv run python -m app.retention` runs it once.
+- `app/errors.py`: a `Literal` validation error now reads `retention_days must be 7, 30 or 90`, as in the contract.
+- `tests/test_privacy_deletion.py`: 41 tests (30 without a database).
+
+### Verification
+
+- From `apps/api/`: `pytest tests app/engine/tests` passes; `ruff check app tests` is clean.
+- The 11 database tests and the existing ones were also run against a throwaway Postgres with pgvector (the migrations loaded without the TimescaleDB statements): all 58 tests in `tests/` pass (41 new, 17 existing). They cover the contract examples in order, per-table counts for a forest and for an account with another user's rows left exactly as they were, a 404 (not 403) for another user's project, deleting twice, ingest after a deletion, concurrent PATCHes, and the retention windows (7, 30 and 90 days).
+- Six deliberate breaks (a missing child delete, a missing table in the account deletion, the stored-grove clean-up, the remove list, the retention lock, the retention user filter) were each caught.
+- The real extension in Chromium against this API and that database, 12 of 12: login, the extension's exclusion and pause arrive, the server's exclusion is read back, resume sends null, a timed pause is accepted, `DELETE /api/me` returns counts, `WIPE_LOCAL` leaves nothing, and the same token provisions fresh defaults.
+
+### Notes
+
+- Not run on TimescaleDB itself: `CALL refresh_continuous_aggregate(...)`, a DELETE on the hypertable and the retention job's `DELETE ... USING` on it have been run on plain Postgres only. The aggregate refresh is wrapped so a failure is logged and never undoes a deletion.
+- The delete_forest example omits `research_insights`; the response includes it (a forest's insights are deleted too), so its `deleted` has 11 keys.
+- Ingest does not reject events for a domain the user excluded; the extension filters them before sending.
+
 ## [2026-10-04] — R-9 + R-10: Seedling fallback, claims, assign, notes, analyze; hypothesis cap (R)
 
 ### Fixed

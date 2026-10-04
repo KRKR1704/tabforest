@@ -80,6 +80,8 @@ def validation_detail(errors: list[dict[str, Any]]) -> str:
         return "Request body contains fields that are not allowed"
     first = errors[0]
     path = _path(first["loc"])
+    if first["type"] == "literal_error" and path and first["msg"].startswith("Input should be "):
+        return f"{path} must be {first['msg'].removeprefix('Input should be ')}"  # contracts/privacy.example.json
     if first["type"] == "enum":
         allowed = re.findall(r"'([^']*)'", str(first.get("ctx", {}).get("expected", "")))
         if allowed:
