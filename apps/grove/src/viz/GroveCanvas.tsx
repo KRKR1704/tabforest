@@ -10,7 +10,9 @@ import {
   prefersReducedMotion,
   type GrowAnimation,
 } from './growAnimation';
+import { decorateGrove, playChanges, type GroveMotion } from './groveMotion';
 import { computeGroveLayout, computeRoots, type GroveLayout, type RootsAnchor } from './layout';
+import { groveMotionEnabled } from './motionSwitch';
 import { renderGrove, type GroveZoomControls, type LeafDrop } from './render';
 import type { GroveSelection } from './selection';
 
@@ -71,12 +73,12 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
   // line planted it. Results that arrive meanwhile wait in `grove` and are
   // drawn together when the intro ends, which is when the forest speaks.
   const [intro, setIntro] = useState<{ key: number; grove: GroveResponse } | null>(() =>
-    growKey !== playedGrowKey && !prefersReducedMotion() ? { key: growKey, grove } : null
+    growKey > playedGrowKey && !prefersReducedMotion() ? { key: growKey, grove } : null
   );
   const [seenGrowKey, setSeenGrowKey] = useState(growKey);
   if (growKey !== seenGrowKey) {
     setSeenGrowKey(growKey);
-    setIntro(prefersReducedMotion() ? null : { key: growKey, grove });
+    setIntro(prefersReducedMotion() || growKey <= playedGrowKey ? null : { key: growKey, grove });
   }
   const shown = intro ? intro.grove : grove;
   const layout = useMemo(() => computeGroveLayout(shown), [shown]);
@@ -95,6 +97,12 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
     });
     controlsRef.current = controls;
 
+    // The motion layer (depth and idle life) sits on top of the drawing; off, nothing is added.
+    const reduced = prefersReducedMotion();
+    const decor: GroveMotion | null = groveMotionEnabled()
+      ? decorateGrove(svgRef.current, layout, { still: reduced })
+      : null;
+
     const previous = lastLayoutRef.current;
     lastLayoutRef.current = layout;
     let animation: GrowAnimation | null = null;
@@ -104,18 +112,23 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({
         timeScale: growTimeScale,
         onDone: () => setIntro(null),
       });
-    } else if (growKey !== playedGrowKey) {
+    } else if (growKey > playedGrowKey) {
       // Reduced motion: the new grove fades in and nothing moves.
       playedGrowKey = growKey;
       animation = playGrowFade(svgRef.current, growTimeScale);
     } else if (previous) {
       animation = playArrivals(svgRef.current, previous, layout, {
         timeScale: growTimeScale,
-        reducedMotion: prefersReducedMotion(),
+        reducedMotion: reduced,
       });
+      // Nothing arrived from a grow, so any difference is an edit: animate it.
+      if (!animation && groveMotionEnabled() && !reduced) {
+        animation = playChanges(svgRef.current, previous, layout, { timeScale: growTimeScale });
+      }
     }
 
     return () => {
+      decor?.stop();
       animation?.stop();
       controls.destroy();
       controlsRef.current = null;
