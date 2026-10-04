@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import type { GroveResponse, GroveTab } from '../types';
 import type { EvidenceClaim } from '../components/EvidenceDrawer';
 import { GroveCanvas } from '../viz/GroveCanvas';
+import { describeSelection, type GroveSelection } from '../viz/selection';
 import { GroveOutline } from './GroveOutline';
 
 interface CurrentGroveProps {
   grove: GroveResponse | null;
   onShowEvidence: (claim: EvidenceClaim, tabs: GroveTab[]) => void;
+  onHideEvidence?: () => void;
 }
 
 type GroveView = 'grove' | 'outline';
@@ -16,8 +18,13 @@ const VIEWS: Array<{ id: GroveView; label: string }> = [
   { id: 'outline', label: 'Outline' },
 ];
 
-export const CurrentGrove: React.FC<CurrentGroveProps> = ({ grove, onShowEvidence }) => {
+export const CurrentGrove: React.FC<CurrentGroveProps> = ({
+  grove,
+  onShowEvidence,
+  onHideEvidence,
+}) => {
   const [view, setView] = useState<GroveView>('grove');
+  const [selection, setSelection] = useState<GroveSelection | null>(null);
 
   if (!grove || grove.trees.length === 0) {
     return (
@@ -27,6 +34,16 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({ grove, onShowEvidenc
       </div>
     );
   }
+
+  const selected = selection ? describeSelection(grove, selection) : null;
+
+  // A claim opens its evidence in the drawer; anything else is named in the caption.
+  const handleSelect = (next: GroveSelection | null) => {
+    setSelection(next);
+    const described = next ? describeSelection(grove, next) : null;
+    if (described?.claim) onShowEvidence(described.claim, described.tabs ?? []);
+    else onHideEvidence?.();
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -54,7 +71,23 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({ grove, onShowEvidenc
 
       <div className="min-h-0 flex-1">
         {view === 'grove' ? (
-          <GroveCanvas grove={grove} />
+          <div className="relative h-full">
+            <GroveCanvas grove={grove} selected={selection} onSelect={handleSelect} />
+            {selected && !selected.claim && (
+              <div
+                role="status"
+                className="absolute bottom-4 left-4 max-w-md rounded-md border border-forest-800 bg-forest-900 px-4 py-3"
+              >
+                <p className="text-xs font-medium uppercase tracking-wider text-forest-400">
+                  {selected.label}
+                </p>
+                <p className="mt-1 font-serif text-forest-50">{selected.text}</p>
+                {selected.detail && (
+                  <p className="mt-1 text-xs text-forest-300">{selected.detail}</p>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="h-full overflow-y-auto">
             <GroveOutline grove={grove} onShowEvidence={onShowEvidence} />

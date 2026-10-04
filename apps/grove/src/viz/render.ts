@@ -1,8 +1,18 @@
 // D3 owns everything inside the <svg>. All text goes through .text(), never
 // markup (SPEC §12): titles and labels come from web pages and the model.
 import { select, zoom, zoomIdentity, type Selection } from 'd3';
-import type { GroveLayout, LeafLayout, PatchLayout, TreeLayout } from './layout';
+import type {
+  FireflyLayout,
+  GroveLayout,
+  HypothesisLayout,
+  LeafLayout,
+  MushroomLayout,
+  PatchLayout,
+  StoneLayout,
+  TreeLayout,
+} from './layout';
 import { FONT, PALETTE } from './palette';
+import type { GroveSelection, SelectionKind } from './selection';
 
 export interface GroveZoomControls {
   zoomBy: (factor: number) => void;
@@ -10,9 +20,30 @@ export interface GroveZoomControls {
   destroy: () => void;
 }
 
+export type SelectHandler = (selection: GroveSelection | null) => void;
+
 type Group = Selection<SVGGElement, unknown, null, undefined>;
+type AnySelection = Selection<any, any, any, any>;
 
 const SCALE_EXTENT: [number, number] = [0.5, 4];
+
+/** Marks an element as clickable and reports it, without also selecting what is behind it. */
+function selectable(
+  node: AnySelection,
+  onSelect: SelectHandler,
+  kind: SelectionKind,
+  id: string | ((datum: any) => string),
+  treeId?: string
+): void {
+  node
+    .attr('data-select-kind', kind)
+    .attr('data-select-id', id as any)
+    .attr('cursor', 'pointer')
+    .on('click', (event: MouseEvent, datum: unknown) => {
+      event.stopPropagation();
+      onSelect({ kind, id: typeof id === 'function' ? id(datum) : id, treeId });
+    });
+}
 
 /** Teardrop pointing along +x from the origin; rotated into place by its angle. */
 function leafPath(length: number): string {
@@ -31,7 +62,13 @@ function leafTitle(leaf: LeafLayout): string {
   return parts.join(' · ');
 }
 
-function drawLeaves(parent: Group, leaves: LeafLayout[], fill: string): void {
+function drawLeaves(
+  parent: Group,
+  leaves: LeafLayout[],
+  fill: string,
+  onSelect: SelectHandler,
+  treeId?: string
+): void {
   const nodes = parent
     .selectAll<SVGPathElement, LeafLayout>('path.leaf')
     .data(leaves)
@@ -48,6 +85,7 @@ function drawLeaves(parent: Group, leaves: LeafLayout[], fill: string): void {
     .attr('stroke', (leaf) => (leaf.isOpen ? PALETTE.leafOpenEdge : 'none'))
     .attr('stroke-width', 1.25);
   nodes.append('title').text(leafTitle);
+  selectable(nodes, onSelect, 'leaf', (leaf: LeafLayout) => leaf.tabRef, treeId);
 }
 
 type LabelKind = 'name' | 'patch' | 'meta';
@@ -87,13 +125,179 @@ function treeMeta(tree: TreeLayout): string {
   return parts.join(' · ');
 }
 
-function drawTree(parent: Group, tree: TreeLayout, groundY: number): void {
+/** A thin line is hard to hit, so a wide invisible stroke takes the pointer for it. */
+function drawVinePath(group: Group, path: string, width: number, faint: boolean): void {
+  group
+    .append('path')
+    .attr('d', path)
+    .attr('fill', 'none')
+    .attr('stroke', 'transparent')
+    .attr('stroke-width', 14)
+    .attr('pointer-events', 'stroke');
+  group
+    .append('path')
+    .attr('d', path)
+    .attr('fill', 'none')
+    .attr('stroke', PALETTE.vine)
+    .attr('stroke-width', width)
+    .attr('stroke-linecap', 'round')
+    .attr('stroke-opacity', faint ? 0.5 : 0.95)
+    .attr('stroke-dasharray', faint ? '2 6' : null)
+    .attr('pointer-events', 'none');
+}
+
+function drawMushroom(parent: Group, mushroom: MushroomLayout, onSelect: SelectHandler, treeId: string): void {
+  const group = parent
+    .append('g')
+    .attr('data-kind', mushroom.resolved ? 'flower' : 'mushroom')
+    .attr('data-recurrence', mushroom.recurrence)
+    .attr('transform', `translate(${mushroom.x},${mushroom.y})`);
+
+  if (mushroom.resolved) {
+    // A resolved question blooms: five petals on a stem.
+    group.append('title').text(`Resolved question · ${mushroom.text}`);
+    group
+      .append('line')
+      .attr('y2', -20)
+      .attr('stroke', PALETTE.stem)
+      .attr('stroke-width', 2)
+      .attr('stroke-linecap', 'round');
+    for (let i = 0; i < 5; i++) {
+      const angle = (-90 + i * 72) * (Math.PI / 180);
+      group
+        .append('circle')
+        .attr('cx', Math.cos(angle) * 6)
+        .attr('cy', -24 + Math.sin(angle) * 6)
+        .attr('r', 4.2)
+        .attr('fill', PALETTE.flowerPetal);
+    }
+    group.append('circle').attr('cy', -24).attr('r', 3.2).attr('fill', PALETTE.flowerCenter);
+    selectable(group, onSelect, 'flower', mushroom.id, treeId);
+    return;
+  }
+
+  const r = mushroom.capRadius;
+  group
+    .append('title')
+    .text(`Open question · ${mushroom.text} · came up ${plural(mushroom.recurrence, 'time')}`);
+  group
+    .append('rect')
+    .attr('x', -r * 0.22)
+    .attr('y', -r)
+    .attr('width', r * 0.44)
+    .attr('height', r)
+    .attr('rx', 2)
+    .attr('fill', PALETTE.mushroomStem);
+  group
+    .append('path')
+    .attr('d', `M${-r},${-r}A${r},${r * 0.85} 0 0 1 ${r},${-r}Z`)
+    .attr('fill', PALETTE.mushroomCap);
+  selectable(group, onSelect, 'mushroom', mushroom.id, treeId);
+}
+
+function drawStone(parent: Group, stone: StoneLayout, onSelect: SelectHandler, treeId: string): void {
+  const carved = stone.kind === 'carved';
+  const group = parent
+    .append('g')
+    .attr('data-kind', 'stone')
+    .attr('data-stone-kind', stone.kind)
+    .attr('transform', `translate(${stone.x},${stone.y})`);
+  group
+    .append('title')
+    .text(`${carved ? 'Decision you stated or sourced' : 'Inferred decision'} · ${stone.text}`);
+
+  group
+    .append('path')
+    .attr('d', 'M-14,0Q-15,-12 -6,-15Q4,-18 11,-13Q16,-8 14,0Z')
+    .attr('fill', carved ? PALETTE.stone : PALETTE.stoneDark)
+    .attr('stroke', carved ? PALETTE.stoneLight : PALETTE.moss)
+    .attr('stroke-width', 1.25)
+    // Solid edge for a carved stone, dashed for a mossy one, so the two differ in shape too.
+    .attr('stroke-dasharray', carved ? null : '3 2.5');
+
+  if (carved) {
+    group
+      .append('path')
+      .attr('d', 'M-7,-8L-2,-5M0,-10L6,-6')
+      .attr('fill', 'none')
+      .attr('stroke', PALETTE.stoneLight)
+      .attr('stroke-width', 1.25)
+      .attr('stroke-linecap', 'round');
+  } else {
+    group
+      .append('path')
+      .attr('d', 'M-11,-11Q-3,-21 9,-14Q2,-11 -11,-11Z')
+      .attr('fill', PALETTE.moss);
+  }
+  selectable(group, onSelect, 'stone', stone.id, treeId);
+}
+
+function drawHypothesis(
+  parent: Group,
+  hypothesis: HypothesisLayout,
+  onSelect: SelectHandler,
+  treeId: string
+): void {
+  const group = parent
+    .append('g')
+    .attr('data-kind', 'hypothesis')
+    .attr('data-opacity', hypothesis.opacity)
+    .attr('transform', `translate(${hypothesis.x},${hypothesis.y})`);
+  group.append('title').text(`${hypothesis.text} · confidence ${hypothesis.confidence.toFixed(2)}`);
+  const puffs = [
+    { cx: -8, cy: 2, rx: 17, ry: 8 },
+    { cx: 9, cy: -2, rx: 15, ry: 7 },
+  ];
+  for (const puff of puffs) {
+    group
+      .append('ellipse')
+      .attr('cx', puff.cx)
+      .attr('cy', puff.cy)
+      .attr('rx', puff.rx)
+      .attr('ry', puff.ry)
+      .attr('fill', PALETTE.fog)
+      .attr('fill-opacity', hypothesis.opacity);
+  }
+  selectable(group, onSelect, 'hypothesis', hypothesis.id, treeId);
+}
+
+function drawFirefly(parent: Group, firefly: FireflyLayout, onSelect: SelectHandler, treeId: string): void {
+  const group = parent.append('g').attr('data-kind', 'firefly');
+  group.append('title').text(`Past research · ${firefly.text}`);
+  group
+    .append('path')
+    .attr('d', firefly.trail)
+    .attr('fill', 'none')
+    .attr('stroke', PALETTE.firefly)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-linecap', 'round')
+    .attr('stroke-dasharray', '1 5')
+    .attr('stroke-opacity', 0.75);
+  group
+    .append('circle')
+    .attr('cx', firefly.x)
+    .attr('cy', firefly.y)
+    .attr('r', 9)
+    .attr('fill', PALETTE.fireflyGlow)
+    .attr('fill-opacity', 0.22);
+  group
+    .append('circle')
+    .attr('cx', firefly.x)
+    .attr('cy', firefly.y)
+    .attr('r', 3.2)
+    .attr('fill', PALETTE.firefly);
+  selectable(group, onSelect, 'firefly', firefly.id, treeId);
+}
+
+function drawTree(parent: Group, tree: TreeLayout, groundY: number, onSelect: SelectHandler): void {
   const group = parent
     .append('g')
     .attr('data-kind', 'tree')
     .attr('data-tree-id', tree.id)
     .attr('data-canopy', tree.dormant ? 'amber' : 'green');
   group.append('title').text(`${tree.name} · ${treeMeta(tree)}`);
+  // Canopy, trunk and name select the tree; everything drawn below stops the click first.
+  selectable(group, onSelect, 'tree', tree.id, tree.id);
 
   group
     .append('g')
@@ -106,6 +310,27 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number): void {
     .attr('r', (blob) => blob.r)
     .attr('fill', tree.dormant ? PALETTE.canopyAmber : PALETTE.canopyGreen)
     .attr('fill-opacity', 0.5);
+
+  if (tree.fogOpacity > 0) {
+    // Mist over an uncertain goal: the less confident, the denser (SPEC §9.1).
+    const fog = group
+      .append('g')
+      .attr('data-kind', 'tree-fog')
+      .attr('data-opacity', tree.fogOpacity);
+    fog
+      .append('title')
+      .text(`Low confidence · ${tree.goalConfidence.toFixed(2)} · ${tree.name}`);
+    fog
+      .selectAll('ellipse')
+      .data(tree.canopy)
+      .join('ellipse')
+      .attr('cx', (blob) => blob.cx)
+      .attr('cy', (blob) => blob.cy)
+      .attr('rx', (blob) => blob.r * 1.08)
+      .attr('ry', (blob) => blob.r * 0.6)
+      .attr('fill', PALETTE.fog)
+      .attr('fill-opacity', tree.fogOpacity);
+  }
 
   group
     .append('path')
@@ -121,6 +346,7 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number): void {
       .attr('data-branch-ref', branch.ref)
       .attr('data-status', branch.status);
     branchGroup.append('title').text(`${branch.label} · ${plural(branch.leaves.length, 'tab')}`);
+    selectable(branchGroup, onSelect, 'branch', branch.ref, tree.id);
 
     branchGroup
       .append('path')
@@ -143,10 +369,29 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number): void {
       .attr('stroke-width', 1.25)
       .attr('stroke-linecap', 'round');
 
-    drawLeaves(branchGroup, branch.leaves, tree.dormant ? PALETTE.leafAmber : PALETTE.leafGreen);
+    drawLeaves(
+      branchGroup,
+      branch.leaves,
+      tree.dormant ? PALETTE.leafAmber : PALETTE.leafGreen,
+      onSelect,
+      tree.id
+    );
   }
 
-  // Branch labels sit over the canopy, so they are drawn last with a dark halo.
+  // Vines wrap the leaves that say the same thing; thicker when they are exact duplicates.
+  for (const vine of tree.vines) {
+    const vineGroup = group
+      .append('g')
+      .attr('data-kind', 'vine')
+      .attr('data-vine-kind', vine.exact ? 'exact' : 'semantic');
+    vineGroup
+      .append('title')
+      .text(`${vine.exact ? 'Exact duplicates' : 'Overlapping sources'} · ${vine.reason}`);
+    drawVinePath(vineGroup, vine.path, vine.exact ? 4.5 : 2.25, false);
+    selectable(vineGroup, onSelect, 'vine', vine.id, tree.id);
+  }
+
+  // Branch labels sit over the canopy, so they are drawn after it with a dark halo.
   for (const branch of tree.branches) {
     group
       .append('text')
@@ -162,8 +407,28 @@ function drawTree(parent: Group, tree: TreeLayout, groundY: number): void {
       .attr('stroke-width', 3)
       .attr('stroke-linejoin', 'round')
       .attr('paint-order', 'stroke')
+      .attr('pointer-events', 'none')
       .text(branch.label);
   }
+
+  const fallen = group
+    .selectAll<SVGPathElement, LeafLayout>('path.fallen-leaf')
+    .data(tree.fallenLeaves)
+    .join('path')
+    .attr('class', 'fallen-leaf')
+    .attr('data-kind', 'fallen-leaf')
+    .attr('data-tab-ref', (leaf) => leaf.tabRef)
+    .attr('d', (leaf) => leafPath(leaf.length))
+    .attr('transform', (leaf) => `translate(${leaf.x},${leaf.y}) rotate(${leaf.angle})`)
+    .attr('fill', PALETTE.fallenLeaf)
+    .attr('fill-opacity', 0.85);
+  fallen.append('title').text((leaf) => `Stale tab · ${leafTitle(leaf)}`);
+  selectable(fallen, onSelect, 'fallen-leaf', (leaf: LeafLayout) => leaf.tabRef, tree.id);
+
+  for (const mushroom of tree.mushrooms) drawMushroom(group, mushroom, onSelect, tree.id);
+  for (const stone of tree.stones) drawStone(group, stone, onSelect, tree.id);
+  for (const hypothesis of tree.hypotheses) drawHypothesis(group, hypothesis, onSelect, tree.id);
+  for (const firefly of tree.fireflies) drawFirefly(group, firefly, onSelect, tree.id);
 
   label(group, tree.x, groundY + 30, tree.name, 'name');
   label(group, tree.x, groundY + 50, treeMeta(tree), 'meta');
@@ -189,23 +454,32 @@ function drawPatch(
   patch: PatchLayout,
   groundY: number,
   kind: 'meadow' | 'fog' | 'sprout',
-  fill: string
+  id: string,
+  fill: string,
+  onSelect: SelectHandler
 ): Group {
   const group = parent.append('g').attr('data-kind', kind);
   const count = plural(patch.leaves.length, 'tab');
   group.append('title').text(`${patch.label} · ${count}`);
+  selectable(group, onSelect, kind, id);
   drawStems(group, patch);
-  drawLeaves(group, patch.leaves, fill);
+  drawLeaves(group, patch.leaves, fill, onSelect);
   label(group, patch.x, groundY + 30, patch.label, 'patch');
   return group;
 }
 
-export function renderGrove(svgElement: SVGSVGElement, layout: GroveLayout): GroveZoomControls {
+export function renderGrove(
+  svgElement: SVGSVGElement,
+  layout: GroveLayout,
+  onSelect: SelectHandler = () => {}
+): GroveZoomControls {
   const svg = select(svgElement);
   svg.selectAll('*').remove();
   svg
     .attr('viewBox', `0 0 ${layout.width} ${layout.height}`)
-    .attr('preserveAspectRatio', 'xMidYMid meet');
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    // A click on empty ground clears the selection.
+    .on('click', () => onSelect(null));
 
   const root = svg.append('g').attr('data-kind', 'grove-root');
 
@@ -229,21 +503,48 @@ export function renderGrove(svgElement: SVGSVGElement, layout: GroveLayout): Gro
     .attr('stroke-width', 1.5);
 
   for (const sprout of layout.sprouts) {
-    const group = drawPatch(root, sprout, layout.groundY, 'sprout', PALETTE.sproutLeaf);
+    const group = drawPatch(
+      root,
+      sprout,
+      layout.groundY,
+      'sprout',
+      sprout.ref,
+      PALETTE.sproutLeaf,
+      onSelect
+    );
     group.attr('data-sprout-ref', sprout.ref);
     label(group, sprout.x, layout.groundY + 50, `sprout · ${plural(sprout.leaves.length, 'tab')}`, 'meta');
   }
 
-  for (const tree of layout.trees) drawTree(root, tree, layout.groundY);
+  for (const tree of layout.trees) drawTree(root, tree, layout.groundY, onSelect);
+
+  // Drawn after the trees so the vine crosses over both canopies it joins.
+  for (const vine of layout.sharedVines) {
+    const group = root
+      .append('g')
+      .attr('data-kind', 'shared-vine')
+      .attr('data-tab-ref', vine.tabRef);
+    group.append('title').text(`Shared tab · ${vine.title} · serves two goals`);
+    drawVinePath(group, vine.path, 1.5, true);
+    selectable(group, onSelect, 'shared-vine', vine.tabRef);
+  }
 
   if (layout.meadow) {
-    const group = drawPatch(root, layout.meadow, layout.groundY, 'meadow', PALETTE.meadowLeaf);
+    const group = drawPatch(
+      root,
+      layout.meadow,
+      layout.groundY,
+      'meadow',
+      'meadow',
+      PALETTE.meadowLeaf,
+      onSelect
+    );
     label(group, layout.meadow.x, layout.groundY + 50, plural(layout.meadow.leaves.length, 'tab'), 'meta');
   }
 
   if (layout.fog) {
     const fog = layout.fog;
-    const group = drawPatch(root, fog, layout.groundY, 'fog', PALETTE.fogLeaf);
+    const group = drawPatch(root, fog, layout.groundY, 'fog', 'fog', PALETTE.fogLeaf, onSelect);
     // Three overlapping banks of mist over the tabs the grove could not place.
     const banks = [
       { dx: -0.3, dy: -30, rx: 0.62, ry: 22 },
@@ -260,7 +561,9 @@ export function renderGrove(svgElement: SVGSVGElement, layout: GroveLayout): Gro
       .attr('rx', (bank) => bank.rx * fog.halfWidth)
       .attr('ry', (bank) => bank.ry)
       .attr('fill', PALETTE.fog)
-      .attr('fill-opacity', 0.16);
+      .attr('fill-opacity', 0.16)
+      // The mist must not swallow clicks meant for the tabs inside it.
+      .attr('pointer-events', 'none');
     label(group, fog.x, layout.groundY + 50, plural(fog.leaves.length, 'tab'), 'meta');
   }
 
@@ -286,7 +589,7 @@ export function renderGrove(svgElement: SVGSVGElement, layout: GroveLayout): Gro
     zoomBy: (factor) => svg.call(zoomBehavior.scaleBy, factor),
     reset: () => svg.call(zoomBehavior.transform, zoomIdentity),
     destroy: () => {
-      svg.on('.zoom', null);
+      svg.on('.zoom', null).on('click', null);
       svg.selectAll('*').remove();
     },
   };

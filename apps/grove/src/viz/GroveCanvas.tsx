@@ -3,9 +3,14 @@ import { Minus, Plus, RotateCcw } from 'lucide-react';
 import type { GroveResponse } from '../types';
 import { computeGroveLayout } from './layout';
 import { renderGrove, type GroveZoomControls } from './render';
+import type { GroveSelection } from './selection';
 
 interface GroveCanvasProps {
   grove: GroveResponse;
+  /** The element to show as selected. */
+  selected?: GroveSelection | null;
+  /** Called with the clicked element, or null when empty ground is clicked. */
+  onSelect?: (selection: GroveSelection | null) => void;
 }
 
 const ZOOM_STEP = 1.3;
@@ -19,20 +24,39 @@ function describe(grove: GroveResponse): string {
 }
 
 /** React owns this panel and its controls; D3 owns everything inside the <svg>. */
-export const GroveCanvas: React.FC<GroveCanvasProps> = ({ grove }) => {
+export const GroveCanvas: React.FC<GroveCanvasProps> = ({ grove, selected = null, onSelect }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const controlsRef = useRef<GroveZoomControls | null>(null);
   const layout = useMemo(() => computeGroveLayout(grove), [grove]);
 
+  // Kept in a ref so a new callback never forces D3 to redraw and lose the zoom.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
   useEffect(() => {
     if (!svgRef.current) return;
-    const controls = renderGrove(svgRef.current, layout);
+    const controls = renderGrove(svgRef.current, layout, (selection) =>
+      onSelectRef.current?.(selection)
+    );
     controlsRef.current = controls;
     return () => {
       controls.destroy();
       controlsRef.current = null;
     };
   }, [layout]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.querySelectorAll('[data-selected]').forEach((node) => node.removeAttribute('data-selected'));
+    if (!selected) return;
+    svg.querySelectorAll<SVGElement>(`[data-select-kind="${selected.kind}"]`).forEach((node) => {
+      if (node.getAttribute('data-select-id') !== selected.id) return;
+      // A shared tab has a leaf on two trees; only the clicked tree's leaf is selected.
+      const tree = node.closest('[data-tree-id]')?.getAttribute('data-tree-id') ?? undefined;
+      if (selected.treeId === tree) node.setAttribute('data-selected', 'true');
+    });
+  }, [selected, layout]);
 
   const buttonClass =
     'flex h-8 w-8 items-center justify-center text-forest-200 hover:bg-forest-800 hover:text-forest-50';
@@ -43,7 +67,7 @@ export const GroveCanvas: React.FC<GroveCanvasProps> = ({ grove }) => {
         ref={svgRef}
         role="img"
         aria-label={describe(grove)}
-        className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
+        className="grove-canvas h-full w-full cursor-grab touch-none active:cursor-grabbing"
       />
       <div className="absolute bottom-4 right-4 flex divide-x divide-forest-800 overflow-hidden rounded-md border border-forest-800 bg-forest-900">
         <button

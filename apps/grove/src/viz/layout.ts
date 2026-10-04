@@ -46,6 +46,61 @@ export interface TreeLayout {
   canopy: Array<{ cx: number; cy: number; r: number }>;
   branches: BranchLayout[];
   leafCount: number;
+  mushrooms: MushroomLayout[];
+  stones: StoneLayout[];
+  fallenLeaves: LeafLayout[];
+  vines: VineLayout[];
+  hypotheses: HypothesisLayout[];
+  fireflies: FireflyLayout[];
+  /** Mist over the whole tree; 0 when the goal is confident enough to show clearly. */
+  fogOpacity: number;
+  goalConfidence: number;
+}
+
+/** An unresolved question at the base of its tree; a resolved one blooms into a flower. */
+export interface MushroomLayout extends Point {
+  id: string;
+  text: string;
+  resolved: boolean;
+  recurrence: number;
+  /** Encodes how often the question recurred. */
+  capRadius: number;
+}
+
+export interface StoneLayout extends Point {
+  id: string;
+  text: string;
+  /** Carved for a stated or sourced decision, mossy for an inferred one. */
+  kind: 'carved' | 'mossy';
+}
+
+export interface VineLayout {
+  id: string;
+  exact: boolean;
+  reason: string;
+  tabRefs: string[];
+  path: string;
+}
+
+export interface HypothesisLayout extends Point {
+  id: string;
+  text: string;
+  confidence: number;
+  opacity: number;
+}
+
+export interface FireflyLayout extends Point {
+  id: string;
+  text: string;
+  trail: string;
+}
+
+/** A faint vine joining the two leaves of a tab that serves two goals. */
+export interface SharedVineLayout {
+  tabRef: string;
+  title: string;
+  treeIds: [string, string];
+  path: string;
 }
 
 export interface PatchLayout {
@@ -67,10 +122,11 @@ export interface GroveLayout {
   sprouts: SproutLayout[];
   meadow: PatchLayout | null;
   fog: PatchLayout | null;
+  sharedVines: SharedVineLayout[];
 }
 
-const GROUND_Y = 372;
-const HEIGHT = 452;
+const GROUND_Y = 432;
+const HEIGHT = 512;
 const EDGE_PADDING = 28;
 const GAP = 14;
 const DORMANT_AFTER_DAYS = 3;
@@ -88,7 +144,17 @@ const BRANCH_LABEL_HEIGHT = 16;
 const crownRadiusFor = (leafCount: number) => clamp(64 + 7 * leafCount, 80, 135);
 const fanFor = (leafCount: number) => clamp(50 + 13 * leafCount, 70, 165);
 
+const LOW_CONFIDENCE = 0.6;
+const STONE_WIDTH = 28;
+const GROUND_ITEM_GAP = 9;
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+/** Fog density is proportional to (1 - confidence) (SPEC §9.1). */
+export const fogOpacityFor = (confidence: number) =>
+  Math.round(clamp((1 - confidence) * 0.6, 0.08, 0.55) * 100) / 100;
+
+const mushroomRadius = (recurrence: number) => 7 + 2 * clamp(recurrence, 1, 6);
 const round = (value: number) => Math.round(value * 10) / 10;
 
 function polar(origin: Point, angleDeg: number, radius: number): Point {
@@ -110,8 +176,11 @@ type HierarchyDatum =
 function layoutTree(
   tree: TreeData,
   x: number,
+  halfWidth: number,
+  ground: GroundPlan,
   leafLength: (dwell: number) => number,
-  trunkWidth: (minutes: number) => number
+  width: number,
+  fireflyTexts: Array<{ id: string; text: string }>
 ): TreeLayout {
   const tabsByRef = new Map(tree.tabs.map((tab) => [tab.tab_ref, tab]));
   const leafCount = tree.tabs.length;
@@ -119,7 +188,6 @@ function layoutTree(
   // Bigger trees get a wider crown so their leaves do not collide.
   const crownRadius = crownRadiusFor(leafCount);
   const fan = fanFor(leafCount);
-  const width = trunkWidth(tree.attention_minutes);
   const trunkHeight = 110 + crownRadius * 0.45;
   const crown: Point = { x, y: GROUND_Y - trunkHeight };
 
@@ -131,7 +199,8 @@ function layoutTree(
         branch,
         children: branch.tab_refs
           .map((ref) => tabsByRef.get(ref))
-          .filter((tab): tab is GroveTab => tab !== undefined)
+          // A fallen tab lies on the ground instead of hanging on its branch.
+          .filter((tab): tab is GroveTab => tab !== undefined && !tab.fallen)
           .map((tab) => ({ kind: 'leaf' as const, tab })),
       })),
     },
@@ -202,11 +271,93 @@ function layoutTree(
     { ...polar(crown, -90 + fan / 3.2, crownRadius * 0.62), r: crownRadius * 0.56 },
   ].map((blob) => ({ cx: round(blob.x), cy: round(blob.y), r: round(blob.r) }));
 
+  const fallenLeaves: LeafLayout[] = ground.fallen.map(({ dx, tab, length }) => ({
+    tabRef: tab.tab_ref,
+    title: tab.title,
+    domain: tab.domain,
+    dwellMinutes: tab.dwell_minutes,
+    isOpen: tab.is_open,
+    x: round(x + dx),
+    y: GROUND_Y - 3,
+    angle: -6,
+    length,
+  }));
+
+  const leafAt = new Map<string, Point>();
+  for (const leaf of [...branches.flatMap((branch) => branch.leaves), ...fallenLeaves]) {
+    leafAt.set(leaf.tabRef, leaf);
+  }
+
+  const vines: VineLayout[] = tree.redundant_groups.flatMap((group, index) => {
+    const refs = [...new Set([...group.tab_refs, group.keep_ref])];
+    const points = refs
+      .map((ref) => leafAt.get(ref))
+      .filter((point): point is Point => point !== undefined)
+      .sort((a, b) => a.x - b.x);
+    if (points.length < 2) return [];
+    return [
+      {
+        id: `${tree.cluster_ref}:v${index + 1}`,
+        exact: group.is_exact_dup === true,
+        reason: group.reason,
+        tabRefs: refs,
+        path: vinePath(points, 12),
+      },
+    ];
+  });
+
+  // Hypotheses and fireflies float just above the crown, clear of the leaves.
+  const aboveCrown = crown.y - crownRadius * 1.04 - LEAF_LENGTH[1] - 18;
+  const hypotheses: HypothesisLayout[] = tree.hypotheses.map((hypothesis, index) => ({
+    id: hypothesis.id ?? `${tree.cluster_ref}:h${index + 1}`,
+    text: hypothesis.display_text ?? `Maybe: ${hypothesis.text}`,
+    confidence: hypothesis.confidence,
+    opacity: fogOpacityFor(hypothesis.confidence),
+    x: round(x - crownRadius * 0.45 - index * 46),
+    y: round(aboveCrown),
+  }));
+
+  const fireflies: FireflyLayout[] = fireflyTexts.map((firefly, index) => {
+    const at = { x: round(x + crownRadius * 0.5 + index * 30), y: round(aboveCrown - 4) };
+    return {
+      ...firefly,
+      ...at,
+      // The trail drifts up and away, towards an older grove off the canvas.
+      trail: `M${at.x},${at.y}Q${at.x + 18},${at.y - 2} ${at.x + 34},${at.y - 14}`,
+    };
+  });
+
+  const fogged = tree.fogged === true || tree.goal.confidence < LOW_CONFIDENCE;
+
   return {
     id: tree.cluster_ref,
     name: tree.project.name,
     x,
-    halfWidth: treeHalfWidth(tree),
+    halfWidth,
+    mushrooms: ground.mushrooms.map(({ dx, question, capRadius }) => ({
+      id: question.id,
+      text: question.display_text ?? question.question,
+      resolved: question.status === 'resolved',
+      recurrence: question.recurrence_count ?? 1,
+      capRadius,
+      x: round(x + dx),
+      y: GROUND_Y,
+    })),
+    stones: ground.stones.map(({ dx, decision }) => ({
+      id: decision.id,
+      text: decision.display_text ?? decision.text,
+      kind:
+        decision.stone_kind ??
+        (decision.provenance === 'stated' || decision.provenance === 'sourced' ? 'carved' : 'mossy'),
+      x: round(x + dx),
+      y: GROUND_Y,
+    })),
+    fallenLeaves,
+    vines,
+    hypotheses,
+    fireflies,
+    fogOpacity: fogged ? fogOpacityFor(tree.goal.confidence) : 0,
+    goalConfidence: tree.goal.confidence,
     crown: { x: round(crown.x), y: round(crown.y) },
     attentionMinutes: tree.attention_minutes,
     daysSinceActive: tree.days_since_active ?? null,
@@ -237,12 +388,80 @@ function separateLabels(branches: BranchLayout[]): void {
   }
 }
 
-function treeHalfWidth(tree: TreeData): number {
+interface GroundPlan {
+  /** Offsets from the trunk centre. */
+  mushrooms: Array<{ dx: number; question: TreeData['unresolved_questions'][number]; capRadius: number }>;
+  stones: Array<{ dx: number; decision: TreeData['decisions'][number] }>;
+  fallen: Array<{ dx: number; tab: GroveTab; length: number }>;
+  extent: number;
+}
+
+/**
+ * Everything standing or lying at the base of a tree: questions to the left of
+ * the trunk, decisions to the right, stale tabs beyond them under their branch.
+ */
+function planGround(
+  tree: TreeData,
+  trunkWidth: number,
+  leafLength: (dwell: number) => number
+): GroundPlan {
+  let left = trunkWidth / 2 + 14;
+  let right = trunkWidth / 2 + 14;
+
+  const mushrooms = tree.unresolved_questions.map((question) => {
+    const capRadius = mushroomRadius(question.recurrence_count ?? 1);
+    const dx = -(left + capRadius);
+    left += capRadius * 2 + GROUND_ITEM_GAP;
+    return { dx: round(dx), question, capRadius };
+  });
+
+  const stones = tree.decisions.map((decision) => {
+    const dx = right + STONE_WIDTH / 2;
+    right += STONE_WIDTH + GROUND_ITEM_GAP;
+    return { dx: round(dx), decision };
+  });
+
+  const tabsByRef = new Map(tree.tabs.map((tab) => [tab.tab_ref, tab]));
+  const fallen: GroundPlan['fallen'] = [];
+  tree.branches.forEach((branch, index) => {
+    const onLeft = index < tree.branches.length / 2;
+    for (const ref of branch.tab_refs) {
+      const tab = tabsByRef.get(ref);
+      if (!tab?.fallen) continue;
+      const length = round(leafLength(tab.dwell_minutes));
+      if (onLeft) {
+        fallen.push({ dx: round(-(left + length)), tab, length });
+        left += length + GROUND_ITEM_GAP;
+      } else {
+        fallen.push({ dx: round(right), tab, length });
+        right += length + GROUND_ITEM_GAP;
+      }
+    }
+  });
+
+  return { mushrooms, stones, fallen, extent: Math.max(left, right) };
+}
+
+function treeHalfWidth(tree: TreeData, ground: GroundPlan): number {
   const leafCount = tree.tabs.length;
   const fanHalf = ((fanFor(leafCount) / 2) * Math.PI) / 180;
   const crownExtent = crownRadiusFor(leafCount) * 1.04 * Math.sin(fanHalf) + LEAF_LENGTH[1];
   const labelExtent = (tree.project.name.length * NAME_CHAR_WIDTH) / 2;
-  return round(Math.max(crownExtent, labelExtent) + 6);
+  return round(Math.max(crownExtent, labelExtent, ground.extent) + 6);
+}
+
+/** A loose curve through the given points, sagging between each pair. */
+function vinePath(points: Point[], sag: number): string {
+  const [first, ...rest] = points;
+  let path = `M${round(first.x)},${round(first.y)}`;
+  let previous = first;
+  for (const point of rest) {
+    const midX = (previous.x + point.x) / 2;
+    const midY = (previous.y + point.y) / 2 + sag;
+    path += `Q${round(midX)},${round(midY)} ${round(point.x)},${round(point.y)}`;
+    previous = point;
+  }
+  return path;
 }
 
 function patchHalfWidth(label: string, tabCount: number): number {
@@ -323,9 +542,36 @@ export function computeGroveLayout(grove: GroveResponse): GroveLayout {
     };
   });
 
-  const trees = grove.trees.map((tree) =>
-    layoutTree(tree, place(treeHalfWidth(tree)), leafLength, trunkWidth)
-  );
+  const trees = grove.trees.map((tree) => {
+    const width = trunkWidth(tree.attention_minutes);
+    const ground = planGround(tree, width, leafLength);
+    const halfWidth = treeHalfWidth(tree, ground);
+    const fireflies = (grove.past_connections ?? [])
+      .filter((connection) => connection.tree_cluster_ref === tree.cluster_ref)
+      .map((connection) => ({ id: connection.past_project_id, text: connection.summary }));
+    return layoutTree(tree, place(halfWidth), halfWidth, ground, leafLength, width, fireflies);
+  });
+
+  // A tab that serves two goals has a leaf on each tree; a faint vine joins them.
+  const sharedVines: SharedVineLayout[] = [];
+  const seen = new Map<string, { treeId: string; leaf: LeafLayout }>();
+  for (const tree of trees) {
+    for (const leaf of [...tree.branches.flatMap((branch) => branch.leaves), ...tree.fallenLeaves]) {
+      const other = seen.get(leaf.tabRef);
+      if (other && other.treeId !== tree.id) {
+        const peak = Math.min(other.leaf.y, leaf.y) - 46;
+        sharedVines.push({
+          tabRef: leaf.tabRef,
+          title: leaf.title,
+          treeIds: [other.treeId, tree.id],
+          path:
+            `M${other.leaf.x},${other.leaf.y}` +
+            `Q${round((other.leaf.x + leaf.x) / 2)},${round(peak)} ${leaf.x},${leaf.y}`,
+        });
+      }
+      seen.set(leaf.tabRef, { treeId: tree.id, leaf });
+    }
+  }
 
   let meadow: PatchLayout | null = null;
   if (grove.meadow.tabs.length > 0) {
@@ -354,5 +600,6 @@ export function computeGroveLayout(grove: GroveResponse): GroveLayout {
     sprouts,
     meadow,
     fog,
+    sharedVines,
   };
 }

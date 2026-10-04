@@ -13,6 +13,18 @@ export const PALETTE = {
   meadowLeaf: '#a3c293', // moss-light
   sproutLeaf: '#9bc4a5', // forest-300
   stem: '#4c875b', // forest-500
+  mushroomCap: '#f5c26b', // amberCanopy-light
+  mushroomStem: '#efeae4', // bark-100
+  flowerPetal: '#efeae4', // bark-100
+  flowerCenter: '#ffd54f', // firefly
+  stone: '#78909c', // stoneGray
+  stoneDark: '#455a64', // stoneGray-dark
+  stoneLight: '#cfd8dc', // stoneGray-light
+  moss: '#729861', // moss
+  vine: '#a3c293', // moss-light
+  fallenLeaf: '#a8937e', // bark-400
+  firefly: '#ffd54f', // firefly
+  fireflyGlow: '#fff7a0', // firefly-glow
   fog: 'rgb(210, 225, 218)', // fog
   fogLeaf: '#78909c', // stoneGray
   text: '#f2f8f4', // forest-50

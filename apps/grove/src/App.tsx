@@ -64,6 +64,7 @@ export const App: React.FC = () => {
         <CurrentGrove
           grove={grove}
           onShowEvidence={(claim, tabs) => setEvidence({ claim, tabs })}
+          onHideEvidence={closeEvidence}
         />
       ) : (
         <ScreenPlaceholder description={navItemFor(activeScreen).description}>
