@@ -20,6 +20,40 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - The retention and "no human reads user data" lines depend on the platform configuration; P should confirm before a Web Store submission.
 
+## [2026-10-03] — Lane S-11 Ask Memory and pruning (S)
+
+### Added
+- `apps/grove/src/screens/AskMemory.tsx`: the answer to "Have I researched this before?". A match is a card with a firefly: "Yes, you researched this before", the project, the day and time spent ("March 12 · 1 h 40 m"), what was compared, the conclusion with its provenance pill, and "Open grove" (resumes the match's saved context). No match shows the server's "No related research found". The screen has its own question field as well as the top-bar box.
+- `apps/grove/src/components/PruneDialog.tsx`: prune suggestions for the tabs open now (`GET_SNAPSHOT`, then `POST /api/tabs/prune-suggestions`). Each suggestion shows its kind in words, its reason, its tabs and the source being kept, with a checkbox pre-set from `default_selected`. Actions come from the response:
+  - Keep all: closes the dialog, sends nothing.
+  - Close selected: `CLOSE_TABS` for the selected suggestions' tabs, never the kept source.
+  - Save as references: `GET_URLS`, then `save-context` with `kind: "references"` per project, then `CLOSE_TABS` for the saved tabs.
+  - Prune branch: asks first, naming the branches and the number of tabs, then `CLOSE_TABS` for every tab on those branches.
+- `apps/grove/src/lib/prune.ts`: `placeTabs`, `tabsToClose`, `branchesToPrune`, `referenceSets`, `markClosed`. `FireflyIcon` in `components/icons.tsx`.
+- "Review tabs to prune" in the Current Grove bar; clicking a vine opens the same dialog; a firefly's caption has "Open that grove".
+
+### Changed
+- Memory and prune types and adapter realigned to R's `contracts/memory-search.example.json` and `contracts/prune.example.json` (`found` / `matches` / `conclusion`; `default_selected`, `actions`, `note`; the prune request sends `tab_refs`). A failed search or failed suggestions call is reported, not replaced by sample data.
+- Fireflies keep `past_date` and `saved_context_id` from the grove contract.
+- The stand-in can resume a listed context it holds no card for (the March 12 one): it opens with its totals and the line "No summary or tabs were saved with this context."
+- Closed tabs stay in the grove as leaves that are no longer open.
+
+### Removed
+- S-1 memory and prune mocks and their response shapes (`results[]`, `summary`), which did not match the contracts.
+
+### Tests
+- `src/__tests__/memoryPrune.test.tsx` (34): adapter stand-in and live requests against the contracts, and that failures invent nothing; Ask Memory card content, open grove and its failure, the honest not-found answer, its own field, and the top-bar flow into a pinned resume card; prune helpers (tab places, tabs to close, branches, reference sets equal to the contract's `save_references` tabs, tabs with no project, `markClosed`); the dialog's content, pre-selection, that opening / selecting / Keep all / Escape send no `CLOSE_TABS`, Close selected, disabled actions with nothing selected, Save as references order and result, a tab with no goal left open, Prune branch confirm and cancel, a bridge failure, hostile text; in live mode: the prune request body, the references save body before closing, nothing closed when the save fails, and suggestions unavailable; opening the dialog from the grove bar and from a vine; the firefly's "Open that grove".
+- Updated 3 tests for the removed shapes and the Ask Memory screen.
+
+### Verification
+- `npm test`: 17 files, 356 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): the prune dialog listed the four contract suggestions with two pre-selected and "3 tabs selected"; asking "session storage" showed the Backend Scaling card.
+
+### Notes
+- "Prune branch" is read as: close every tab on the branches the selected suggestions sit on, including the source a suggestion would keep. It always asks first. The contract lists the action but does not define it.
+- A tab on no tree (meadow, fog, sprout) cannot be saved as a reference, because `save-context` is per project; it is left open and the message says so.
+- Clicking a vine opens the full list of suggestions rather than only that vine's.
+- BUILD_TASKS.md: S-11 row ticked only.
 ## [2026-10-04] — D-9 Work Context capture (D)
 
 ### Added
