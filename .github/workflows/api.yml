@@ -30,9 +30,25 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --frozen
       - run: uv run ruff check .
-      - name: Tests (P's contract and isolation tests, then R's engine tests)
+      - name: Tests without a database (fast gate; the database tests skip)
         env:
-          # Set DATABASE_URL as a repository secret to run the database tests; without it they skip.
+          DATABASE_URL: ""
+        run: uv run pytest tests app/engine/tests -m "not live" -q
+
+  # The database tests run against Tiger Cloud and take a while from a runner, so they run beside the
+  # fast gate instead of in front of the deploy. One workflow run at a time (see concurrency above).
+  database-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - name: Tests with the database
+        env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: uv run pytest tests app/engine/tests -m "not live" -q
 
