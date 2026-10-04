@@ -7,7 +7,7 @@ export const BUILTIN_DOMAINS = {
     'tdbank.com', 'schwab.com', 'fidelity.com', 'vanguard.com',
     'americanexpress.com', 'discover.com', 'ally.com', 'sofi.com',
     'usaa.com', 'navyfederal.org', 'paypal.com', 'venmo.com',
-    'cash.app', 'zellepay.com', 'stripe.com', 'wise.com',
+    'cash.app', 'zellepay.com', 'wise.com',
     'coinbase.com', 'robinhood.com',
   ],
   healthPortals: [
@@ -27,7 +27,7 @@ export const BUILTIN_DOMAINS = {
   ],
   identityProviders: [
     'accounts.google.com', 'login.microsoftonline.com', 'login.live.com', 'appleid.apple.com',
-    'idmsa.apple.com', 'okta.com', 'auth0.com', 'signin.aws.amazon.com',
+    'idmsa.apple.com', 'signin.aws.amazon.com',
     'login.gov', 'id.me', 'my.njit.edu', 'cas.njit.edu',
   ],
 } as const;

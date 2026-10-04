@@ -124,12 +124,12 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 ### Added
 
 - Central Hollow policy with suffix-matched built-in/user exclusions, decoded auth-path checks, incognito/non-HTTP guards, pause and text redaction; session-persisted distinct-tab counter, exposed as `hollowCount()` in the worker console.
-- Starter domains: banking/payments `chase.com`, `paypal.com`; health `mychart.com`, `myhealth.va.gov`; personal email `mail.google.com`, `outlook.live.com`; password managers `1password.com`, `bitwarden.com`; identity providers `accounts.google.com`, `login.microsoftonline.com`, `appleid.apple.com`.
+- Built-in domains (suffix-matched, 69 in total): banking/payments 25, health portals 14, personal email 12, password managers 6, identity providers 10. `okta.com`, `auth0.com` and `stripe.com` are deliberately not listed, so their developer documentation stays visible; their login pages are still stopped by the auth-path rule.
 - Seventeen new Hollow tests cover all categories, suffix boundaries, auth paths, incognito, pause/expiry, redaction, current-URL transitions, URL storage exclusion, distinct counts/restart and safe events/logs.
 
 ### Changed
 
-- D-4b expanded the built-in domain lists to 70 domains: 26 banking/payments, 14 health portals, 12 personal email, 6 password managers and 12 identity providers.
+- D-4b expanded the built-in domain lists to 69 domains: 25 banking/payments, 14 health portals, 12 personal email, 6 password managers and 10 identity providers (after review `stripe.com`, `okta.com` and `auth0.com` were dropped because they would hide developer documentation).
 - Capture evaluates eligibility before storing URLs or emitting any event; excluded navigation removes previously stored URLs and clears dwell without emitting a BLUR about the excluded page. Returning to an allowed page resumes timing. Wake loads purge excluded saved URLs; orphan local URLs are also pruned when policies exclude them.
 - Event logging now prints only `{type, event_id}`; titles redact before 300-code-point truncation, and text URL/email/token redaction also covers search-query content.
 - With Deep's approval, replaced only the old truncation fixture's long token with spaced research text, retaining the exact 300-code-point assertion and every other assertion in that test.
@@ -137,7 +137,7 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 ### Verification
 
-- Node 20 PATH prefix: `pnpm test` passed 7 files / 62 tests, including all existing tests and 17 new Hollow tests; `pnpm typecheck` exited 0; `pnpm build` exited 0 (11 modules, 75ms). Existing mock tests used loopback access.
+- Node 20 PATH prefix: `pnpm test` passed 7 files / 68 tests, including all existing tests and 23 new Hollow tests; `pnpm typecheck` exited 0; `pnpm build` exited 0 (11 modules, 75ms). Existing mock tests used loopback access.
 - Fixed initialization read ordering without changing the existing lifecycle test that checks synchronous listener registration. No other existing test modified.
 - `git diff --check` passed; contracts, manifest, dependencies, preflight and mock API unchanged. No commit or push. Chrome not run.
 

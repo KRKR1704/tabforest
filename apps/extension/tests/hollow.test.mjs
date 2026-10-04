@@ -140,7 +140,7 @@ test('restart persists the distinct Hollow count without excluded URLs', async (
 
 test('D-4b full lists have approved counts and exclude every domain and www subdomain', async () => {
   expect(Object.fromEntries(Object.entries(BUILTIN_DOMAINS).map(([key, domains]) => [key, domains.length])))
-    .toEqual({ bankingAndPayments: 26, healthPortals: 14, personalEmail: 12, passwordManagers: 6, identityProviders: 12 });
+    .toEqual({ bankingAndPayments: 25, healthPortals: 14, personalEmail: 12, passwordManagers: 6, identityProviders: 10 });
   const hollow = new Hollow(fakeStorage().local); await hollow.refresh();
   for (const domain of Object.values(BUILTIN_DOMAINS).flat()) {
     expect(hollow.excluded({ url: `https://${domain}/` }), domain).toBe(true);
@@ -189,4 +189,14 @@ test('D-4b pause alone yields zero and leaving a private page removes its counte
   expect(hollow.observe(tab(1, { url: 'chrome://newtab/' }))).toBe(true);
   expect(hollow.hollowCount()).toBe(1);
   hollow.observe(tab(2)); expect(hollow.hollowCount()).toBe(0);
+});
+
+test('developer documentation of auth and payment vendors is not hidden, but their login pages still are', async () => {
+  const hollow = new Hollow(fakeStorage().local); await hollow.refresh();
+  for (const url of ['https://docs.stripe.com/payments', 'https://developer.okta.com/docs', 'https://auth0.com/docs/get-started']) {
+    expect(hollow.excluded({ url }), url).toBe(false);
+  }
+  for (const url of ['https://auth0.com/login', 'https://dashboard.stripe.com/login', 'https://example.okta.com/oauth/authorize']) {
+    expect(hollow.excluded({ url }), url).toBe(true);
+  }
 });
