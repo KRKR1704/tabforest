@@ -6,6 +6,17 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — README: where the landing page lives (S)
+
+### Changed
+- `README.md`: a "Try it" section with the landing page's address, `https://tabforest.azurewebsites.net/welcome/`, and a line in Development on how to run and build the page and how it is deployed (with the API, on every push to `main`, by lane P's PR #73).
+
+### Verification
+- The address answers 200 with the landing page's title, and its script loads, checked after the deploy run for PR #73 finished.
+
+### Notes
+- The rest of the README still describes the project as pre-implementation; rewriting it is task S-17.
+
 ## [2026-10-04] — Landing page hosted by the API at /welcome (P)
 
 ### Added
