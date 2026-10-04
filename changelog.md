@@ -6,6 +6,20 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — API: ALLOWED_EXTENSION_ORIGIN takes several extension IDs (D, for P)
+
+### Changed
+
+- `apps/api/app/config.py`, `main.py`: `ALLOWED_EXTENSION_ORIGIN` now accepts one or more `chrome-extension://<32 letters a-p>` origins separated by commas (spaces and a trailing slash are ignored, duplicates collapse); CORS allows exactly that list. One value works as before. The development extension ID (team test build) and the Chrome Web Store ID differ, so the API has to allow both. A malformed item stops startup with a clear message.
+
+### Tests
+
+- `tests/test_extension_origins.py` (8): one origin as before; two origins both get the CORS header and a third gets none; duplicates; five malformed values refused. Suite 473 passed, ruff clean.
+
+### Notes
+
+- Done by lane D at the owner's request: it touches P's files, so P should read the diff. After this is deployed, set `ALLOWED_EXTENSION_ORIGIN` in Azure to both IDs, comma-separated, with no spaces; setting two IDs before this version is live would stop the API from starting.
+
 ## [2026-10-04] — Landing page: "Try a change" buttons on the demo (S)
 
 ### Added

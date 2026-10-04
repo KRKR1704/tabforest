@@ -119,7 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, rate_limited)
 
     allowed_headers = ["Authorization", "Content-Type"] + (["X-Dev-User"] if settings.auth_mode == "dev" else [])
-    app.add_middleware(CORSMiddleware, allow_origins=[settings.allowed_extension_origin],
+    app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_extension_origins,
                        allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=allowed_headers,
                        max_age=600)
 
