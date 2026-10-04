@@ -44,3 +44,6 @@ cd ../extension && pnpm build:with-grove        # vite build, then copies the Gr
 - The email login needs the API to run with `FALLBACK_LOGIN=true` and an account in `FALLBACK_ACCOUNTS`; the deployed API answers 404 for it while the flag is off.
 - Microsoft sign-in uses client ID `84bf8d79-85c2-463d-a8eb-c0a4d22bdb24` (public) and the redirect URI `https://<extension id>.chromiumapp.org/`, which must be registered for the app. Override with `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_TENANT`, `VITE_ENTRA_SCOPE` at build time.
 
+## Work Context (D-9)
+
+Right-click a page (or selected text) and choose **Add page to Work Context**. The icon shows ✓ when it worked and ! when the page is private, paused or cannot be read. Items stay on this device in `chrome.storage.local` (`tf_work_items`, newest 20, 12,000 characters each) and the Grove reads them with `GET_WORK_ITEMS`; `CLEAR_WORK_ITEMS` removes them. The page text is read only after the click, through `activeTab`, and never includes form fields, editable regions, scripts or hidden elements.

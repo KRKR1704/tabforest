@@ -35,7 +35,9 @@ export function fakeChrome(initialTabs = [], initialWindow = { id: 1, focused: t
     identity: { getRedirectURL: () => 'https://test.chromiumapp.org/', launchWebAuthFlow: vi.fn() },
     idle: { onStateChanged: event(), setDetectionInterval: vi.fn(), queryState: vi.fn(async () => 'active') },
     runtime: { id: 'test', onMessage: event(), onInstalled: event(), onStartup: event(), getURL: path => `chrome-extension://test/${path}` },
-    action: { onClicked: event() },
+    action: { onClicked: event(), setBadgeText: vi.fn(async () => {}), setBadgeBackgroundColor: vi.fn(async () => {}), setTitle: vi.fn(async () => {}) },
+    contextMenus: { onClicked: event(), create: vi.fn() },
+    scripting: { executeScript: vi.fn(async () => []) },
   };
   return { api, tabs };
 }

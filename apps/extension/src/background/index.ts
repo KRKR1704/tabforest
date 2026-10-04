@@ -4,6 +4,7 @@ import { EventQueue, QUEUE_KEY } from './queue';
 import { EventSync, API_BASE, SYNC_KEY } from './sync';
 import { AuthStore } from './auth';
 import { createAuthService } from './signin';
+import { createWorkContext } from './work-context';
 import { registerBridge } from './bridge';
 
 const queue = new EventQueue(chrome.storage.local);
@@ -11,6 +12,8 @@ const auth = createAuthService({
   api: chrome, store: new AuthStore(chrome.storage.session),
   fetchFn: (input, init) => fetch(input, init), apiBase: API_BASE,
 });
+const workContext = createWorkContext({ api: chrome });
+workContext.register();
 const sync = new EventSync(queue, chrome.storage.local, { token: () => auth.token() });
 
 chrome.action.onClicked.addListener(() => {
@@ -29,6 +32,7 @@ registerBridge(chrome, {
   sendPreview: () => sync.sendPreview(),
   wipeLocal: () => sync.reset(() => capture.reset()),
   auth,
+  workItems: workContext,
   // Signing out clears the token and everything waiting to be sent; capture keeps running locally.
   signOut: async () => {
     await auth.signOut();
@@ -44,4 +48,5 @@ Object.assign(globalThis, {
   resendLastBatch: () => sync.resendLastBatch(),
   sendPreview: () => sync.sendPreview(),
   signIn: () => auth.signIn(),
+  addToWorkContext: (selectionText?: string) => workContext.addActiveTab(selectionText),
 });

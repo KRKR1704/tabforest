@@ -40,6 +40,25 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - A tab on no tree (meadow, fog, sprout) cannot be saved as a reference, because `save-context` is per project; it is left open and the message says so.
 - Clicking a vine opens the full list of suggestions rather than only that vine's.
 - BUILD_TASKS.md: S-11 row ticked only.
+## [2026-10-04] — D-9 Work Context capture (D)
+
+### Added
+
+- `apps/extension/src/background/work-context.ts`: the right-click menu item "Add page to Work Context" (on a page or a selection). It reads only what the user hands over: the selected text, or the visible text of the page (an in-page function that skips form fields, editable regions, scripts, styles, hidden elements and prefers `main`/`article`). Nothing is read in the background.
+- The Hollow runs first: private, paused, incognito and non-web pages are refused before anything is read. A page that refuses script injection (Chrome Web Store, PDFs, built-in pages) is refused kindly. Feedback is a ✓ or ! badge on the toolbar icon for 3.5 seconds, with a tooltip.
+- Items: title (redacted, 300 characters), URL without query or fragment, text up to 12,000 characters, `source_type` (`selection` or `page_text`), `captured_at`. Same page again replaces the old item; the newest 20 are kept. Stored in `chrome.storage.local` on this device only.
+- Bridge: `GET_WORK_ITEMS` returns the stored items; `CLEAR_WORK_ITEMS` empties them. Worker console helper `addToWorkContext(selectionText?)`.
+- `tests/work-context.test.mjs`: 17 tests. The fake Chrome helper gained `action.setBadge*`, `contextMenus` and `scripting`.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (190 of 190), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo), 13 of 13: page text captured without any input, textarea, editable, hidden, script, style or option text; selection stored as typed; URL stripped; private host, empty page and `about:blank` refused with the ! badge; items only in local storage; clear works. Capture (hollow 13, open 6), bridge (15), sync (13) and sign-in (15) checks still pass.
+
+### Notes
+
+- Reading a page works through the `activeTab` permission, which Chrome grants when the user clicks the menu item. The worker console helper has no such click, so on real sites it is refused; use the menu.
+- Items are not sent to the server yet (D-10 decides what, if anything, is synced).
 ## [2026-10-03] — R-7 + R-8: inference, evidence validator, grove assembly, grow endpoints (R)
 
 ### Added

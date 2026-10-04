@@ -3,6 +3,7 @@ import { CaptureStateStore, type SnapshotItem } from './state';
 import { Hollow } from './hollow';
 import { httpUrl } from './url';
 import { AuthError } from './auth';
+import type { WorkContext } from './work-context';
 import { INTERNAL_AUTH_TYPES, type AuthService, type InternalAuthMessage } from './signin';
 
 type SnapshotData = { open_tabs: SnapshotItem[] };
@@ -12,6 +13,7 @@ export interface BridgeServices {
   wipeLocal?: () => Promise<void>;
   sendPreview: () => Promise<SendPreviewData>;
   auth?: AuthService;
+  workItems?: Pick<WorkContext, 'list' | 'clear'>;
   signOut?: () => Promise<void>;
 }
 const known = new Set<MessageType>([
@@ -61,7 +63,7 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         await services.signOut();
         return { ok: true, data: null };
       }
-      case 'CLEAR_WORK_ITEMS': return { ok: true, data: null };
+      case 'CLEAR_WORK_ITEMS': { await services.workItems?.clear(); return { ok: true, data: null }; }
       case 'WIPE_LOCAL': {
         if (!services.wipeLocal) return { ok: false, error: 'not_implemented' };
         await services.wipeLocal();
@@ -113,7 +115,7 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
       }
       case 'GET_AUTH_STATE': return { ok: true, data: services.auth ? await services.auth.state() : { signed_in: false } };
       case 'GET_TOKEN': return { ok: true, data: { token: services.auth ? await services.auth.token() : null } };
-      case 'GET_WORK_ITEMS': return { ok: true, data: { items: [] } };
+      case 'GET_WORK_ITEMS': return { ok: true, data: { items: services.workItems ? await services.workItems.list() : [] } };
       case 'GET_SEND_PREVIEW': return { ok: true, data: await services.sendPreview() };
       case 'GET_HOLLOW_COUNT': return { ok: true, data: { count: (await read()).hollow.hollowCount() } };
       case 'GET_SNAPSHOT': {
