@@ -3,6 +3,8 @@ import type { EvidenceRef, GroveResponse, GroveTab, TreeData } from '../types';
 import type { EvidenceClaim } from '../components/EvidenceDrawer';
 import { TreeDetailDrawer, type ActiveClaim } from '../components/TreeDetailDrawer';
 import { PruneDialog } from '../components/PruneDialog';
+import { TabsPanel, type TabHover } from '../components/TabsPanel';
+import { listTabs } from '../lib/tabList';
 import { hypothesisId } from '../lib/groveEdits';
 import { GroveCanvas, type GroveRoots } from '../viz/GroveCanvas';
 import type { LeafDrop } from '../viz/render';
@@ -76,6 +78,8 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
 }) => {
   const [view, setView] = useState<GroveView>('grove');
   const [pruning, setPruning] = useState(false);
+  const [tabsOpen, setTabsOpen] = useState(false);
+  const [hoveredTab, setHoveredTab] = useState<TabHover | null>(null);
   const [selection, setSelection] = useState<GroveSelection | null>(null);
   const [detailTreeId, setDetailTreeId] = useState<string | null>(null);
   const [activeClaim, setActiveClaim] = useState<ActiveClaim | null>(null);
@@ -105,6 +109,15 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
     setDetailTreeId(null);
     setActiveClaim(null);
   }, []);
+
+  // The hovered tab's copies on the same tree are lit along with it.
+  const tabHighlight = useMemo(() => {
+    if (!hoveredTab || !grove) return null;
+    const row = listTabs(grove)
+      .flatMap((group) => group.sections.flatMap((section) => section.rows))
+      .find((item) => item.tabRef === hoveredTab.tabRef && (!hoveredTab.treeId || item.treeId === hoveredTab.treeId));
+    return { ...hoveredTab, copyRefs: row?.duplicateRefs ?? [] };
+  }, [grove, hoveredTab]);
 
   const tabTotal = countGroveTabs(grove);
   if (!grove || (grove.trees.length === 0 && tabTotal === 0)) {
@@ -212,9 +225,24 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
             {option.label}
           </button>
         ))}
-        <button type="button" className={`ml-auto ${captionButton}`} onClick={() => setPruning(true)}>
-          Review tabs to prune
-        </button>
+        <span className="ml-auto flex items-center gap-2">
+          {view === 'grove' && (
+            <button
+              type="button"
+              className={captionButton}
+              aria-pressed={tabsOpen}
+              onClick={() => {
+                setTabsOpen(!tabsOpen);
+                setHoveredTab(null);
+              }}
+            >
+              {tabsOpen ? 'Hide tabs' : 'Show tabs'}
+            </button>
+          )}
+          <button type="button" className={captionButton} onClick={() => setPruning(true)}>
+            Review tabs to prune
+          </button>
+        </span>
       </div>
 
       {banner && (
@@ -244,6 +272,18 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
       <div className="min-h-0 flex-1">
         {view === 'grove' ? (
           <div className="flex h-full">
+            {tabsOpen && (
+              <TabsPanel
+                grove={grove}
+                hovered={hoveredTab}
+                onHover={setHoveredTab}
+                onOpenTab={actions.openTab}
+                onClose={() => {
+                  setTabsOpen(false);
+                  setHoveredTab(null);
+                }}
+              />
+            )}
             <div className="relative min-w-0 flex-1">
               <GroveCanvas
                 grove={grove}
@@ -253,6 +293,8 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
                 roots={roots}
                 focusTreeId={detailTreeId}
                 growKey={growSeq}
+                highlight={tabsOpen ? tabHighlight : null}
+                onHoverLeaf={tabsOpen ? setHoveredTab : undefined}
               />
 
               {(caption || pendingNewTree || actions.notice) && (
