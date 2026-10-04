@@ -15,10 +15,9 @@ import groveContract from '@contracts/grove.example.json';
 import snapshotContract from '@contracts/snapshot.example.json';
 import { indexTabs, normalizeGrove, type WireGrove } from '../adapters/groveContract';
 
-// The 28 demo tabs from the contract, in this app's snapshot shape.
+// The 28 demo tabs from the contract, as GET_SNAPSHOT returns them.
 export const mockSnapshot: SnapshotPayload = {
-  captured_at: groveContract.generated_at,
-  tabs: snapshotContract.open_tabs,
+  open_tabs: snapshotContract.open_tabs,
 };
 
 // The grove mock is the real contract example, read through the same adapter

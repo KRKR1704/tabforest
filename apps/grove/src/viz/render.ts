@@ -194,6 +194,7 @@ function plural(count: number, noun: string): string {
 }
 
 function treeMeta(tree: TreeLayout): string {
+  if (tree.pending) return `listening… · ${plural(tree.leafCount, 'tab')}`;
   const parts = [`${Math.round(tree.attentionMinutes)} min`, plural(tree.leafCount, 'tab')];
   // Dormancy is also written out so it never depends on canopy color alone.
   if (tree.dormant) {
@@ -379,7 +380,8 @@ function drawTree(
     .append('g')
     .attr('data-kind', 'tree')
     .attr('data-tree-id', tree.id)
-    .attr('data-canopy', tree.dormant ? 'amber' : 'green');
+    .attr('data-canopy', tree.dormant ? 'amber' : 'green')
+    .attr('data-pending', tree.pending ? 'true' : null);
   group.append('title').text(`${tree.name} · ${treeMeta(tree)}`);
   // Canopy, trunk and name select the tree; everything drawn below stops the click first.
   selectable(group, onSelect, 'tree', tree.id, tree.id);
@@ -430,7 +432,9 @@ function drawTree(
       .attr('data-kind', 'branch')
       .attr('data-branch-ref', branch.ref)
       .attr('data-status', branch.status);
-    branchGroup.append('title').text(`${branch.label} · ${plural(branch.leaves.length, 'tab')}`);
+    branchGroup
+      .append('title')
+      .text(`${branch.label || 'Path'} · ${plural(branch.leaves.length, 'tab')}`);
     selectable(branchGroup, onSelect, 'branch', branch.ref, tree.id);
 
     branchGroup

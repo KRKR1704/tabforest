@@ -55,6 +55,8 @@ export interface TreeLayout {
   /** Mist over the whole tree; 0 when the goal is confident enough to show clearly. */
   fogOpacity: number;
   goalConfidence: number;
+  /** Still waiting for its AI result. */
+  pending: boolean;
 }
 
 /** An unresolved question at the base of its tree; a resolved one blooms into a flower. */
@@ -350,7 +352,8 @@ function layoutTree(
     };
   });
 
-  const fogged = tree.fogged === true || tree.goal.confidence < LOW_CONFIDENCE;
+  // A tree that is still listening has no goal yet, which is not the same as an unsure one.
+  const fogged = !tree.pending && (tree.fogged === true || tree.goal.confidence < LOW_CONFIDENCE);
 
   return {
     id: tree.cluster_ref,
@@ -381,6 +384,7 @@ function layoutTree(
     fireflies,
     fogOpacity: fogged ? fogOpacityFor(tree.goal.confidence) : 0,
     goalConfidence: tree.goal.confidence,
+    pending: tree.pending === true,
     crown: { x: round(crown.x), y: round(crown.y) },
     attentionMinutes: tree.attention_minutes,
     daysSinceActive: tree.days_since_active ?? null,

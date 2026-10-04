@@ -154,6 +154,8 @@ export interface TreeData {
   shared_tab_refs?: string[];
   /** Groups of rephrased searches; query evidence points at one of these. */
   query_families?: QueryFamily[];
+  /** Clustered, but its AI result has not arrived yet: drawn as "listening". */
+  pending?: boolean;
 }
 
 export interface QueryFamily {
@@ -215,21 +217,29 @@ export interface GroveResponse {
 export type StreamMessage =
   | {
       type: 'clusters';
+      run_id?: string;
+      hollow_count?: number;
       clusters: Array<{
         cluster_ref: string;
         project_name: string;
         tab_refs: string[];
+        /** The cluster's tabs, named from the snapshot. */
+        tabs?: GroveTab[];
       }>;
       sprouts?: Array<{
         sprout_ref: string;
         label: string;
         tab_count: number;
+        tabs?: SproutData['tabs'];
       }>;
       meadow_tab_refs?: string[];
+      meadow?: MeadowData;
+      fog?: FogTab[];
     }
   | ({ type: 'tree' } & TreeData)
   | {
       type: 'done';
       run_id: string;
       degraded: boolean;
+      past_connections?: PastConnection[];
     };

@@ -8,6 +8,7 @@ import { EvidenceDrawer, type EvidenceClaim } from './components/EvidenceDrawer'
 import { CurrentGrove } from './screens/CurrentGrove';
 import { ScreenPlaceholder } from './screens/ScreenPlaceholder';
 import { countOpenQuestions } from './lib/grove';
+import { runGrow } from './grow/controller';
 
 // The S-1 contract inspector stays reachable in development at #inspector.
 // The DEV guard keeps it out of the production bundle.
@@ -16,7 +17,12 @@ const ContractInspector = import.meta.env.DEV
   : null;
 const showInspector = window.location.hash === '#inspector';
 
-export const App: React.FC = () => {
+interface AppProps {
+  /** Grow a grove from the open tabs as soon as the page opens. */
+  growOnOpen?: boolean;
+}
+
+export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
   const grove = useGroveStore((state) => state.grove);
   const activeScreen = useGroveStore((state) => state.activeScreen);
   const setActiveScreen = useGroveStore((state) => state.setActiveScreen);
@@ -30,6 +36,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     initializeBridge();
   }, [initializeBridge]);
+
+  useEffect(() => {
+    if (growOnOpen && !showInspector) void runGrow();
+  }, [growOnOpen]);
 
   const closeEvidence = useCallback(() => setEvidence(null), []);
 
@@ -51,6 +61,11 @@ export const App: React.FC = () => {
       hollowCount={hollowCount}
       openQuestionCount={countOpenQuestions(grove)}
       isGrowing={isStreaming}
+      onGrow={() => {
+        setEvidence(null);
+        setActiveScreen('grove');
+        void runGrow();
+      }}
       onAskMemory={(query) => {
         setEvidence(null);
         setMemoryQuery(query);

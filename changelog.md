@@ -6,6 +6,39 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-6 Grow orchestration (S)
+
+### Added
+- `apps/grove/src/grow/controller.ts`: `runGrow` owns the whole flow. It sends `GET_SNAPSHOT`, `GET_HOLLOW_COUNT` and `GET_TOKEN` over the bridge in that order, posts the snapshot to `POST /api/grove/grow?stream=1` with the bearer token, feeds each NDJSON line to the store, and saves the finished grove. A second grow while one is running is ignored.
+- Listening trees: on the `clusters` line every cluster is planted at once as a pending tree (deterministic name, its tabs, "listening…" label, shimmer); each `tree` line replaces its own cluster in place, so the forest does not reshuffle; `done` sets `run_id`, `degraded` and the fireflies.
+- `apps/grove/src/lib/lastGrove.ts`: the last finished grove in `localStorage` (`tabforest:last-grove`). The page opens on it, and it is shown with a notice when the API is down.
+- `apps/grove/src/adapters/grove.ts`: `streamGrow` (throws on failure), `readNdjson` (lines split across chunks), `streamStandIn` (replays `contracts/grove.stream.example.ndjson`).
+- Banner on Current Grove (`role="alert"`): the server's `banner_text` or "AI unavailable — showing groups only" for a degraded grove, or the offline notice.
+- `apps/grove/scripts/check-dist.mjs`, run at the end of `npm run build`: fails the build on an inline script, a remote script, a non-relative asset path, an inline event handler, or `eval` / `new Function` in the bundle.
+
+### Changed
+- Grow grove in the top bar now runs the flow; it is disabled and reads "Growing…" meanwhile. The page also grows on first open (`<App growOnOpen />` in `main.tsx`).
+- The store starts from the last saved grove (or empty) instead of the contract mock. An empty grove shows "Reading your open tabs…" while growing.
+- `SnapshotPayload` is now `{ open_tabs }` as in `contracts/snapshot.example.json` and `bridge.types.ts` (was `{ tabs, captured_at }`); the mock bridge and grow body follow.
+- Stream messages carry the contract's `run_id`, `hollow_count`, meadow, fog, sprout tabs and fireflies; loose tabs are named from the snapshot.
+
+### Fixed
+- `streamGrowGrove` called itself again when the live stream failed, which retried a dead API without end. A failure now replays the stand-in once.
+
+### Tests
+- `src/__tests__/grow.test.tsx` (23): bridge call order and a single `GET_TOKEN`; pending counts 4 → 3 → 2 → 1 → 0 with cluster order kept; final grove equals the contract grove; saved locally; token never stored; busy guard; no snapshot; live request (URL, method, body `{open_tabs}`, bearer header, no `user_id`) over a chunked response; API down with and without a saved grove (one attempt only); degraded stream; NDJSON chunking with multi-byte characters; pending trees on the canvas; grow on first open, from the button, and not unless asked; no Tree Detail for a listening tree; banner rules.
+- Updated 3 tests for the snapshot shape and the stream normalizer's new argument.
+
+### Verification
+- `npm test`: 12 files, 202 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual: served `dist/` with `python -m http.server`; on open the four trees appeared listening and filled one at a time over about 1.7 s, Grow grove re-enabled after `done`, the grove was saved to `localStorage`, `sessionStorage` stayed empty, no console errors.
+
+### Notes
+- When the API is down and nothing is saved, the contract sample grove is shown with the notice "Showing sample data, not your tabs", so it is never passed off as the user's own.
+- `check-dist` warns that `index.html` loads Lora and Inter from Google Fonts. The extension CSP allows it, but it needs network and makes a third-party request; bundling the fonts would need two new packages and is not done here.
+- The saved grove is not yet cleared by sign-out or "Delete all"; that belongs with `WIPE_LOCAL` in S-10.
+- The wow animation (S-12) is not part of this; trees currently appear with the listening shimmer only.
+- BUILD_TASKS.md: S-6 row ticked only.
 ## [2026-10-03] — R-5: calibrated clustering, sprouts, meadow/fog, pins, shared tabs (R)
 
 ### Added

@@ -123,7 +123,7 @@ describe('grove contract adapter (C3)', () => {
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as WireStreamMessage);
-    const messages = lines.map((line) => normalizeStreamMessage(line, wire.generated_at));
+    const messages = lines.map((line) => normalizeStreamMessage(line, index, wire.generated_at));
 
     expect(messages[0].type).toBe('clusters');
     expect(messages[messages.length - 1].type).toBe('done');
