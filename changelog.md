@@ -6,6 +6,22 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Grove: opening the page with fewer than two tabs no longer buries the stored grove (D)
+
+The #63 restore still showed "No grove yet" for a real account. Cause: the server stores every grow, including the empty one it returns for 0 or 1 tab, and `GET /api/grove` serves the newest non-degraded run, so each open of the page with few tabs replaced the user's real grove with an empty one.
+
+### Fixed
+
+- The grow that starts when the page opens (`runGrow({ auto: true })`) asks the server for nothing when fewer than two tabs are open. The Grow grove button still always grows.
+
+### Tests
+
+- One new test in `restoreOnOpen.test.tsx`: an automatic grow with one tab sends no request. Grove suite 490 of 490; typecheck clean.
+
+### Notes
+
+- Server side (R, `apps/api/app/engine/persist.py`, `LAST_GROVE_SQL`): the last-grove query should skip a stored grove with no trees (for example `AND jsonb_array_length(response->'trees') > 0`, falling back to the newest only when none has trees). Until then, an account whose newest run is empty shows an empty grove until it grows once with two or more tabs.
+
 ## [2026-10-04] — Live-check fixes: Timeline after a real session, flaky stats test (P)
 
 ### Fixed

@@ -65,6 +65,24 @@ describe('the last stored grove on open', () => {
     bridge.mockImplementation((await vi.importActual<typeof import('../adapters/bridge')>('../adapters/bridge')).sendBridgeMessage);
   });
 
+  it('on open, with one tab, does not ask the server to grow (it would store an empty grove over the real one)', async () => {
+    const calls: string[] = [];
+    bridge.mockImplementation(async (type: string) => {
+      calls.push(type);
+      if (type === 'GET_SNAPSHOT') {
+        return { ok: true, data: { open_tabs: [{ tab_ref: 'a', domain: 'x.com', title: 'x', opened_at: new Date().toISOString() }] } } as never;
+      }
+      return { ok: true, data: { count: 0, token: 't' } } as never;
+    });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    expect(await runGrow({ auto: true, standInDelayMs: 0 })).toBe('last-grove');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(useGroveStore.getState().isStreaming).toBe(false);
+    vi.unstubAllGlobals();
+    bridge.mockImplementation((await vi.importActual<typeof import('../adapters/bridge')>('../adapters/bridge')).sendBridgeMessage);
+  });
+
   it('opens the page with the stored grove before the new grow arrives', async () => {
     stored.mockResolvedValue(mockGroveResponse);
     render(<App growOnOpen />);
