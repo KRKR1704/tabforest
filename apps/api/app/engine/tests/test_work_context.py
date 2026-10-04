@@ -199,7 +199,12 @@ def test_refs_to_documents_that_do_not_exist_are_dropped() -> None:
 def test_inferred_with_two_documents_is_kept_and_confidence_is_capped_by_the_evidence() -> None:
     two = WcClaimOut(**claim("Sessions are undecided", None, D["vtt"], D["plan"], prov="inferred", conf=0.99))
     out = analyze(tampered(blockers=[two]))[0]["blockers"][0]
-    assert out["provenance"] == "inferred" and out["confidence"] == 0.75  # 0.35 + 0.15 x 2 + 0.10 x 1 document type
+    # the transcript and the migration plan are two document types: 0.35 + 0.15 x 2 + 0.10 x 2
+    assert out["provenance"] == "inferred" and out["confidence"] == 0.85
+    same_type = WcClaimOut(**claim("Sessions are undecided", None, D["jira"], D["pr"], prov="inferred", conf=0.99))  # ticket + PR
+    assert analyze(tampered(blockers=[same_type]))[0]["blockers"][0]["confidence"] == 0.85
+    one_type = WcClaimOut(**claim("Sessions are undecided", None, D["plan"], D["plan"], prov="inferred", conf=0.99))
+    assert analyze(tampered(blockers=[one_type]))[0]["blockers"][0]["provenance"] == "hypothesis"  # one document, one ref
 
 
 def test_the_model_cannot_name_an_owner_or_a_speaker_the_documents_never_mention() -> None:
@@ -543,3 +548,57 @@ def test_the_goal_quoted_without_its_markdown_is_still_sourced() -> None:
 def test_the_prompt_tells_the_model_what_to_leave_out() -> None:
     assert "renewals" in wc.SYSTEM_PROMPT and "another ticket" in wc.SYSTEM_PROMPT
     assert "\\u00a7" in wc.SYSTEM_PROMPT and "§" not in wc.SYSTEM_PROMPT
+
+
+# --- near-duplicate claims collapse to one (audit fix) -----------------------------------------------------
+
+LIVE_SOURCED = "End-to-end test against the Fabrikam tenant is blocked waiting for their test credentials."
+LIVE_TWIN = "Cannot run the end-to-end flow against the Fabrikam tenant without test credentials from the customer."
+PLAN_QUOTE = "waiting for their test credentials"
+
+
+def sourced_blocker(text=LIVE_SOURCED, refs=("pr", "plan")):
+    return WcClaimOut(**claim(text, PLAN_QUOTE, *[D[r] for r in refs]))
+
+
+def maybe_twin(text=LIVE_TWIN, refs=("plan", "vtt")):
+    return WcClaimOut(**claim(text, None, *[D[r] for r in refs], prov="hypothesis", conf=0.5))
+
+
+def test_a_sourced_claim_and_its_maybe_twin_become_one_claim_the_sourced_one() -> None:
+    from app.engine.carry import similar
+    assert not similar(LIVE_SOURCED, LIVE_TWIN)  # the live pair is below the plain bar (Jaccard 0.43): why the twin bar is lower
+    for order in ((sourced_blocker(), maybe_twin()), (maybe_twin(), sourced_blocker())):
+        out = analyze(tampered(blockers=list(order)))[0]["blockers"]
+        assert len(out) == 1 and out[0]["provenance"] == "sourced" and out[0]["quote"] == PLAN_QUOTE
+        assert out[0]["text"] == LIVE_SOURCED  # the higher provenance wins, whichever the model said first
+
+
+def test_the_collapsed_claim_keeps_the_place_of_the_first_and_the_downgrade_count_covers_both() -> None:
+    other = WcClaimOut(**claim("Staging app registration is missing", "Staging app registration", D["vtt"], D["pr"]))
+    response, numbers, _ = analyze(tampered(blockers=[maybe_twin(), other, sourced_blocker()]))
+    assert [b["text"] for b in response["blockers"]] == [LIVE_SOURCED, other.text]  # the twin's place, now sourced
+    assert numbers["downgraded"] == 1  # the Maybe twin was downgraded by the validator before it collapsed
+
+
+def test_claims_that_only_read_alike_are_not_merged() -> None:
+    # two sourced claims stand on their own quotes; a guess about different documents shares no evidence
+    second = WcClaimOut(**claim("Test credentials for the Fabrikam tenant were promised by Jordan", "Jordan promised", D["note"], D["pr"]))
+    assert len(analyze(tampered(blockers=[sourced_blocker(), second]))[0]["blockers"]) == 2
+    elsewhere = maybe_twin(refs=("note", "jira"))
+    assert len(analyze(tampered(blockers=[sourced_blocker(refs=("pr", "plan")), elsewhere]))[0]["blockers"]) == 2
+    two_guesses = [maybe_twin(), maybe_twin(text="Cannot run the end-to-end flow against Fabrikam without the test credentials")]
+    assert len(analyze(tampered(blockers=two_guesses))[0]["blockers"]) == 2  # same provenance: not a twin pair
+    sections = [WcClaimOut(**claim(f"Review migration doc section {n}", None, D["plan"], D["vtt"], prov="inferred", conf=0.7))
+                for n in (4, 5)]
+    assert len(analyze(tampered(next_actions=[WcActionOut(**s.model_dump(), unblocks_blocker=None) for s in sections]))[0]["next_actions"]) == 2
+
+
+def test_unblocks_follows_the_blocker_that_replaced_its_twin() -> None:
+    other = WcClaimOut(**claim("Staging app registration is missing", "Staging app registration", D["vtt"], D["pr"]))
+    action = scripted().next_actions[2].model_copy(update={"unblocks_blocker": 0})  # model index 0 = the Maybe twin
+    response = analyze(tampered(blockers=[maybe_twin(), other, sourced_blocker()], next_actions=[action]))[0]
+    assert response["next_actions"][0]["unblocks"] == response["blockers"][0]["id"]
+    to_other = scripted().next_actions[2].model_copy(update={"unblocks_blocker": 1})
+    response = analyze(tampered(blockers=[maybe_twin(), other, sourced_blocker()], next_actions=[to_other]))[0]
+    assert response["next_actions"][0]["unblocks"] == response["blockers"][1]["id"]

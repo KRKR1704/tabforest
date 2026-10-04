@@ -38,6 +38,7 @@ from slowapi import Limiter
 
 from . import db
 from .adapters.auth import get_user_id
+from .carry import similar
 from .aoai import AoaiNotConfiguredError, AzureOpenAIClient, ContentFilteredError, StructuredOutputError
 from .infer import embed_document
 from .persist import _j, budget_exceeded, usage_today
@@ -295,27 +296,67 @@ def _clean(text: str | None, limit: int) -> str:
     return re.sub(r"\s+", " ", text or "").strip()[:limit]
 
 
+_PROVENANCE_RANK = {"hypothesis": 0, "inferred": 1, "sourced": 2}
+Entry = tuple[int, Any, _Built]  # (index in the model's list, the model's claim, the validated claim)
+
+
+def _normalized(text: str) -> str:
+    return re.sub(r"\W+", " ", text.lower()).strip()
+
+
+# A "Maybe:" twin of a sourced claim reads like the same claim in other words but shares fewer terms than a
+# paraphrase would (the live blocker pair scores Jaccard 0.43), so the overlap bar is lower here; the second
+# signal is that both claims cite a common document.
+TWIN_JACCARD, TWIN_CONTAINMENT = 0.40, 0.60
+
+
+def same_claim(a: _Built, b: _Built) -> bool:
+    """The same claim twice: equal after normalising, or carry.similar on claims of DIFFERENT provenance that cite
+    a common document (a sourced claim and its inferred or "Maybe:" twin). Two sourced claims, or two guesses, that
+    merely read alike stay separate: each stands on its own quote."""
+    ca, cb = a.claim, b.claim
+    na, nb = _normalized(ca.text), _normalized(cb.text)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    if ca.provenance == cb.provenance:
+        return False
+    shared = {e["ref"] for e in ca.evidence if e["ref_kind"] == "doc"} & {e["ref"] for e in cb.evidence if e["ref_kind"] == "doc"}
+    return bool(shared) and similar(ca.text, cb.text, jaccard=TWIN_JACCARD, containment=TWIN_CONTAINMENT)
+
+
+def collapse(entries: Sequence[Entry]) -> tuple[list[Entry], dict[int, int]]:
+    """One claim per meaning. A sourced claim and its "Maybe:" twin (or any two wordings of one claim) become one:
+    the higher validated provenance wins, then the higher confidence, then the earlier one, and it keeps the earlier
+    one's place. Returns the kept entries and, for every model index, the position of the entry that now stands for it."""
+    kept: list[Entry] = []
+    where: dict[int, int] = {}
+    for entry in entries:
+        twin = next((i for i, k in enumerate(kept) if same_claim(entry[2], k[2])), None)
+        if twin is None:
+            where[entry[0]] = len(kept)
+            kept.append(entry)
+            continue
+        where[entry[0]] = twin
+        claim, old = entry[2].claim, kept[twin][2].claim
+        if (_PROVENANCE_RANK[claim.provenance], claim.confidence) > (_PROVENANCE_RANK[old.provenance], old.confidence):
+            kept[twin] = entry
+    return kept, where
+
+
 def assemble(docs: Sequence[Doc], extraction: Extraction, run_id: str) -> tuple[dict[str, Any], int]:
     """The WorkContextResponse as a dict, and how many claims the validator downgraded."""
     inf = extraction.inference
     ctx = ValidationContext(refs={d.ref: d.id for d in docs}, tab_types={}, notes={},
-                            documents=[d.text for d in docs], mode="work_context")
-    downgraded = 0
+                            documents=[d.text for d in docs], mode="work_context",
+                            doc_types={d.id: d.source_type for d in docs})
+    built_all: list[_Built] = []
 
     def check(kind: str, out: WcClaimOut) -> _Built:
-        nonlocal downgraded
         built = build_claim(kind, out, docs, ctx)
-        downgraded += built.claim.downgraded
+        built_all.append(built)
         return built
-
-    def unique(items: Sequence[Any], key) -> list[Any]:
-        seen, out = set(), []
-        for x in items:
-            k = re.sub(r"\W+", " ", key(x).lower()).strip()
-            if k and k not in seen:
-                seen.add(k)
-                out.append(x)
-        return out
 
     haystack = "\n".join(d.text for d in docs).casefold()
 
@@ -323,36 +364,48 @@ def assemble(docs: Sequence[Doc], extraction: Extraction, run_id: str) -> tuple[
         return bool(name) and name.casefold() in haystack
 
     goal = check("goal", inf.goal)
+
     decisions = []
-    for out in unique(inf.decisions, lambda d: d.text)[:LIMITS["decisions"]]:
-        b = check("decision", out)
+    kept, _ = collapse([(i, out, check("decision", out)) for i, out in enumerate(inf.decisions)])
+    for _, out, b in kept[:LIMITS["decisions"]]:
         named = _clean(out.speaker, 80)
         speaker = b.speaker or (named if in_documents(named) else "") or "Unknown"
         decisions.append(_item("dec", b, speaker=speaker))
-    blocker_outs = unique(inf.blockers, lambda x: x.text)[:LIMITS["blockers"]]
-    blockers = [_item("b", check("blocker", out)) for out in blocker_outs]
-    owners = []
-    for out in unique(inf.owners, lambda o: f"{o.person} {o.task}")[:LIMITS["owners"]]:
+
+    kept, blocker_at = collapse([(i, out, check("blocker", out)) for i, out in enumerate(inf.blockers)])
+    blockers = [_item("b", b) for _, _, b in kept[:LIMITS["blockers"]]]
+
+    owner_entries = []
+    for i, out in enumerate(inf.owners):
         person, task = _clean(out.person, 80), _clean(out.task, 200)
         if not person or not task or not in_documents(person):
             continue  # an owner must be someone the documents name
         b = check("action", out)
         if b.claim.provenance != "sourced":  # an owner is not a "next step": wording from the provenance only
             b.claim.display_text = display_text("hypothesis", b.claim.provenance, b.claim.text)
-        owners.append(_item("o", b, person=person, task=task))
+        owner_entries.append((i, out, b))
+    owners = []
+    kept, _ = collapse(owner_entries)
+    for _, out, b in kept[:LIMITS["owners"]]:
+        owners.append(_item("o", b, person=_clean(out.person, 80), task=_clean(out.task, 200)))
+
     questions = []
-    for out in unique(inf.open_questions, lambda q: q.text)[:LIMITS["open_questions"]]:
-        b = check("question", out)
+    kept, _ = collapse([(i, out, check("question", out)) for i, out in enumerate(inf.open_questions)])
+    for _, out, b in kept[:LIMITS["open_questions"]]:
         resolved = bool(out.answered and _clean(out.answer, 300) and b.claim.provenance == "sourced")
         questions.append(_item("q", b, status="resolved" if resolved else "open",
                                answer=_clean(out.answer, 300) if resolved else None, resolved_at=None,
                                recurrence=min(max(int(out.recurrence or 1), 1), 20)))
+
     actions = []
-    for rank, out in enumerate(unique(inf.next_actions, lambda a: a.text)[:LIMITS["next_actions"]], 1):
-        b = check("action", out)
-        index = out.unblocks_blocker
-        unblocks = blockers[index]["id"] if isinstance(index, int) and 0 <= index < len(blockers) else None
+    kept, _ = collapse([(i, out, check("action", out)) for i, out in enumerate(inf.next_actions)])
+    for rank, (_, out, b) in enumerate(kept[:LIMITS["next_actions"]], 1):
+        index = out.unblocks_blocker  # an index into the model's blockers; follow it to the blocker that stands for it
+        at = blocker_at.get(index) if isinstance(index, int) else None
+        unblocks = blockers[at]["id"] if at is not None and at < len(blockers) else None
         actions.append(_item("a", b, rank=rank, unblocks=unblocks))
+
+    downgraded = sum(1 for b in built_all if b.claim.downgraded)  # every checked claim, kept or collapsed
 
     project = _clean(inf.project_name, 60) or docs[0].title[:60]
     goal_item = _item("g", goal)

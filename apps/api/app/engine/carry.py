@@ -48,14 +48,15 @@ def claim_terms(text: str) -> frozenset[str]:
     return frozenset(out)
 
 
-def similar(a: str, b: str) -> bool:
-    """Same claim in different words: Jaccard >= 0.5 of the content terms, or one contains >= 75 % of the other."""
+def similar(a: str, b: str, *, jaccard: float = SIMILAR_JACCARD, containment: float = SIMILAR_CONTAINMENT) -> bool:
+    """Same claim in different words: Jaccard >= 0.5 of the content terms, or one contains >= 75 % of the other.
+    The thresholds can be lowered by a caller that has a second signal (Work Context: a shared document)."""
     ta, tb = claim_terms(a), claim_terms(b)
     if not ta or not tb:
         return False
     inter = len(ta & tb)
-    return (inter / len(ta | tb) >= SIMILAR_JACCARD
-            or (min(len(ta), len(tb)) >= SIMILAR_CONTAINMENT_MIN_TERMS and inter / min(len(ta), len(tb)) >= SIMILAR_CONTAINMENT))
+    return (inter / len(ta | tb) >= jaccard
+            or (min(len(ta), len(tb)) >= SIMILAR_CONTAINMENT_MIN_TERMS and inter / min(len(ta), len(tb)) >= containment))
 
 
 @dataclass
