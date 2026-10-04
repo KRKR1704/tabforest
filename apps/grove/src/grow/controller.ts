@@ -2,7 +2,7 @@
 // owns the whole flow: read the open tabs from the extension, send them to the
 // API, and let the forest fill in as the stream arrives.
 import { sendBridgeMessage } from '../adapters/bridge';
-import { streamGrow, streamStandIn } from '../adapters/grove';
+import { fetchStoredGrove, streamGrow, streamStandIn } from '../adapters/grove';
 import { indexTabs } from '../adapters/groveContract';
 import { isHeldOnStandIn } from '../adapters/live';
 import { loadLastGrove, saveLastGrove } from '../lib/lastGrove';
@@ -26,10 +26,26 @@ export const NOTICES = {
 } as const;
 
 let running = false;
+// Counts grows started, so a slow restore never replaces a grove that grew after it was asked for.
+let growsStarted = 0;
+
+/**
+ * Show the grove the server stored last, so the page is never empty on open while the user has history.
+ * Skipped when a grow has started or finished meanwhile. Returns whether it filled the page.
+ */
+export async function restoreStoredGrove(): Promise<boolean> {
+  const before = growsStarted;
+  const stored = await fetchStoredGrove();
+  if (!stored || growsStarted !== before || running) return false;
+  useGroveStore.getState().setGrove(stored);
+  saveLastGrove(stored);
+  return true;
+}
 
 export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
   if (running) return 'busy';
   running = true;
+  growsStarted += 1;
   const grove = useGroveStore.getState();
   grove.setGroveNotice(null);
   grove.setStreaming(true);
@@ -47,6 +63,10 @@ export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
     if (!snapshotReply.ok || !snapshot || !Array.isArray(snapshot.open_tabs)) {
       grove.setGroveNotice(NOTICES.noSnapshot);
       return 'no-snapshot';
+    }
+    if (snapshot.open_tabs.length === 0 && useGroveStore.getState().grove) {
+      // Nothing is open to grow from: keep showing the grove the user already has instead of an empty one.
+      return 'last-grove';
     }
 
     const { handleStreamMessage } = useGroveStore.getState();
