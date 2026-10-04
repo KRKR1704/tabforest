@@ -12,7 +12,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
@@ -99,6 +99,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CORSMiddleware, allow_origins=[settings.allowed_extension_origin],
                        allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=allowed_headers,
                        max_age=600)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = response.headers.get("Cache-Control", "no-store")
+        return response
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:

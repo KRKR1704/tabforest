@@ -1,0 +1,72 @@
+name: api
+
+# Pull requests: lint and test. Push to main: lint, test, migrate, deploy.
+# Only apps/api/tests runs here (never tests_local, which is not in the repo).
+
+on:
+  pull_request:
+    paths: ["apps/api/**", "db/**", "contracts/**", ".github/workflows/api.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/api/**", "db/**", "contracts/**", ".github/workflows/api.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - name: Tests (P's contract and isolation tests, then R's engine tests)
+        env:
+          # Set DATABASE_URL as a repository secret to run the database tests; without it they skip.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: uv run pytest tests app/engine/tests -m "not live" -q
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Apply migrations (idempotent)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: uv run --project apps/api python db/migrate.py
+      - name: Build the zip (app code and a pinned requirements.txt; no tests)
+        working-directory: apps/api
+        run: |
+          uv export --frozen --no-dev --no-hashes --no-emit-project -o requirements.txt
+          zip -qr ../../api.zip app requirements.txt .python-version -x "app/engine/tests/*" "*/__pycache__/*"
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: tabforest
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: api.zip
+      - name: Check the deployed API
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://tabforest.azurewebsites.net/health) && [ "$code" = 200 ] && exit 0
+            sleep 10
+          done
+          echo "health check failed"; exit 1
+      - name: The dev header alone must not authenticate
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Dev-User: 00000000-0000-4000-8000-000000000001" https://tabforest.azurewebsites.net/api/me)
+          [ "$code" = 401 ] || { echo "expected 401, got $code"; exit 1; }

@@ -359,3 +359,4 @@ async def refresh_attention(conn: asyncpg.Connection) -> None:
     """Materialize the story days in tab_attention_15m: rows inserted behind the aggregate's
     watermark only show up after a refresh (X17)."""
     await conn.execute("CALL refresh_continuous_aggregate('tab_attention_15m', '2026-10-02', '2026-10-05')")
+    await conn.execute("CALL refresh_continuous_aggregate('user_attention_daily', '2026-10-02', '2026-10-05')")

@@ -6,6 +6,29 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — P-12 to P-14: isolation suite, hardening, CI/CD (P)
+
+### Added
+- `tests/test_isolation.py` (5, committed): A is the demo story with a saved context, B a fresh user. B gets 404 and a problem body on A's session, timeline, save-context, resume and `DELETE /api/projects/{id}`, and on R's `PATCH /api/claims`, `POST /api/tabs/{tab_ref}/assign` and `POST /api/notes` for A's ids; A's row counts in ten tables are unchanged after every attempt. B's lists are empty. B sending A's exact batch stores its own 45 events and shares no session with A. A body with `user_id` is 422.
+- `Strict-Transport-Security` (one year, includeSubDomains), `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` on every response.
+- `Settings` refuses a remote `DATABASE_URL` without `sslmode=require` (or verify-ca / verify-full); localhost is exempt.
+- `.github/workflows/api.yml`: pull requests run ruff and `tests` + `app/engine/tests`; a push to `main` also applies migrations, builds the zip (code plus a pinned `requirements.txt`, no tests), deploys to App Service and checks `/health` and that `X-Dev-User` alone returns 401. Never references `tests_local/`.
+- `infrastructure/azure/deploy.sh`: sets both lanes' app settings from environment variables (names only), TLS 1.2, FTPS off, HTTPS only, the startup command.
+
+### Fixed
+- `ruff check` failed on `main` (an over-long comment in `errors.py`).
+- `tests/story.py` refreshes `user_attention_daily` as well as `tab_attention_15m`.
+
+### Tests
+- Local: `test_c13_hardening.py` (12): headers on every response, TLS rule, dev header 401 in prod, a titled event leaves no title in any log line (success, storage down, validation error), no secret patterns in tracked files.
+
+### Verification
+- 253 passed with the database; clean export without `.env`: 400 passed, 83 skipped; `ruff check` clean.
+
+### Notes
+- Repository secrets to set before the first deploy run: `DATABASE_URL` and `AZURE_WEBAPP_PUBLISH_PROFILE`. Without `DATABASE_URL` the database tests skip in CI.
+- App Insights screenshots, `curl -I` against the deployed API and the "push deployed in under 5 minutes" timing need the deploy to run; not claimed here.
+
 ## [2026-10-04] — P-10 Privacy settings and retention, P-11 Deletion (P)
 
 ### Added
