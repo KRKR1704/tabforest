@@ -105,3 +105,36 @@ def test_gerund() -> None:
                                 "submit", "offer")] == \
            ["choosing", "planning", "setting", "applying", "dying", "building", "fixing", "seeing", "visiting",
             "preferring", "submitting", "offering"]
+
+
+# --- comparison refs (c*) ------------------------------------------------------------------------------
+
+CMP = "cmp_11111111-2222-5333-8444-555555555555"
+CMP_CTX = ValidationContext({**CTX.refs, "c1": CMP}, CTX.tab_types, CTX.notes, anchors={CMP: ("tab", T[1])})
+
+
+def test_comparison_ref_is_one_valid_ref_shown_as_its_anchor() -> None:
+    c = validate_claim("direction", "JWT is preferred", "inferred", 0.9, ev("c1", "t3"), CMP_CTX)
+    assert c.provenance == "inferred" and c.short_refs == ["c1", "t3"]
+    assert c.evidence[0] == {"ref_kind": "tab", "ref": T[1], "why": "comparison: signal"}
+    # 2 refs, types {comparison, code}: 0.35 + 0.30 + 0.20 = 0.85
+    assert c.confidence == 0.85
+
+
+def test_comparison_and_its_own_page_count_once() -> None:
+    # c1 was read from t2's title: citing both is one page, not two refs, so the claim stays a hypothesis
+    for refs in (("t2", "c1"), ("c1", "t2")):
+        c = validate_claim("direction", "JWT is preferred", "inferred", 0.9, ev(*refs), CMP_CTX)
+        assert len(c.evidence) == 1 and c.provenance == "hypothesis" and c.short_refs == list(refs)
+        assert any("same page; counted once" in r for r in c.reasons)
+        assert evidence_cap(c.evidence, CMP_CTX, c.short_refs) == pytest.approx(0.70)  # 1 ref, qa + comparison
+    third = validate_claim("direction", "JWT is preferred", "inferred", 0.9, ev("t2", "c1", "t3"), CMP_CTX)
+    assert len(third.evidence) == 2 and third.provenance == "inferred"
+
+
+def test_unknown_or_unanchored_comparison_ref_is_dropped() -> None:
+    c = validate_claim("direction", "JWT", "inferred", 0.9, ev("c2", "t1"), CMP_CTX)
+    assert c.short_refs == ["t1"] and c.provenance == "hypothesis"
+    no_anchor = ValidationContext({"c1": CMP, "t1": T[0]}, CTX.tab_types, {})
+    c = validate_claim("direction", "JWT", "inferred", 0.9, ev("c1", "t1"), no_anchor)
+    assert c.short_refs == ["t1"] and any("unknown ref" in r for r in c.reasons)

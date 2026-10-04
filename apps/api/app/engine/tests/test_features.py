@@ -214,7 +214,11 @@ def test_data_block_short_refs_no_uuids_deterministic() -> None:
     assert block.refs["t1"] == ref(4) and block.refs["t3"] == ref(5)
     assert block.refs["n1"] == notes[0]["id"] and block.refs["q1"] == f.families[0].id
     assert block.payload["opener_edges"] == [["t1", "t3"]]  # tab 4 opened tab 5
-    assert sorted(block.refs) == sorted([f"t{i}" for i in range(1, 6)] + ["q1", "n1"])
+    assert sorted(block.refs) == sorted([f"t{i}" for i in range(1, 6)] + ["q1", "c1", "n1"])
+    # tab 4's title is a comparison: c1, sourced at t1, with tab 5 (FastAPI JWT guide) on the JWT side
+    assert block.refs["c1"] == f.comparisons[0].id and block.anchors[f.comparisons[0].id] == ("tab", ref(4))
+    assert block.payload["comparisons"][0]["ref"] == "c1" and block.payload["comparisons"][0]["tab"] == "t1"
+    assert block.payload["comparisons"][0]["sides"][0] == {"option": "JWT", "tabs": ["t3"], "dwell_min_after": 0.5}
     assert to_data_block(f, notes).to_json() == to_data_block(f, notes).to_json()
     with pytest.raises(ValueError):
         to_data_block(f, notes, prior_research=[{"saved_context_id": "s_60000000-0000-4000-8000-000000000003"}])

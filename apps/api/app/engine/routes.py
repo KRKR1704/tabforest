@@ -30,7 +30,7 @@ from .adapters.auth import get_user_id
 from .aoai import AzureOpenAIClient
 from .cluster import MAX_TABS
 from .grove import GrowRun
-from .persist import DAILY_LLM_CALL_BUDGET, last_grove, llm_calls_today, persist_run
+from .persist import budget_exceeded, last_grove, persist_run, usage_today
 from .problems import ProblemError
 from .schemas.common import Strict, TabRef
 from .settings import get_settings
@@ -79,8 +79,9 @@ async def grow(body: GrowRequest, user_id: UUID = Depends(get_user_id),
     _check_grow_limit(user_id)
     settings = get_settings()
     pool = await db.get_pool()
-    if await llm_calls_today(pool, user_id) >= DAILY_LLM_CALL_BUDGET:
-        raise ProblemError(429, "Too Many Requests", "Daily AI budget reached; try again tomorrow")
+    over = budget_exceeded(*await usage_today(pool, user_id))
+    if over:
+        raise ProblemError(429, "Too Many Requests", over)
     snapshot_at = body.snapshot_at if settings.auth_mode == "dev" else None
     tabs = [t.model_dump(mode="json") for t in body.open_tabs]
     client = AzureOpenAIClient()

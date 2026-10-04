@@ -113,6 +113,7 @@ class Comparison:
     resolved: bool
     preferred: str | None
     dormant: bool
+    side_tab_refs: dict[str, list[str]] = field(default_factory=dict)  # option -> cluster tabs on that side
 
 
 @dataclass
@@ -334,13 +335,18 @@ def build_features(tab_refs: Sequence[str], snapshot_tabs: Mapping[str, Mapping[
                 words = set(re.findall(r"[a-z0-9+#]+", tabs[v.tab_ref].title.lower()))
                 if (kx in words) != (ky in words):
                     dwell[x if kx in words else y] += v.active_ms
+            sides: dict[str, list[str]] = {x: [], y: []}
+            for r in refs:
+                words = set(re.findall(r"[a-z0-9+#]+", tabs[r].title.lower()))
+                if r != src and (kx in words) != (ky in words):
+                    sides[x if kx in words else y].append(r)
             total = dwell[x] + dwell[y]
             top = max((x, y), key=lambda o: dwell[o])
             resolved = total > 0 and dwell[top] / total >= PREFERENCE_SHARE
             comparisons.append(Comparison(
                 id="cmp_" + str(uuid.uuid5(_FAMILY_NS, f"{kx}|{ky}")), text=f"{x} vs {y}", options=[x, y],
                 source_tab_ref=src, at=_iso(at), dwell_by_option=dwell, resolved=resolved,
-                preferred=top if resolved else None, dormant=not resolved and dormant))
+                preferred=top if resolved else None, dormant=not resolved and dormant, side_tab_refs=sides))
 
     # Research phases: contiguous runs by P's session_id.
     phases: dict[str, dict[str, Any]] = {}
@@ -409,6 +415,9 @@ def finalize_importance(features: ClusterFeatures, evidence_counts: Mapping[str,
 class DataBlock:
     payload: dict[str, Any]
     refs: dict[str, str] = field(default_factory=dict)  # short ref -> real id
+    # c* refs have no id in the API contract's evidence kinds; each is shown as its source tab, or
+    # the search family of its query, or its most-read side tab: comparison id -> (ref_kind, real id)
+    anchors: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(self.payload, ensure_ascii=False, sort_keys=False)
@@ -416,9 +425,10 @@ class DataBlock:
 
 def to_data_block(features: ClusterFeatures, notes: Sequence[Mapping[str, Any]] = (),
                   prior_research: Sequence[Mapping[str, Any]] = ()) -> DataBlock:
-    """Short refs only (t1.., q1.., n1..); the model never sees a real id."""
+    """Short refs only (t1.., q1.., c1.., n1..); the model never sees a real id."""
     t = {r: f"t{i}" for i, r in enumerate(features.tab_refs, 1)}
     q = {f.id: f"q{i}" for i, f in enumerate(features.families, 1)}
+    c = {cmp.id: f"c{i}" for i, cmp in enumerate(features.comparisons, 1)}
     n = {str(note["id"]): f"n{i}" for i, note in enumerate(notes, 1)}
     payload = {
         "tabs": [{"ref": t[r], "title": f.title, "domain": f.domain, "type": f.source_type,
@@ -428,13 +438,26 @@ def to_data_block(features: ClusterFeatures, notes: Sequence[Mapping[str, Any]] 
                              "window_min": f.span_min, "open_loop": f.open_loop,
                              "tabs": [t[r] for r in f.tab_refs], "closed_searches": len(f.closed_tab_refs),
                              "short_visits_after": [t[r] for r in f.short_visits]} for f in features.families],
-        "comparisons": [{"text": c.text, "resolved": c.resolved, "preferred": c.preferred, "dormant": c.dormant}
-                        for c in features.comparisons],
+        "comparisons": [{"ref": c[cmp.id], "text": cmp.text, "tab": t.get(cmp.source_tab_ref),
+                         "sides": [{"option": o, "tabs": [t[r] for r in cmp.side_tab_refs.get(o, [])],
+                                    "dwell_min_after": round(cmp.dwell_by_option[o] / 60000, 1)} for o in cmp.options],
+                         "resolved": cmp.resolved, "preferred": cmp.preferred, "dormant": cmp.dormant}
+                        for cmp in features.comparisons],
         "user_notes": [{"ref": n[str(note["id"])], "text": note["text"]} for note in notes],
         "prior_research": [dict(p) for p in prior_research],
     }
     text = json.dumps(payload, ensure_ascii=False)
     if UUID_RE.search(text):
         raise ValueError("DATA block contains a real id")
-    refs = {v: k for k, v in {**t, **q, **n}.items()}
-    return DataBlock(payload, refs)
+    refs = {v: k for k, v in {**t, **q, **c, **n}.items()}
+    return DataBlock(payload, refs, {cmp.id: _anchor(cmp, features) for cmp in features.comparisons})
+
+
+def _anchor(cmp: Comparison, features: ClusterFeatures) -> tuple[str, str]:
+    if cmp.source_tab_ref in features.tabs:
+        return "tab", cmp.source_tab_ref
+    family = next((f for f in features.families if any(o.tab_ref == cmp.source_tab_ref for o in f.occurrences)), None)
+    if family:
+        return "query", family.id
+    sides = [r for o in cmp.options for r in cmp.side_tab_refs.get(o, [])]
+    return "tab", max(sides, key=lambda r: features.tabs[r].dwell_ms) if sides else features.tab_refs[0]
