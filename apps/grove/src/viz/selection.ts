@@ -33,6 +33,10 @@ export interface SelectionDescription {
   /** Present for claims: opens the evidence drawer. */
   claim?: EvidenceClaim;
   tabs?: GroveTab[];
+  /** Present for a tab: the domain it can be excluded by. */
+  domain?: string;
+  /** True for a tab in the Unclear patch, which can be given a goal. */
+  inFog?: boolean;
 }
 
 function plural(count: number, noun: string): string {
@@ -76,6 +80,7 @@ function describeInTree(tree: TreeData, selection: GroveSelection, grove: GroveR
       label: kind === 'fallen-leaf' ? 'Stale tab' : 'Tab',
       text: tab.title,
       detail: tabDetail(tab),
+      domain: tab.domain || undefined,
     };
   }
 
@@ -210,13 +215,24 @@ export function describeSelection(
   if (kind === 'leaf') {
     const fogged = grove.fog?.find((item) => item.tab.tab_ref === id);
     if (fogged) {
-      return { label: 'Unclear tab', text: fogged.tab.title, detail: fogged.reason };
+      return {
+        label: 'Unclear tab',
+        text: fogged.tab.title,
+        detail: fogged.reason,
+        domain: fogged.tab.domain || undefined,
+        inFog: true,
+      };
     }
     const loose = [...grove.meadow.tabs, ...grove.sprouts.flatMap((sprout) => sprout.tabs)].find(
       (tab) => tab.tab_ref === id
     );
     if (!loose) return null;
-    return { label: 'Tab', text: loose.title, detail: loose.domain || undefined };
+    return {
+      label: 'Tab',
+      text: loose.title,
+      detail: loose.domain || undefined,
+      domain: loose.domain || undefined,
+    };
   }
 
   return null;

@@ -1,12 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  getGrove,
-  growGrove,
-  streamGrowGrove,
-  updateClaim,
-  assignTab,
-  addNote,
-} from '../adapters/grove';
+import { getGrove, growGrove, streamGrowGrove } from '../adapters/grove';
 import { searchMemory, getPruneSuggestions } from '../adapters/memory';
 import { analyzeWorkContext } from '../adapters/workContext';
 import {
@@ -48,19 +41,6 @@ describe('Adapters Suite (C3–C7)', () => {
     expect(messages[1].type).toBe('tree');
     expect(messages[messages.length - 1].type).toBe('done');
     expect(isDone).toBe(true);
-  });
-
-  it('updates claims and adds notes', async () => {
-    const claimRes = await updateClaim('dec-1', { action: 'confirm' });
-    expect(claimRes.status).toBe('confirmed');
-    expect(claimRes.provenance).toBe('stated');
-
-    const assignRes = await assignTab('t1', { target_cluster_id: 'c1' });
-    expect(assignRes.pinned).toBe(true);
-
-    const noteRes = await addNote({ cluster_id: 'c1', text: 'My note' });
-    expect(noteRes.text).toBe('My note');
-    expect(noteRes.cleared_fog).toBe(true);
   });
 
   it('searches memory and fetches prune suggestions', async () => {

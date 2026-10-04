@@ -26,8 +26,8 @@ describe('Contracts & Payload Validation', () => {
   });
 
   it('validates 28-tab snapshot payload conforms to SPEC §4.2', () => {
-    expect(mockSnapshot.tabs.length).toBeGreaterThan(0);
-    const tab = mockSnapshot.tabs[0];
+    expect(mockSnapshot.open_tabs).toHaveLength(28);
+    const tab = mockSnapshot.open_tabs[0];
     expect(tab.tab_ref).toBeTruthy();
     expect(tab.domain).toBeTruthy();
     expect(tab.title).toBeTruthy();

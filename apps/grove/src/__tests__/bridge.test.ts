@@ -6,7 +6,7 @@ describe('Bridge Adapter (C8)', () => {
   it('handles GET_SNAPSHOT message', async () => {
     const res = await sendBridgeMessage<void, SnapshotPayload>('GET_SNAPSHOT');
     expect(res.ok).toBe(true);
-    expect(res.data?.tabs.length).toBeGreaterThan(0);
+    expect(res.data?.open_tabs.length).toBeGreaterThan(0);
   });
 
   it('handles GET_TOKEN message', async () => {

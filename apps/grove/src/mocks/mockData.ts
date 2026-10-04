@@ -1,8 +1,5 @@
 import {
   GroveResponse,
-  UpdateClaimResponse,
-  AssignTabResponse,
-  AddNoteResponse,
   MemorySearchResponse,
   PruneSuggestionsResponse,
   WorkContextResponse,
@@ -18,98 +15,9 @@ import groveContract from '@contracts/grove.example.json';
 import snapshotContract from '@contracts/snapshot.example.json';
 import { indexTabs, normalizeGrove, type WireGrove } from '../adapters/groveContract';
 
+// The 28 demo tabs from the contract, as GET_SNAPSHOT returns them.
 export const mockSnapshot: SnapshotPayload = {
-  captured_at: '2026-10-04T14:30:00Z',
-  tabs: [
-    {
-      tab_ref: 't1',
-      domain: 'fastapi.tiangolo.com',
-      title: 'Security - FastAPI',
-      opener_tab_ref: null,
-      opened_at: '2026-10-04T13:45:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '9a7f3e1b4c6d',
-      search_query: null,
-    },
-    {
-      tab_ref: 't2',
-      domain: 'github.com',
-      title: 'tiangolo/fastapi: JWT authentication example',
-      opener_tab_ref: 't1',
-      opened_at: '2026-10-04T13:50:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '8b6e2d1a3c5f',
-      search_query: null,
-    },
-    {
-      tab_ref: 't3',
-      domain: 'jwt.io',
-      title: 'JWT.IO - JSON Web Tokens Introduction',
-      opener_tab_ref: 't2',
-      opened_at: '2026-10-04T13:55:00Z',
-      active: true,
-      pinned: false,
-      dup_key: '7c5d1b2a4e6e',
-      search_query: null,
-    },
-    {
-      tab_ref: 't4',
-      domain: 'auth0.com',
-      title: 'OAuth 2.0 and OpenID Connect Overview',
-      opener_tab_ref: null,
-      opened_at: '2026-10-04T14:00:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '6b4c0a1f3e5d',
-      search_query: null,
-    },
-    {
-      tab_ref: 't5',
-      domain: 'stackoverflow.com',
-      title: 'Where to store JWT refresh tokens in React app?',
-      opener_tab_ref: 't3',
-      opened_at: '2026-10-04T14:05:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '5a3b9f0e2d4c',
-      search_query: null,
-    },
-    {
-      tab_ref: 't6',
-      domain: 'redis.io',
-      title: 'Session Management with Redis',
-      opener_tab_ref: null,
-      opened_at: '2026-10-04T14:10:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '4f2a8e9d1c3b',
-      search_query: null,
-    },
-    {
-      tab_ref: 't7',
-      domain: 'medium.com',
-      title: 'FastAPI Auth in 5 Minutes',
-      opener_tab_ref: 't1',
-      opened_at: '2026-10-04T14:12:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '3e1f7d8c0b2a',
-      search_query: null,
-    },
-    {
-      tab_ref: 't8',
-      domain: 'dev.to',
-      title: 'FastAPI Auth in 5 Minutes (Mirror)',
-      opener_tab_ref: 't7',
-      opened_at: '2026-10-04T14:15:00Z',
-      active: false,
-      pinned: false,
-      dup_key: '3e1f7d8c0b2a',
-      search_query: null,
-    },
-  ],
+  open_tabs: snapshotContract.open_tabs,
 };
 
 // The grove mock is the real contract example, read through the same adapter
@@ -118,34 +26,6 @@ export const mockGroveResponse: GroveResponse = normalizeGrove(
   groveContract as WireGrove,
   indexTabs(snapshotContract.open_tabs)
 );
-
-export const mockClaimsResponse: {
-  updateClaim: UpdateClaimResponse;
-  assignTab: AssignTabResponse;
-  addNote: AddNoteResponse;
-} = {
-  updateClaim: {
-    id: 'dec-1',
-    status: 'confirmed',
-    provenance: 'stated',
-    user_note_id: 'n7',
-    confirmed_at: '2026-10-04T14:35:00Z',
-  },
-  assignTab: {
-    tab_ref: 't5',
-    cluster_id: 'c1',
-    branch_id: 'b1',
-    assigned_by: 'user',
-    pinned: true,
-  },
-  addNote: {
-    note_id: 'n8',
-    cluster_id: 'c1',
-    text: 'Named goal: finalize auth library by tonight',
-    created_at: '2026-10-04T14:36:00Z',
-    cleared_fog: true,
-  },
-};
 
 export const mockTimelineResponse: TimelineResponse = {
   project_id: 'p-backend-auth',

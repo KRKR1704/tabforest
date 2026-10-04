@@ -6,6 +6,173 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — R-6: per-cluster features, query families, importance, DATA block (R)
+
+### Added
+
+- `apps/api/app/engine/features.py`:
+  - `compute_features()` (async: events through `adapters/stats.py`, query embeddings through the R-4 cache) and the pure `build_features()`.
+  - Per tab: `dwell_min`, `dwell_share`, `revisits` (FOCUS count after the first), `last_focus`, `stale` (no focus ≥ 3 days), `distraction` (< 10 s total focus), `official` (R-2), P's `session_ids`.
+  - Query families (§3.3): queries from the cluster's search tabs and from the last 2 h of events on cluster tabs and on closed tabs linked by an opener edge (the demo's closed tab …029 counts); connected components of cosine ≥ threshold; stable `qf_` ids; `open_loop` = ≥ 3 rephrasings within 2 h (inclusive) and no cluster tab focused > 90 s after the last query; evidence kept (queries, timestamps, open and closed search tabs, short visits ≤ 90 s after the first query, the closing visit).
+  - Comparisons: "X vs Y", "X versus Y", "compare X and Y" in titles and queries ("X or Y" in queries only); resolved when ≥ 70 % of later dwell is on one side's tabs; dormant when unresolved and no cluster focus for ≥ 30 min.
+  - Research phases: contiguous runs by P's `session_id` (sessions are never computed).
+  - `importance_pre()` (evidence term 0) and `finalize_importance(features, evidence_counts)`: 0.45·dwell_share + 0.25·evidence + 0.2·revisits + 0.1·official, each term in [0, 1] (evidence and revisits divided by the cluster maximum).
+  - `to_data_block()`: the §14 DATA payload with short refs `t1..`, `q1..`, `n1..` and a map back to real ids; raises if any UUID would reach the model.
+- `adapters/stats.py`: `events_since(user_id, since)` (all events in a window, closed tabs included); fixture implementation.
+- `engine/scripts/gen_query_pairs.py` → `engine/fixtures/query_pairs.json` (36 queries, 630 labeled pairs, none of the demo's searches) and `engine/scripts/calibrate_queries.py`.
+
+### Tests
+
+- `engine/tests/test_features.py` (14, synthetic events): visit pairing; dwell share, revisits, stale, distraction; phases by session_id; 3 rephrasings exactly 2 h apart → open loop, 2 h 30 s → not; a 91 s follow-up closes the loop, 90 s does not; 2 rephrasings are not enough; families and stable ids; a closed search tab linked by opener joins, an unlinked one does not; comparison patterns, 70/30 resolved vs 60/40 unresolved, dormant after 30 min; importance terms and normalisation; DATA block short refs, no UUIDs, determinism.
+- `engine/tests/test_features_live.py` (7, real embeddings, test user `…00e3`, rows deleted after): STEP 0 experiment; the refresh-token family; threshold precision/recall; stale/distraction; JWT vs session; importance ranking; the Backend Authentication DATA block.
+
+### Verification
+
+- Query calibration: rephrase pairs 0.594–0.871 (mean 0.756), related 0.192–0.699, unrelated 0.004–0.390. Threshold 0.65: precision 0.946, recall 0.972, F1 0.959; plan 0.80: precision 1.000, recall 0.250.
+- Demo Backend Authentication: one family of 4 rephrasings over 33.2 min (tabs 06, 07, 08 + closed …029), open loop, short visits after it on 04, 02, 10. "JWT vs session-based authentication" resolved (all later dwell on JWT tabs); "httponly cookie vs localstorage" unresolved, not dormant (last focus 11:31:50).
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 157 passed, 3 xfailed (R-5's 4-tree test, STEP 0, importance order).
+
+### Notes (deviations from the plan's numbers, and findings)
+
+- Query-family threshold 0.65 instead of the plan's cosine ≥ 0.80 (recall 0.25 with this embedding model); chosen on a labeled set that excludes the demo's searches.
+- Importance with the plan's formula ranks the GitHub example first (0.597: 14.0 min, 5 revisits, 3 citing claims) and the official FastAPI docs second (0.407). `contracts/grove.example.json` lists the docs first (0.91 vs 0.86); those values were hand-set. Recorded as an xfail with the numbers; the formula was not changed.
+- STEP 0 (in memory only; `demo_tabs.json` and contracts untouched): with tabs 13 and 15 opened from Devpost within 3 min, they join GirlHacks (average-linkage distance 0.575 < 0.65) and the demo has 4 trees, but tab 14 (Azure for Students) drops to the meadow, so GirlHacks is still not one complete tree.
+- Not in the plan, added: "X or Y" is only read from queries (too common in titles); a comparison side's tabs are matched by the option's first content word; `comparisons` and per-family `closed_searches` / `short_visits_after` are extra keys in the DATA block for R-7.
+
+## [2026-10-03] — P-1 to P-6: API app, schema, aggregates, auth, repository, event ingest (P)
+
+### Added
+
+- `db/migrations/100`–`104` and `db/migrate.py` / `db/migrate.sh`: P's tables (`users`, `privacy_settings`, `browser_sessions`, `browser_events` hypertable with 1-day chunks and key `(user_id, ts, event_id)`, `tabs`, `saved_contexts` with `kind`), the real-time aggregates `tab_attention_15m` (1-minute refresh), `user_attention_daily` (built on it) and `search_activity_1h`, compression after 7 days by `user_id` and 90-day retention. The runner applies `1xx` then `2xx` and records each file in `schema_migrations`; every file is also idempotent on its own, so R's hand-applied `2xx` files are safe to run again.
+- `apps/api/` (P-1): `create_app()` factory (`uvicorn app.main:create_app --factory`), settings for SPEC §14.1 that stop startup with the missing variable's name, CORS for the extension origin only, RFC 7807 errors for P's and R's routes (inputs never echoed), `/health`, Azure Monitor distro (off without a connection string), and R's router mounted with `get_user_id` overridden by `current_user`. `pyproject.toml` / `uv.lock` include R's runtime dependencies (`openai`, `httpx`, `python-dotenv`, `numpy` for R-4, `scikit-learn` for R-5; X3).
+- Auth (P-4): Entra v2 access tokens checked against Microsoft's JWKS (cached): `aud` = the client ID, `iss` for the token's own `tid`, at most 60 s skew, `scp` containing `user_impersonation` (an ID token has the same `aud` but no `scp`), `tid` and `oid` required (X14). `X-Dev-User` only with `AUTH_MODE=dev`. Fallback `POST /api/auth/login` only with `FALLBACK_LOGIN=true`; accounts come from `FALLBACK_ACCOUNTS` (argon2id hashes, `scripts/hash_password.py`), no self-registration. `GET /api/me` provisions `users` and `privacy_settings` on the first call and returns the `me.example.json` shape; stats read R's tables through `app/adapters/intents.py` (C12).
+- Repository (P-5): one asyncpg pool per app, parameterized SQL only, `user_id` first in every function, `extra="forbid"` request models, title ≤ 300, batch ≤ 500.
+- `POST /api/events` (P-6): `INSERT … ON CONFLICT (user_id, ts, event_id) DO NOTHING`, `{accepted, duplicates}`; `is_tab_switch` from `previous_tab_ref`; sessions by the 30-minute gap rule, placed against stored sessions so late or out-of-order batches join, extend or bridge them (per-user advisory lock); `tabs` upsert of P's columns; 60 requests per minute per user (429 with `Retry-After`); 503 with `Retry-After` when the database is down. Fields a type doesn't use are dropped rather than rejected, so one odd event can't jam the extension's queue.
+
+### Changed
+
+- `apps/api/.env.example`: `API_BASE_URL` is `https://tabforest.azurewebsites.net` (`tabforest-api` does not exist); `ENTRA_CLIENT_ID` filled in and `ENTRA_API_AUDIENCE` = the client ID (X13); fallback login keys added.
+
+### Tests
+
+- `apps/api/tests/test_contracts.py` (committed, 17 tests): every error example in `events.example.json` and `me.example.json` matched exactly (422 `user_id`, 422 unknown type, 401 missing token, 401 dev header in prod, 401 expired, 503, 429 on the 61st request), the contract batch parses with P's models, and with `DATABASE_URL`: first send `{45, 0}`, identical resend `{0, 45}`, first `GET /api/me` in the contract shape.
+- Local suites cover the rest of the gates (settings, CORS, engine mount, token cases, schema and policies, sessionization, concurrency).
+
+### Verification
+
+- Tiger Cloud: `db/migrate.py` applied P's 5 files, then R's 200/201 (already present, idempotent); a further run applied 0.
+- Contract batch then identical resend: 45 events, 1 session, 9 tabs, `tab_attention_15m` 1,070,000 ms and 15 tab switches after both sends.
+- R's `events_2h.json` (134 events) sent shuffled in 9 batches: P's sessions group exactly R's events, sizes 2, 3, 3, 6, 9, 13, 46, 52.
+- `uv run pytest`: 152 passed across committed and local suites; from a clean export without `.env`: 15 passed, 2 skipped (database). R's `app/engine/tests` under P's environment (with R-3 to R-5): 125 passed (14 live tests deselected). `ruff check`: clean.
+- Deployed P's code from this branch to App Service `tabforest` (built before R-5 and `scikit-learn` were added; P's files are identical) (Oryx build; `uvicorn app.main:create_app --factory`; `AUTH_MODE=prod`): `/health` 200; OpenAPI lists `/api/events`, `/api/me`, `/health`; no token, only `X-Dev-User`, or a token not signed by Microsoft → 401 problem JSON; CORS only for the extension origin; HTTP → 301 HTTPS. Startup log: Application Insights configured, engine routes mounted, database pool open.
+
+### Notes
+
+- `tabs` is keyed by `(user_id, tab_ref)` rather than `tab_ref` alone, so two users can never share a row (the contract fixtures use the same tab IDs for everyone). R's `UPDATE … WHERE user_id = $1 AND tab_ref = $2` works unchanged.
+- `browser_events.dup_key` is stored because R's C11 adapter reads it; `browser_sessions.ended_at` is the last event so far and the API reports a session as open while that is under 30 minutes old.
+- The Tiger password was rotated on 2026-10-03; take the new connection string from the password manager.
+
+## [2026-10-03] — Lane S-6 Grow orchestration (S)
+
+### Added
+- `apps/grove/src/grow/controller.ts`: `runGrow` owns the whole flow. It sends `GET_SNAPSHOT`, `GET_HOLLOW_COUNT` and `GET_TOKEN` over the bridge in that order, posts the snapshot to `POST /api/grove/grow?stream=1` with the bearer token, feeds each NDJSON line to the store, and saves the finished grove. A second grow while one is running is ignored.
+- Listening trees: on the `clusters` line every cluster is planted at once as a pending tree (deterministic name, its tabs, "listening…" label, shimmer); each `tree` line replaces its own cluster in place, so the forest does not reshuffle; `done` sets `run_id`, `degraded` and the fireflies.
+- `apps/grove/src/lib/lastGrove.ts`: the last finished grove in `localStorage` (`tabforest:last-grove`). The page opens on it, and it is shown with a notice when the API is down.
+- `apps/grove/src/adapters/grove.ts`: `streamGrow` (throws on failure), `readNdjson` (lines split across chunks), `streamStandIn` (replays `contracts/grove.stream.example.ndjson`).
+- Banner on Current Grove (`role="alert"`): the server's `banner_text` or "AI unavailable — showing groups only" for a degraded grove, or the offline notice.
+- `apps/grove/scripts/check-dist.mjs`, run at the end of `npm run build`: fails the build on an inline script, a remote script, a non-relative asset path, an inline event handler, or `eval` / `new Function` in the bundle.
+
+### Changed
+- Grow grove in the top bar now runs the flow; it is disabled and reads "Growing…" meanwhile. The page also grows on first open (`<App growOnOpen />` in `main.tsx`).
+- The store starts from the last saved grove (or empty) instead of the contract mock. An empty grove shows "Reading your open tabs…" while growing.
+- `SnapshotPayload` is now `{ open_tabs }` as in `contracts/snapshot.example.json` and `bridge.types.ts` (was `{ tabs, captured_at }`); the mock bridge and grow body follow.
+- Stream messages carry the contract's `run_id`, `hollow_count`, meadow, fog, sprout tabs and fireflies; loose tabs are named from the snapshot.
+
+### Fixed
+- `streamGrowGrove` called itself again when the live stream failed, which retried a dead API without end. A failure now replays the stand-in once.
+
+### Tests
+- `src/__tests__/grow.test.tsx` (23): bridge call order and a single `GET_TOKEN`; pending counts 4 → 3 → 2 → 1 → 0 with cluster order kept; final grove equals the contract grove; saved locally; token never stored; busy guard; no snapshot; live request (URL, method, body `{open_tabs}`, bearer header, no `user_id`) over a chunked response; API down with and without a saved grove (one attempt only); degraded stream; NDJSON chunking with multi-byte characters; pending trees on the canvas; grow on first open, from the button, and not unless asked; no Tree Detail for a listening tree; banner rules.
+- Updated 3 tests for the snapshot shape and the stream normalizer's new argument.
+
+### Verification
+- `npm test`: 12 files, 202 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual: served `dist/` with `python -m http.server`; on open the four trees appeared listening and filled one at a time over about 1.7 s, Grow grove re-enabled after `done`, the grove was saved to `localStorage`, `sessionStorage` stayed empty, no console errors.
+
+### Notes
+- When the API is down and nothing is saved, the contract sample grove is shown with the notice "Showing sample data, not your tabs", so it is never passed off as the user's own.
+- `check-dist` warns that `index.html` loads Lora and Inter from Google Fonts. The extension CSP allows it, but it needs network and makes a third-party request; bundling the fonts would need two new packages and is not done here.
+- The saved grove is not yet cleared by sign-out or "Delete all"; that belongs with `WIPE_LOCAL` in S-10.
+- The wow animation (S-12) is not part of this; trees currently appear with the listening shimmer only.
+- BUILD_TASKS.md: S-6 row ticked only.
+## [2026-10-03] — R-5: calibrated clustering, sprouts, meadow/fog, pins, shared tabs (R)
+
+### Added
+
+- `apps/api/app/engine/cluster.py`: pure `cluster()` and async `cluster_snapshot()` (normalize → R-4 embeddings → pins and project centroids from the DB → cluster). Affinity = 0.65·cos_cal + 0.20·opener + 0.15·temporal (3 min); average-linkage agglomerative clustering (scikit-learn, `metric="precomputed"`) on 1 − affinity. Search tabs join the cluster of the tabs they opened, else the next focused tab, else the nearest cluster. User pins (`assigned_by='user'`, latest per tab) override everything; a pin to a project with no matching cluster creates that cluster. Leftover singletons go to the fog (top two cluster affinities ≥ 0.30 and within 0.05: "unclear between X and Y") or the meadow ("low affinity to any goal"). Multi-membership (§27): a tab also joins a second tree when its mean affinity there is ≥ 0.45 and ≥ 0.9× its own. Sprouts: earliest tab < 30 min old and < 3 tabs. Clusters matched one-to-one to existing projects by centroid. Output `ClusterResult` (clusters, sprouts, meadow, fog, shared tabs, diagnostics), deterministic and independent of input order; at most 60 tabs.
+- `engine/labels.py`: top shared title terms, moved out of `scripts/gen_contracts.py`, which now imports it (stream cluster names and engine labels come from one function).
+- `engine/evaluation.py`: demo ground truth from `contracts/grove.example.json`, labeled-snapshot loader, ARI.
+- `engine/scripts/gen_cluster_snapshots.py` → `engine/fixtures/cluster_snapshots/trip_laptops_thesis.json` and `nextjs_k8s_gift.json` (20 tabs each, 3 groups + 2 singletons, opener chains, interleaved times).
+- `engine/scripts/calibrate_cluster.py`: grid search (283 parameter sets) over the three snapshots, leave-one-snapshot-out check, demo table.
+
+### Changed
+
+- `engine/scripts/gen_contracts.py`: uses `app.engine.labels`; `REPO` is derived from the script's location instead of a hard-coded absolute path. Contracts regenerate byte-identical (check I).
+
+### Tests
+
+- `engine/tests/test_cluster.py` (14, synthetic vectors, no network): calibration options, opener/temporal components, two clear groups, search tab follows its opened tab / next focus / nearest, sprout rule (age and size), fog vs meadow, a bridge tab becomes shared, project match and no-history, pin to another project survives a re-run, pin to a new tree (nothing shared into it), labels, determinism and order independence, limits.
+- `engine/tests/test_cluster_live.py` (9, real embeddings via R-4, test user `…00ef`, rows deleted after): ARI ≥ 0.6 on each snapshot, demo sprout/search tabs/singletons, pins, determinism, DB loaders in a rolled-back transaction, `cluster_snapshot()` end to end; plus a strict xfail for "demo has exactly 4 trees" (see Notes).
+
+### Verification
+
+- `calibrate_cluster.py`: plan as written (raw cosine, threshold 0.45) ARI 0.177 / 0.185 / 0.185; chosen fixed 0.05/0.50, threshold 0.65 → demo 0.886, trip_laptops_thesis 0.905, nextjs_k8s_gift 1.000 (min 0.886). Leave-one-snapshot-out held-out ARI: 0.713 (demo), 0.815, 1.000.
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 138 passed, 1 xfailed. `check_contracts.py`: 34/34 PASS.
+
+### Notes (deviations from the plan's numbers)
+
+- Cosine is calibrated: `clip((cos − 0.05)/(0.50 − 0.05), 0, 1)`. The plan uses raw cosine; with text-embedding-3-small related titles sit at ≈ 0.3–0.5, so raw cosine never reaches the merge distance (ARI 0.18). Fixed rescale beat per-snapshot percentiles (best min 0.815) and raw cosine with a re-tuned threshold (best min 0.815).
+- Merge distance 0.65 instead of 0.45 (0.45 gives min ARI 0.70 with this calibration). Weights 0.65/0.20/0.15 and the 3-minute window are unchanged.
+- The demo yields 5 trees, not 4: Tiger Data docs and d3-hierarchy (GirlHacks sponsor tech) form their own tree because nothing but domain knowledge links them to the Devpost tabs; LeetCode and Instacart fall into the meadow. Threshold 0.55 keeps 4 trees + sprout but drops 6 tabs into the meadow/fog and lowers the minimum ARI to 0.815, so it was not chosen; the narrated shape is expected from R-7 (the model can merge or rename trees). Tab 05 does not come out shared naturally.
+- Existing-project match uses the RAW centroid cosine (≥ 0.80), not the calibrated one: centroids average out noise, so their cosines are far higher than pairwise tab cosines and the pairwise calibration saturates at 1.
+- Not in the plan, chosen and unit-tested (not grid-tuned): fog floor 0.30 and margin 0.05, share threshold 0.45 with ratio 0.9, singletons are never sprouts, and pinned-only trees never receive shared tabs.
+- New dependency installed into `apps/api/.venv` for P's `pyproject.toml`: `scikit-learn` 1.9.1 (pulls in `scipy` 1.18.1, `joblib` 1.6.0, `threadpoolctl` 3.7.0).
+
+## [2026-10-03] — Lane S-5 Tree Detail (S)
+
+### Added
+- `apps/grove/src/components/TreeDetailDrawer.tsx`: right-hand drawer for one tree with Goal, Direction, Decisions, Open questions, Next actions, hypotheses ("In the fog"), Add a note, and Sources. Every claim has a provenance pill; clicking it expands the claim's evidence and lights its roots. Actions per claim: Confirm (inferred and hypothesis only), Edit, Dismiss, and Mark resolved with an answer for open questions. Sources open the tab or exclude its domain.
+- `apps/grove/src/adapters/claims.ts` (C4): `patchClaim` (`PATCH /api/claims/{id}`), `assignTab` (`POST /api/tabs/{tab_ref}/assign`), `createNote` (`POST /api/notes`), `analyzeTree` (`POST /api/projects/{id}/analyze`), in the shapes of `contracts/claims.example.json`, with a stand-in for mock mode and for API failure.
+- `apps/grove/src/lib/groveEdits.ts`: pure grove edits (`applyClaimUpdate`, `addDecision`, `moveTab`, `nameFogTab`, `replaceTree`). `apps/grove/src/screens/useGroveActions.ts`: sends each correction, then applies it to the grove in the store.
+- Canvas (`viz/layout.ts`, `viz/render.ts`): roots from a stone, mushroom or the trunk to exactly the evidence leaves (a search-family ref lights that family's tabs), dimming the tree's other leaves; dragging a leaf onto another tree (nearest branch) or onto a "New tree" zone shown during the drag; zoom to the selected tree.
+
+### Changed
+- Clicking a tree, stone, mushroom, flower or hypothesis now opens Tree Detail on that tree (S-4 opened the evidence drawer). Clicking a leaf sends `OPEN_TAB` and shows a caption with "Exclude <domain>" (`EXCLUDE_DOMAIN`). A tab in the Unclear patch gets a "Clear the fog" form that names its goal.
+- A mushroom becomes a flower when its question is marked resolved; a confirmed mossy stone becomes carved; the top-bar open-question count follows.
+- `apps/grove/src/viz/render.ts`: the zoom and pan are kept when the grove is redrawn after an edit.
+- `apps/grove/src/adapters/bridge.ts`: extension messages are sent flat (`{type, tab_ref}`) as `contracts/bridge.types.ts` defines, not nested under `payload`.
+- `apps/grove/src/mocks/mockData.ts`: the mock snapshot is the 28 contract tabs, so the mock bridge can open them.
+- `apps/grove/src/types/grove.ts`, `adapters/groveContract.ts`: trees carry `query_families`.
+
+### Removed
+- S-1 `updateClaim`, `assignTab`, `addNote`, `analyzeProject` in `adapters/grove.ts`, their types and `mockClaimsResponse`: their request and response shapes did not match R's claims contract. Replaced by `adapters/claims.ts`.
+
+### Tests
+- `src/__tests__/claims.test.ts` (28): contract responses parsed; in live mode each request's method, path, body and bearer header checked against the contract examples (confirm, edit, dismiss, resolve, assign to tree, assign to new tree, clear the fog, analyze); no `user_id` in any body; fallback on failure; mock mode makes no network call; flat bridge messages; every grove edit.
+- `src/__tests__/treeDetail.test.tsx` (26): roots, drop targets, drag (onto a tree, onto empty ground), all drawer sections and pills, zoom kept after an edit, confirm, resolve, edit, dismiss, add note, open tab, exclude domain, close, hostile text, leaf click, clear the fog, move by drag, plant a new tree, and the contract PATCH sent from the Confirm button in live mode.
+- Updated 2 S-4 tests (canvas claims open Tree Detail) and removed 1 S-1 adapter test for the removed functions.
+
+### Verification
+- `npm test`: 11 files, 179 tests passing. `npm run build`: passes with zero TypeScript errors.
+- Manual (dev server): clicking the mushroom zoomed to its tree, opened Tree Detail on the question and drew 4 roots to its evidence leaves with the other 6 dimmed; Confirm updated the claim and kept the zoom.
+
+### Notes
+- "Add a note" sends `kind: "decision"` or `kind: "note"` with `project_id` (from R's `NoteCreateRequest`; the contract file only shows `kind: "goal"`). A decision note appears as a carved stone; a plain note shows only a confirmation.
+- Confirming a hypothesis moves it into Decisions as a stated claim. This is S's reading: the contract only shows a hypothesis being dismissed.
+- After a move, the trees in `reanalyze_project_ids` are re-read with `analyze` in live mode; offline the move is applied locally.
+- Excluding a domain does not remove its leaves from the current grove; it takes effect on later captures.
+- Not here: Save context (S-8), the prune dialog and "Save as references" (S-11), keyboard access to canvas elements (S-13).
+- BUILD_TASKS.md: S-5 row ticked only.
 ## [2026-10-03] — D-2b First OPEN after observed blank tabs (D)
 
 ### Fixed
