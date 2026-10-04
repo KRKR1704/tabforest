@@ -54,6 +54,11 @@ class StatsSource(Protocol):
     async def attention(self, user_id: UUID, tab_refs: set[str],
                         since: datetime | None = None) -> dict[str, TabAttention]: ...
 
+    async def attention_ms(self, user_id: UUID, tab_refs: set[str]) -> int:
+        """Total focus time of these tabs, ever: from P's tab_attention_15m aggregate, which outlives the raw rows
+        (R-12 reads the minutes of research from months ago)."""
+        ...
+
 
 class FixtureStats:
     """Single-user fixture: every event belongs to the demo user, so user_id is not filtered."""
@@ -82,6 +87,9 @@ class FixtureStats:
                 row[1] += 1
                 row[2] = e.ts
         return {ref: TabAttention(ref, ms, focuses, last) for ref, (ms, focuses, last) in totals.items()}
+
+    async def attention_ms(self, user_id: UUID, tab_refs: set[str]) -> int:
+        return sum(a.active_ms for a in (await self.attention(user_id, tab_refs)).values())
 
 
 log = logging.getLogger("tabforest.engine.stats")
@@ -172,6 +180,22 @@ class DbStats:
         found = {str(r["tab_ref"]): TabAttention(str(r["tab_ref"]), int(r["ms"]), int(r["focuses"]), r["last_focus"])
                  for r in rows}
         return {ref: found.get(ref, TabAttention(ref, 0, 0, None)) for ref in tab_refs}
+
+
+    async def attention_ms(self, user_id: UUID, tab_refs: set[str]) -> int:
+        try:
+            total = await self.pool.fetchval(
+                "SELECT coalesce(sum(active_ms), 0) FROM tab_attention_15m WHERE user_id = $1 AND tab_ref = ANY($2::uuid[])",
+                user_id, self._uuids(tab_refs))
+        except Exception as exc:  # noqa: BLE001 - no aggregate: count the raw events instead
+            log.warning("stats: tab_attention_15m unavailable (%s); summing the raw events", type(exc).__name__)
+            return sum(a.active_ms for a in (await self.attention(user_id, tab_refs)).values())
+        if not total:  # rows inserted behind the aggregate's refresh watermark are only in the raw events
+            raw = sum(a.active_ms for a in (await self.attention(user_id, tab_refs)).values())
+            if not raw and self._is_demo(tab_refs):
+                return await self.fallback.attention_ms(user_id, tab_refs)
+            return raw
+        return int(total)
 
 
 def get_stats_source(pool: Any = None) -> StatsSource:

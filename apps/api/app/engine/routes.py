@@ -25,7 +25,7 @@ from limits import parse
 from pydantic import Field
 from slowapi import Limiter
 
-from . import claims, db
+from . import claims, db, memory
 from .adapters.auth import get_user_id
 from .aoai import AzureOpenAIClient
 from .cluster import MAX_TABS
@@ -120,6 +120,33 @@ async def get_grove(user_id: UUID = Depends(get_user_id)) -> Any:
     if response is None:
         raise ProblemError(404, "Not Found", "No grove yet; grow one first")
     return JSONResponse(response)
+
+
+@router.get("/memory/search")
+async def memory_search(q: Annotated[str, Query(min_length=1, max_length=300)],
+                        user_id: UUID = Depends(get_user_id)) -> Any:
+    """Past research of THIS user related to q (R-12). Not found is a 200 with found=false, never a 404."""
+    _check_limit(user_id, "memory")
+    pool = await db.get_pool()
+    if pool is None:
+        raise ProblemError(503, "Service Unavailable", "Memory is not configured", headers={"Retry-After": "30"})
+    client = AzureOpenAIClient()
+    try:
+        return JSONResponse(memory.payload(await memory.search(pool, user_id, q.strip(), client=client)))
+    finally:
+        await client.aclose()
+
+
+@router.post("/_memory/run", include_in_schema=False)
+async def memory_run(user_id: UUID = Depends(get_user_id)) -> Any:
+    """Dev only: one memory pass now for the caller's projects (the background loop covers everyone, every 5 minutes)."""
+    if get_settings().auth_mode != "dev":
+        raise ProblemError(404, "Not Found", "Not found")
+    pool = await db.get_pool()
+    if pool is None:
+        raise ProblemError(503, "Service Unavailable", "Memory is not configured", headers={"Retry-After": "30"})
+    done = await memory.run_memory_pass(pool, user_id=user_id)
+    return {"locked_out": done.locked_out, "checked": done.checked, "written": len(done.written)}
 
 
 @router.get("/_whoami", include_in_schema=False)

@@ -33,10 +33,12 @@ from .model_schema import ClusterInference
 log = logging.getLogger("tabforest.engine.infer")
 
 MAX_LLM_CALLS = 8  # per grow run (§4.9)
-# Prior research (§14 step 7). Plan: similarity ≥ 0.78. Provisional value from the R-7 live test
-# (seeded "Backend Scaling" insight vs the Backend Auth and Weeknight Dinner centroids); R-12
-# calibrates it properly.
-PRIOR_RESEARCH_THRESHOLD = 0.35
+# Prior research (§14 step 7) and memory search (R-12): ONE cosine threshold for both. The plan's 0.78 is unreachable
+# with text-embedding-3-small (relevant queries peak near 0.68). Calibrated on fixtures/memory_set.json
+# (scripts/calibrate_memory.py): plain cosine, F1 0.892 at 0.34 (precision 0.83, recall 0.97). 0.37 scores F1 0.918 for
+# search alone, but the seeded Backend Scaling insight reaches the Backend Auth centroid at 0.345 (next cluster 0.260),
+# so 0.34 is the highest value at which both the search and the firefly work.
+PRIOR_RESEARCH_THRESHOLD = 0.34
 PRIOR_RESEARCH_TOP_K = 3
 
 SYSTEM_PROMPT = """You reconstruct a user's goal from browsing signals for one cluster of open browser tabs.
