@@ -88,11 +88,10 @@ def test_demo_sprout_search_tabs_and_singletons(data) -> None:
     print(f"tab 05 shared naturally: {tid(5) in r.shared_tab_refs} (shared tabs: {list(r.shared_tab_refs) or 'none'})")
 
 
-@pytest.mark.xfail(strict=True, reason="GirlHacks Prep splits: Tiger Data docs and d3-hierarchy share no title terms, "
-                                       "opener edge or time with the Devpost tabs; only the model (R-7) can tie "
-                                       "sponsor docs to the hackathon. Threshold 0.55 keeps 4 trees but drops 6 tabs "
-                                       "into the meadow and lowers the minimum ARI to 0.815.")
 def test_demo_has_exactly_4_trees(data) -> None:
+    # Was an expected failure (GirlHacks Prep split: sponsor docs share no title terms, opener edge or time with the
+    # Devpost tabs). The calibration chosen for the burst fix (lo 0.20, temporal floor 0.60) lands on 4 trees: the
+    # sponsor docs go to the meadow instead of forming a fifth tree, and the demo's ARI is 0.822 (was 0.886).
     snaps, vectors = data
     assert len(run(snaps, vectors).clusters) == 4
 

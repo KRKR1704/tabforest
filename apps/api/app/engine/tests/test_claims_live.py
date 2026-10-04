@@ -266,7 +266,10 @@ def _round_trip_once(c) -> None:
     assert hyp["id"] not in [h["id"] for h in a_now["hypotheses"]]
     assert next(m for m in a_now["mushrooms"] if m["id"] == q["id"])["status"] == "resolved"
     sponsor = next(t for t in now["trees"] if t["name"] == SPONSOR)
-    assert leaves(sponsor) == [tid(13)] and tid(13) not in leaves(next(t for t in now["trees"] if t["project_id"] == a["from_project_id"]))
+    # Tab 13 (Tiger Data docs) started in a tree or, since the live-findings calibration, in the meadow (then there is no
+    # tree it came from, and from_project_id is the new project): it is only ever a leaf of the new tree.
+    assert leaves(sponsor) == [tid(13)]
+    assert all(tid(13) not in leaves(t) for t in now["trees"] if t["project_id"] != sponsor["project_id"])
     pom = next(t for t in now["trees"] if t["project_id"] == n["project_id"])
     assert pom["goal"]["text"] == POMODORO and pom["goal"]["provenance"] == "stated" and not pom["fogged"]
     assert not any(f["tab_ref"] == tid(28) for f in now["fog"])

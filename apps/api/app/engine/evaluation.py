@@ -9,7 +9,7 @@ from sklearn.metrics import adjusted_rand_score
 from .cluster import ClusterResult
 from .fixtures import FIXTURES_DIR, _json, load_contract, load_demo_tabs
 
-SNAPSHOT_NAMES = ("demo", "trip_laptops_thesis", "nextjs_k8s_gift")
+SNAPSHOT_NAMES = ("demo", "trip_laptops_thesis", "nextjs_k8s_gift", "burst_unrelated")
 
 
 def demo_ground_truth() -> dict[str, str | None]:
