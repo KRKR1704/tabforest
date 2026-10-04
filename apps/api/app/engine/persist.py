@@ -21,8 +21,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("tabforest.engine.persist")
 
-# Daily budget per user (§4.9). analysis_runs has no token column, so the budget counts LLM calls
-# (one call ≈ 3k tokens on the demo, so 400 calls ≈ 1.2M tokens/day). Tokens per run are logged.
+# Daily budget per user (§4.9): tokens (analysis_runs.tokens, migration 202), with the LLM-call count
+# as a secondary cap. One demo grow is about 12k tokens and 5 calls, so 200k tokens ≈ 16 grows a day.
+DAILY_TOKEN_BUDGET = 200_000
 DAILY_LLM_CALL_BUDGET = 400
 
 
@@ -36,15 +37,25 @@ def _j(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-async def llm_calls_today(pool: Any, user_id: UUID) -> int:
+async def usage_today(pool: Any, user_id: UUID) -> tuple[int, int]:
+    """(tokens, llm_calls) of the user's runs since midnight UTC. Runs without a token count add 0 tokens."""
     if pool is None:
-        return 0
+        return 0, 0
     try:
-        return int(await pool.fetchval(
-            "SELECT coalesce(sum(llm_calls), 0) FROM analysis_runs WHERE user_id = $1 AND ts >= date_trunc('day', now())",
-            user_id))
+        row = await pool.fetchrow(
+            "SELECT coalesce(sum(tokens), 0) AS tokens, coalesce(sum(llm_calls), 0) AS calls FROM analysis_runs "
+            "WHERE user_id = $1 AND ts >= date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc'", user_id)
     except asyncpg.UndefinedTableError:
-        return 0
+        return 0, 0
+    return int(row["tokens"]), int(row["calls"])
+
+
+def budget_exceeded(tokens: int, calls: int) -> str | None:
+    if tokens >= DAILY_TOKEN_BUDGET:
+        return f"Daily AI budget of {DAILY_TOKEN_BUDGET} tokens reached; try again tomorrow"
+    if calls >= DAILY_LLM_CALL_BUDGET:
+        return f"Daily AI budget of {DAILY_LLM_CALL_BUDGET} model calls reached; try again tomorrow"
+    return None
 
 
 async def last_grove(pool: Any, user_id: UUID) -> dict[str, Any] | None:
@@ -62,11 +73,11 @@ async def persist_run(run: GrowRun) -> None:
     r = run.report
     async with pool.acquire() as conn, conn.transaction():
         await conn.execute(
-            "INSERT INTO analysis_runs (run_id, user_id, kind, clusters, model, latency_ms, llm_calls, "
+            "INSERT INTO analysis_runs (run_id, user_id, kind, clusters, model, latency_ms, llm_calls, tokens, "
             "downgraded_claims, fallback_used, degraded, hollow_count, response) "
-            "VALUES ($1, $2, 'grow', $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)",
-            UUID(run.run_id), user, len(run.builds), run.model_name, r.latency_ms, r.llm_calls, len(r.downgrades),
-            bool(r.fallbacks), run.response["degraded"], run.hollow_count, _j(run.response))
+            "VALUES ($1, $2, 'grow', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)",
+            UUID(run.run_id), user, len(run.builds), run.model_name, r.latency_ms, r.llm_calls, r.tokens,
+            len(r.downgrades), bool(r.fallbacks), run.response["degraded"], run.hollow_count, _j(run.response))
 
         for b in run.builds:
             t = b.tree

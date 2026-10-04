@@ -20,6 +20,7 @@ from app.engine.grove import GrowRun
 from app.engine.infer import build_messages, embed_document, infer_cluster
 from app.engine.features import DataBlock
 from app.engine.model_schema import ClusterInference
+from app.engine.persist import DAILY_LLM_CALL_BUDGET, DAILY_TOKEN_BUDGET, budget_exceeded, usage_today
 from app.engine.schemas import GroveResponse, stream_line_adapter
 from app.engine.settings import get_settings
 from app.engine.standalone import app
@@ -75,7 +76,8 @@ class FakeClient:
     async def embed(self, texts, *, batch_size=64):
         out = []
         for t in texts:
-            rng = np.random.default_rng(zlib.crc32(t.encode()))
+            # the demo's refresh-token searches are one family with real embeddings (R-6); keep that here
+            rng = np.random.default_rng(1 if "refresh token" in t else zlib.crc32(t.encode()))
             out.append(list(rng.normal(size=1536)))
         return out
 
@@ -256,13 +258,76 @@ def test_11th_grow_in_a_minute_is_429(stubbed) -> None:
         assert other.status_code == 200  # per user
 
 
-def test_daily_budget_is_429(stubbed, monkeypatch) -> None:
+@pytest.mark.parametrize("tokens,calls,status,unit", [
+    (DAILY_TOKEN_BUDGET - 1, DAILY_LLM_CALL_BUDGET - 1, 200, None),
+    (DAILY_TOKEN_BUDGET, 0, 429, "tokens"),                 # tokens are the budget
+    (0, DAILY_LLM_CALL_BUDGET, 429, "model calls"),         # the call count is a secondary cap
+])
+def test_daily_budget_is_429(stubbed, monkeypatch, tokens, calls, status, unit) -> None:
     async def spent(pool, user_id):
-        return routes.DAILY_LLM_CALL_BUDGET
-    monkeypatch.setattr(routes, "llm_calls_today", spent)
+        return tokens, calls
+    monkeypatch.setattr(routes, "usage_today", spent)
     with TestClient(app) as c:
         r = c.post("/api/grove/grow", json=body(3), headers={"X-Dev-User": str(uuid.uuid4())})
-        assert r.status_code == 429 and "budget" in r.json()["detail"]
+        assert r.status_code == status
+        if unit:
+            assert "budget" in r.json()["detail"] and unit in r.json()["detail"]
+
+
+def test_budget_exceeded_rule() -> None:
+    assert budget_exceeded(0, 0) is None and budget_exceeded(199_999, 399) is None
+    assert "200000 tokens" in budget_exceeded(200_000, 0) and "400 model calls" in budget_exceeded(0, 400)
+
+
+@pytest.mark.skipif(not get_settings().db_configured, reason="DATABASE_URL not set")
+def test_usage_today_sums_tokens_and_calls_of_today_only() -> None:
+    from app.engine import db
+
+    user = uuid.UUID("00000000-0000-4000-8000-0000000000e7")
+
+    async def scenario():
+        pool = await db.get_pool()
+        try:
+            for ts, tokens, calls in (("now()", 12_000, 5), ("now()", None, 3), ("now() - interval '2 days'", 90_000, 8)):
+                await pool.execute(f"INSERT INTO analysis_runs (user_id, ts, llm_calls, tokens) VALUES ($1, {ts}, $2, $3)",
+                                   user, calls, tokens)
+            return await usage_today(pool, user), await usage_today(pool, uuid.uuid4())
+        finally:
+            await pool.execute("DELETE FROM analysis_runs WHERE user_id = $1", user)
+            await db.close_pool()
+    mine, other = asyncio.run(scenario())
+    assert mine == (12_000, 8) and other == (0, 0)  # NULL tokens add 0; yesterday's run is not counted
+
+
+# --- deterministic mushroom kind -----------------------------------------------------------------------
+
+def question_case(refs: list[str], model_kind: str, monkeypatch) -> dict:
+    inf = good("Auth").model_dump()
+    inf["unresolved_questions"] = [{"question": "Where should refresh tokens live?", "kind": model_kind,
+                                    "provenance": "inferred", "confidence": 0.8,
+                                    "evidence": [{"ref": r, "why": "signal"} for r in refs]}]
+    run, _ = run_grow(FakeClient({"auth": lambda _: ClusterInference.model_validate(inf)}), monkeypatch=monkeypatch)
+    auth = run.response["trees"][0]
+    assert auth["name"] == "Auth" and len(auth["mushrooms"]) >= 1
+    return auth["mushrooms"][0]
+
+
+def test_question_citing_an_open_loop_family_is_repeated_search(monkeypatch) -> None:
+    # Backend Auth DATA: q1 = the refresh-token family (open loop), c1 = "JWT vs session" (resolved),
+    # c2 = "httponly cookie vs localstorage" (unresolved).
+    m = question_case(["q1", "c2", "t7"], "unresolved_comparison", monkeypatch)
+    assert m["kind"] == "repeated_search" and m["recurrence"] == 4
+
+
+def test_question_citing_an_unresolved_comparison_is_unresolved_comparison(monkeypatch) -> None:
+    m = question_case(["c2", "t7"], "dormant_mid_comparison", monkeypatch)
+    assert m["kind"] == "unresolved_comparison" and m["recurrence"] == 1
+    assert any(e["why"].startswith("comparison:") for e in m["evidence"])
+
+
+def test_question_citing_only_a_resolved_comparison_keeps_the_model_kind(monkeypatch) -> None:
+    m = question_case(["c1", "t3"], "dormant_mid_comparison", monkeypatch)
+    assert m["kind"] == "dormant_mid_comparison"
 
 
 # --- pins (real database, mocked AI) -----------------------------------------------------------------
