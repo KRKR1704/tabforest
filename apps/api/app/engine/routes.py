@@ -123,3 +123,9 @@ async def whoami(user_id: UUID = Depends(get_user_id)) -> dict[str, str]:
     if get_settings().auth_mode != "dev":
         raise ProblemError(404, "Not Found", "Not found")
     return {"user_id": str(user_id)}
+
+
+# R-13: prune suggestions live in prune.py; included last so this module stays the single router.
+from .prune import router as _prune_router  # noqa: E402
+
+router.include_router(_prune_router)

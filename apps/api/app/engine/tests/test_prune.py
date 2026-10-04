@@ -1,0 +1,247 @@
+"""R-13 prune suggestions: rules, the 0.90 gate, requested-tabs-only, failure handling and the endpoint. No network."""
+
+import asyncio
+from datetime import UTC, datetime
+from uuid import UUID
+
+import numpy as np
+import pytest
+from fastapi.testclient import TestClient
+
+from app.engine import prune
+from app.engine.adapters.stats import FixtureStats, TabAttention
+from app.engine.fixtures import load_contract
+from app.engine.prune import ACTIONS, NOTE, build_suggestions
+from app.engine.schemas import PruneResponse
+
+USER = UUID("00000000-0000-4000-8000-0000000000dd")
+GROVE = load_contract("grove.example.json")
+EXPECTED = load_contract("prune.example.json")["examples"][0]["response"]["body"]
+DEMO = [t["tab_ref"] for t in load_contract("snapshot.example.json")["open_tabs"]]
+
+
+def tid(n: int) -> str:
+    return f"00000000-0000-4000-8000-{n:012d}"
+
+
+def vec(*xs: float) -> np.ndarray:
+    return np.array(xs, dtype=np.float32)
+
+
+def embedder(by_ref: dict[str, np.ndarray], calls: list | None = None):
+    async def embed(items):
+        if calls is not None:
+            calls.append([r for r, _ in items])
+        return {r: by_ref[r] for r, _ in items}
+    return embed
+
+
+# 9 and 10 point almost the same way as the official docs tab 1
+CLOSE = {tid(1): vec(1, 0), tid(9): vec(0.95, 0.1), tid(10): vec(0.97, 0.05)}
+
+
+def run(refs=DEMO, grove=GROVE, embed=None, stats=None):
+    return asyncio.run(build_suggestions(USER, refs, grove, embed=embed or embedder(CLOSE),
+                                         stats=stats or FixtureStats()))
+
+
+def by_kind(result):
+    return {s["kind"]: s for s in result["suggestions"]}
+
+
+# --- the contract example ----------------------------------------------------------------------------
+
+def test_the_demo_snapshot_gives_the_contract_suggestions() -> None:
+    got = run()
+    PruneResponse.model_validate(got)
+    assert got["actions"] == EXPECTED["actions"] and got["note"] == EXPECTED["note"]
+    assert [s["kind"] for s in got["suggestions"]] == [s["kind"] for s in EXPECTED["suggestions"]]
+    for mine, theirs in zip(got["suggestions"], EXPECTED["suggestions"], strict=True):
+        assert set(mine["tab_refs"]) == set(theirs["tab_refs"]), mine["kind"]
+        assert mine["keep_ref"] == theirs["keep_ref"] and mine["default_selected"] == theirs["default_selected"]
+        assert mine["id"].startswith("pr_")
+    kinds = by_kind(got)
+    assert kinds["exact_duplicate"]["reason"] == "Same page open twice"
+    assert kinds["semantic_redundant"]["reason"] == EXPECTED["suggestions"][1]["reason"]
+    assert kinds["distraction"]["reason"] == "9 s of focus, unrelated to any goal"
+
+
+def test_ids_are_unique_and_the_suggestions_default_to_safe_choices() -> None:
+    got = run()
+    assert len({s["id"] for s in got["suggestions"]}) == len(got["suggestions"])
+    selected = {s["kind"] for s in got["suggestions"] if s["default_selected"]}
+    assert selected == {"exact_duplicate", "semantic_redundant"}  # stale and distraction are never preselected
+
+
+# --- only what was asked for -------------------------------------------------------------------------
+
+def test_only_the_requested_tabs_are_considered() -> None:
+    got = run(refs=[tid(1), tid(2)])
+    assert [s["kind"] for s in got["suggestions"]] == ["exact_duplicate"]
+    assert run(refs=[tid(1)])["suggestions"] == []  # one tab of a pair is not a duplicate
+    assert run(refs=[tid(9), tid(10)])["suggestions"] == []  # the keeper is not among the requested tabs
+
+
+def test_unknown_refs_are_ignored_not_an_error() -> None:
+    got = run(refs=[tid(1), tid(2), "deadbeef-0000-4000-8000-000000000000"])
+    assert [s["kind"] for s in got["suggestions"]] == ["exact_duplicate"]
+
+
+def test_no_grove_means_no_suggestions_but_the_same_shape() -> None:
+    got = run(grove=None)
+    assert got == {"suggestions": [], "actions": ACTIONS, "note": NOTE}
+
+
+# --- semantic redundancy: same branch and similarity >= 0.90 -----------------------------------------
+
+def test_a_member_below_the_similarity_gate_is_not_suggested() -> None:
+    vectors = {**CLOSE, tid(10): vec(0.5, 0.9)}  # cosine to tab 1 is about 0.49
+    got = run(embed=embedder(vectors))
+    semantic = by_kind(got)["semantic_redundant"]
+    assert semantic["tab_refs"] == [tid(9)]
+
+
+def test_nothing_above_the_gate_means_no_semantic_suggestion() -> None:
+    far = {tid(1): vec(1, 0), tid(9): vec(0, 1), tid(10): vec(0.3, 0.9)}
+    assert "semantic_redundant" not in by_kind(run(embed=embedder(far)))
+
+
+def test_the_gate_is_exactly_point_nine() -> None:
+    just_over = {tid(1): vec(1, 0), tid(9): vec(0.9, np.sqrt(1 - 0.81) - 1e-3), tid(10): vec(0.89, np.sqrt(1 - 0.89**2) + 1e-3)}
+    cos = lambda a, b: float(a @ b) / float(np.linalg.norm(a) * np.linalg.norm(b))  # noqa: E731
+    assert cos(just_over[tid(1)], just_over[tid(9)]) >= 0.90 > cos(just_over[tid(1)], just_over[tid(10)])
+    assert by_kind(run(embed=embedder(just_over)))["semantic_redundant"]["tab_refs"] == [tid(9)]
+
+
+def test_a_group_spanning_branches_only_keeps_the_members_in_the_keepers_branch() -> None:
+    grove = {**GROVE, "trees": [dict(t) for t in GROVE["trees"]]}
+    tree = grove["trees"][0]
+    tree["vines"] = [{"tab_refs": [tid(9), tid(5)], "kind": "semantic", "keep_ref": tid(1), "reason": "x"}]
+    vectors = {tid(1): vec(1, 0), tid(9): vec(0.99, 0.01), tid(5): vec(0.99, 0.01)}  # 5 is in the OAuth 2.0 branch
+    got = run(grove=grove, embed=embedder(vectors), refs=[tid(1), tid(9), tid(5)])
+    assert by_kind(got)["semantic_redundant"]["tab_refs"] == [tid(9)]
+
+
+def test_embeddings_are_asked_only_for_the_tabs_that_matter() -> None:
+    calls: list = []
+    run(embed=embedder(CLOSE, calls))
+    assert len(calls) == 1 and set(calls[0]) == {tid(1), tid(9), tid(10)}
+
+
+def test_when_the_embeddings_fail_semantic_suggestions_are_dropped_and_the_rest_stay() -> None:
+    async def broken(items):
+        raise RuntimeError("azure down")
+    got = run(embed=broken)
+    assert [s["kind"] for s in got["suggestions"]] == ["exact_duplicate", "stale", "distraction"]
+
+
+def test_a_zero_vector_never_passes_the_gate() -> None:
+    zero = {tid(1): vec(0, 0), tid(9): vec(0, 0), tid(10): vec(0, 0)}
+    assert "semantic_redundant" not in by_kind(run(embed=embedder(zero)))
+
+
+def test_the_semantic_group_is_not_repeated_when_the_same_vine_is_in_two_trees() -> None:
+    grove = {**GROVE, "trees": [dict(t) for t in GROVE["trees"]]}
+    second = dict(grove["trees"][1]); second["vines"] = list(grove["trees"][0]["vines"])
+    grove["trees"][1] = second
+    got = run(grove=grove)
+    assert [s["kind"] for s in got["suggestions"]].count("semantic_redundant") == 1
+    assert [s["kind"] for s in got["suggestions"]].count("exact_duplicate") == 1
+
+
+# --- stale and distraction ---------------------------------------------------------------------------
+
+def test_stale_lists_the_fallen_leaves_that_were_asked_about_and_nothing_else() -> None:
+    fallen = {tid(18), tid(19), tid(20)}
+    assert set(by_kind(run())["stale"]["tab_refs"]) == fallen
+    assert set(by_kind(run(refs=[tid(18), tid(1)]))["stale"]["tab_refs"]) == {tid(18)}
+    assert "stale" not in by_kind(run(refs=[tid(1), tid(2)]))
+
+
+class Attention(FixtureStats):
+    def __init__(self, ms: int | None) -> None:
+        super().__init__()
+        self.ms = ms
+
+    async def attention(self, user_id, tab_refs, since=None):
+        if self.ms is None:
+            return {}
+        return {r: TabAttention(r, self.ms, 1, datetime(2026, 10, 4, tzinfo=UTC)) for r in tab_refs}
+
+
+def test_distraction_is_a_singleton_under_ten_seconds() -> None:
+    meadow = GROVE["meadow"]
+    for ms, flagged in ((0, True), (9_999, True), (10_000, False), (84_000, False)):
+        got = run(stats=Attention(ms))
+        assert (("distraction" in by_kind(got)) is flagged), ms
+        if flagged:
+            flagged_refs = {r for s in got["suggestions"] if s["kind"] == "distraction" for r in s["tab_refs"]}
+            assert flagged_refs == set(meadow)
+
+
+def test_each_distraction_is_its_own_suggestion_with_its_own_seconds() -> None:
+    got = run(refs=GROVE["meadow"])
+    flagged = [s for s in got["suggestions"] if s["kind"] == "distraction"]
+    assert [s["tab_refs"] for s in flagged] == [[tid(26)]]  # tab 27 had 84 s
+    assert flagged[0]["reason"] == "9 s of focus, unrelated to any goal"
+
+
+def test_a_tab_in_a_tree_is_never_a_distraction_even_with_no_focus() -> None:
+    got = run(stats=Attention(0))
+    assert all(set(s["tab_refs"]).isdisjoint({tid(1), tid(3)}) for s in got["suggestions"] if s["kind"] == "distraction")
+
+
+# --- the endpoint ------------------------------------------------------------------------------------
+
+@pytest.fixture
+def api(client: TestClient, dev_mode: None, monkeypatch: pytest.MonkeyPatch):
+    state = {"grove": GROVE, "pool": object(), "asked": []}
+
+    async def get_pool():
+        return state["pool"]
+
+    async def last_grove(pool, user_id):
+        state["asked"].append(user_id)
+        return state["grove"]
+
+    monkeypatch.setattr(prune.db, "get_pool", get_pool)
+    monkeypatch.setattr(prune, "last_grove", last_grove)
+    monkeypatch.setattr(prune, "_default_embed", lambda user_id, pool: embedder(CLOSE))
+    return client, state
+
+
+H = {"X-Dev-User": str(USER)}
+
+
+def test_endpoint_returns_the_contract_response(api) -> None:
+    client, state = api
+    r = client.post("/api/tabs/prune-suggestions", json={"tab_refs": DEMO}, headers=H)
+    assert r.status_code == 200
+    PruneResponse.model_validate(r.json())
+    assert [s["kind"] for s in r.json()["suggestions"]] == [s["kind"] for s in EXPECTED["suggestions"]]
+    assert state["asked"] == [USER]  # the grove is looked up for the signed-in user only
+
+
+def test_endpoint_without_a_database_or_a_grove_is_an_empty_list_not_an_error(api) -> None:
+    client, state = api
+    state["pool"] = None
+    r = client.post("/api/tabs/prune-suggestions", json={"tab_refs": DEMO}, headers=H)
+    assert r.status_code == 200 and r.json()["suggestions"] == [] and r.json()["note"] == NOTE
+    state["pool"], state["grove"] = object(), None
+    assert client.post("/api/tabs/prune-suggestions", json={"tab_refs": DEMO}, headers=H).json()["suggestions"] == []
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"tab_refs": []}, {"tab_refs": ["not-a-uuid"]}, {"tab_refs": [tid(1)], "user_id": "x"},
+    {"tab_refs": [f"00000000-0000-4000-8000-{n:012d}" for n in range(1, 62)]},
+])
+def test_endpoint_rejects_bad_requests_with_a_problem_body(api, body) -> None:
+    client, _ = api
+    r = client.post("/api/tabs/prune-suggestions", json=body, headers=H)
+    assert r.status_code == 422
+
+
+def test_endpoint_needs_a_user(api) -> None:
+    client, _ = api
+    r = client.post("/api/tabs/prune-suggestions", json={"tab_refs": [tid(1)]})
+    assert r.status_code == 401

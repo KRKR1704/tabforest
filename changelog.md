@@ -6,6 +6,25 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — R-13 Prune suggestions (R lane, built by D with Roopesh's agreement to be confirmed)
+
+### Added
+
+- `apps/api/app/engine/prune.py` and `POST /api/tabs/prune-suggestions` (response shape `contracts/prune.example.json`, existing `PruneRequest` and `PruneResponse` models). It reads the signed-in user's last stored grove and suggests, for the requested tabs only: exact duplicates (the grow run's exact vines), semantic redundancy (grow's semantic vines, kept only when the tab is in the keeper's branch and its embedding similarity to the keeper is at least 0.90), stale tabs (leaves that were fallen: no focus for 3+ days and not cited), and distractions (Wildflower Meadow singletons with under 10 s of focus, from the stats adapter). Duplicates and redundancy are preselected; stale and distractions never are. Suggest, never close.
+- No model call: the one-line semantic reason is the one grow already wrote. Similarity uses the cached tab embeddings (same text as R-4, so a second run makes no API calls).
+- Fail closed: if the embeddings cannot be read, the semantic suggestions are dropped (the others stay); with no database or no grove the answer is an empty list in the same shape, not an error.
+- `routes.py`: two lines at the end include the new router.
+- `tests/test_prune.py`: 25 tests (the demo snapshot reproduces the contract suggestions; requested-tabs-only; the 0.90 gate and its boundary; branch rule; embedding failure; a vine in two trees; fallen and distraction boundaries; endpoint with and without grove, bad requests, missing user). Five deliberate breaks (gate, branch rule, distraction boundary, requested-tabs filter, pair size) were each caught.
+
+### Verification
+
+- From `apps/api/`: `pytest app/engine/tests tests` 220 passed, 30 skipped (the skipped ones are the live Azure tests, as before); ruff clean on the new file.
+
+### Notes
+
+- Not run against a real database or real Azure embeddings. The stale reason is generic ("3 days or more"), because the stored grove has no per-tab last-focus date (the contract example says "4 days").
+- When R-15 switches the stats adapter to P's tables, distraction uses the same `attention` call.
+
 ## [2026-10-04] — Lane S-13 Sign-in, onboarding, outline, keyboard, few tabs (S)
 
 ### Added
