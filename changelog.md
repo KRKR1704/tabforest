@@ -6,6 +6,67 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — R-8.1: evidence quality (comparison refs, citation instructions, token budget) (R)
+
+### Added
+
+- Comparison refs: `features.to_data_block` gives each comparison a ref `c1..cN` with its source tab, the tabs on each side and the dwell split after it (`Comparison.side_tab_refs` is new).
+  - The `c*` ref maps back to the comparison id.
+  - `DataBlock.anchors` names where it is shown, because the API's evidence kinds have no "comparison": the source tab, else the search family of its query, else its most-read side tab.
+- `db/migrations/202_engine_tokens.sql`: `analysis_runs.tokens integer CHECK (tokens >= 0)`, nullable and idempotent (`ADD COLUMN IF NOT EXISTS`). Applied with `apply_r_migrations.py`.
+- `engine/scripts/evidence_report.py`: 3 live grows on the demo for a test user, measured the same way each time (downgrades, single-ref downgrades, fogged trees, goal provenance and refs, the Backend Auth direction, mushroom kinds and stones). It also prints a before/after comparison side by side, and cleans the user's rows before and after.
+
+### Changed
+
+- `validate.py`: a `c*` ref is one valid ref with source type "comparison". A `c*` and the page it was read from (its anchor) count once, never twice. Source types are taken from the refs as cited. The thresholds (≥ 2 refs, ≥ 0.60, the cap formula) are unchanged.
+- `infer.py` system prompt:
+  - Cite every DATA ref that supports a claim (tabs, families, comparisons, notes), not just the strongest. A one-ref claim is shown as "Maybe". Never invent refs.
+  - Direction is where the behaviour is heading (dwell, revisits, comparisons).
+  - In browser mode, decisions are stated (from an n* note) or inferred from ≥ 2 refs.
+  - Questions cite their q* or c* ref.
+- `grove.mushroom_kind()` overrides the model:
+  - a question citing an open-loop q* family is `repeated_search`;
+  - otherwise, one citing an unresolved c* is `unresolved_comparison`;
+  - otherwise the model's kind is kept.
+  - Recurrence comes from cited q* families only.
+- Daily budget is now tokens: `DAILY_TOKEN_BUDGET = 200,000` per user per UTC day, from `analysis_runs.tokens`. The LLM-call count (400) stays as a secondary cap. Tokens are stored per run.
+  - `persist.llm_calls_today` is replaced by `usage_today` + `budget_exceeded`.
+
+### Tests
+
+- `test_validate.py`:
+  - a `c*` ref is one ref, shown as its anchor with a "comparison:" reason;
+  - a `c*` plus its own page count once, whichever order they are cited in;
+  - an unknown or unanchored `c*` is dropped.
+- `test_grow.py`:
+  - a question citing the open-loop q1 becomes `repeated_search` (recurrence 4) even when the model says `unresolved_comparison`;
+  - citing only the unresolved c2 gives `unresolved_comparison`;
+  - citing only the resolved c1 keeps the model's kind.
+  - Token budget: 429 at 200,000 tokens, and at 400 calls.
+  - `budget_exceeded` rule.
+  - `usage_today` against the database: today only, NULL tokens add 0, other users 0.
+  - The fake embedder gives the refresh-token searches one vector, as real embeddings do (R-6).
+- `test_features.py`: the DATA block test expects `c1` with its anchor and sides.
+
+### Verification
+
+- `evidence_report.py`: 3 live grows each, user `…00dd`, 0 rows left after. Totals:
+  - downgrades 17 → 11;
+  - single-ref downgrades 17 → 11 (still every downgrade);
+  - fogged trees 2 → 0;
+  - goals inferred 13/15 → 15/15;
+  - mean goal refs 2.0–2.6 → 3.0–3.2.
+- Backend Auth direction: inferred in 2 of 3 runs before (2 refs) and 2 of 3 after (3 refs). Mushroom kind: `repeated_search` in 3 of 3 after, 1 of 3 before.
+- Tokens per run about 11.7k → 12.9k (+10 %). Latency 3.8–7.6 s → 6.0–8.2 s; both batches vary a lot.
+- Migration: first run "2 added" (the `tokens` column and its CHECK), second run "0 added, 0 removed".
+- `pytest app/engine/tests`: 206 passed, 2 xfailed (unchanged R-5 and R-6 GirlHacks xfails).
+
+### Notes
+
+- A first AFTER batch counted a `c*` and its own source tab as two refs. That let "prefer JWT over session" (`c1` + the Stack Overflow tab it came from) pass as an inferred stone, which in effect relaxed the ≥ 2 rule. This was fixed before the final batch; in the final runs that stone is a hypothesis when it cites only that pair.
+- The remaining downgrades are all claims with one valid ref (mostly next actions).
+- `db/migrations/README.md` (not R's file) does not list `202_engine_tokens.sql` yet.
+
 ## [2026-10-04] — D-15 Extension test checklist and real-Chromium checks (D)
 
 ### Added
