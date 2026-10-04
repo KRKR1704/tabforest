@@ -97,7 +97,7 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
   const signedIn = authChecked && authState.signed_in;
   useEffect(() => {
     if (!growOnOpen || showInspector || !signedIn) return;
-    void restoreStoredGrove().then(() => runGrow());
+    void restoreStoredGrove().then(() => runGrow({ auto: true }));
   }, [growOnOpen, signedIn]);
 
   // Once the user is known to be signed in, ask the server who they are. The
@@ -118,7 +118,7 @@ export const App: React.FC<AppProps> = ({ growOnOpen = false }) => {
     if (!ok) return false;
     // Sign-in always lands on the grove, grown for this user from their open tabs.
     setActiveScreen('grove');
-    if (growOnOpen) void runGrow();
+    if (growOnOpen) void runGrow({ auto: true });
     return true;
   }, [bridgeSignIn, growOnOpen, setActiveScreen]);
 

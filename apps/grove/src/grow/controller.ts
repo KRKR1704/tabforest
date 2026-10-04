@@ -13,6 +13,8 @@ import type { HollowCountData, SnapshotPayload, TokenData } from '../types';
 export interface GrowOptions {
   /** Pause before each stand-in tree. Tests pass 0. */
   standInDelayMs?: number;
+  /** Started by the page opening, not by the user's click: with fewer than two tabs it asks the server for nothing. */
+  auto?: boolean;
 }
 
 export type GrowOutcome = 'grown' | 'last-grove' | 'stand-in' | 'no-snapshot' | 'busy';
@@ -66,6 +68,11 @@ export async function runGrow(options: GrowOptions = {}): Promise<GrowOutcome> {
     }
     if (snapshot.open_tabs.length === 0 && useGroveStore.getState().grove) {
       // Nothing is open to grow from: keep showing the grove the user already has instead of an empty one.
+      return 'last-grove';
+    }
+    if (options.auto && snapshot.open_tabs.length < 2) {
+      // The server stores every grow, an empty one included, and serves the newest as the "last grove".
+      // Opening the page with one or no tab must not bury the user's real grove under an empty one.
       return 'last-grove';
     }
 
