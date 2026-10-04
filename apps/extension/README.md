@@ -25,3 +25,15 @@ overrides the default fixed extension origin for CORS. Stop with Ctrl+C.
 
 Only the toolbar listener and placeholder are implemented. The preflight probe
 remains separate in `preflight/`.
+
+## Grove UI inside the extension (D-11)
+
+The Grove page (`apps/grove`, Shriya) is its own Vite app. To put it inside the extension as `grove.html`:
+
+```sh
+cd apps/grove && npm ci && npm run build        # builds dist/ and checks it is extension-safe
+cd ../extension && pnpm build:with-grove        # vite build, then copies the Grove build into dist/
+```
+
+`pnpm bundle:grove` runs only the copy step (after `pnpm build`). The script copies `apps/grove/dist/index.html` to `dist/grove.html` and the Grove `assets/` next to the extension's own (sourcemaps are not copied). It refuses a Grove build with inline or remote scripts, a page that points at a missing file, and a file name that already exists in the extension with different content. If `apps/grove/dist` does not exist, the placeholder `grove.html` stays. No Grove code is edited.
+
