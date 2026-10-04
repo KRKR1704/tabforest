@@ -224,9 +224,8 @@ class _Built:
 
 
 def build_claim(kind: str, out: WcClaimOut, docs: Sequence[Doc], ctx: ValidationContext) -> _Built:
-    claim = validate_claim(kind, out.text, out.provenance, out.confidence, out.evidence, ctx,  # type: ignore[arg-type]
-                           quote=out.quote)
-    claim.text = claim.text.strip()[:300]
+    claim = validate_claim(kind, _clean(out.text, 300), out.provenance, out.confidence, out.evidence,  # type: ignore[arg-type]
+                           ctx, quote=out.quote)
     if claim.provenance != "sourced":
         claim.quote = None
         return _Built(claim, None, None, None)
