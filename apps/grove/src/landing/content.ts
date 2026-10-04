@@ -70,8 +70,8 @@ export const HOW_IT_WORKS = [
 /** The "In one paragraph" section of docs/privacy.md, word for word. A test keeps the two the same. */
 export const PRIVACY_PARAGRAPH =
   'TabForest watches which tabs you open, switch to and close, so it can show why you opened them. ' +
-  'It records only the site name (domain), a cleaned-up page title and timings. ' +
-  'It never records full addresses, page contents, passwords, cookies or what you type. ' +
+  'It records only the site name (domain), a cleaned-up page title, timings and, on known search engines, the words of a search, so it can notice when you keep searching for the same thing. ' +
+  'It never records full addresses, page contents, passwords, cookies or what you type into pages. ' +
   'Private sites (banking, health, personal email, password managers, sign-in pages) and Incognito windows are never recorded at all. ' +
   'You can pause, exclude a site, or delete everything.';
 

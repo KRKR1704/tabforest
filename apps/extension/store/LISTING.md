@@ -43,7 +43,7 @@ What you get
 - A timeline of how your research unfolded, and a memory you can ask: "have I researched this before?"
 
 Your privacy comes first
-- Only the site name, a cleaned-up page title and timings are recorded. Never full addresses, page contents, passwords, cookies or what you type into pages. The only words recorded are the text of searches on known search engines.
+- Only the site name, a cleaned-up page title, timings and the words of searches on known search engines are recorded. Never full addresses, page contents, passwords, cookies or what you type into pages.
 - Banking, health, personal email, password managers and sign-in pages are skipped completely, and so is Incognito.
 - Pause, exclude a site, see exactly what would be sent, or delete everything, at any time.
 - No tab is closed without your click.

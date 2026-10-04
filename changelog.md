@@ -6,6 +6,12 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Privacy sentence: search text is recorded (D)
+
+### Changed
+
+- `docs/privacy.md` "In one paragraph" now says the extension records the words of a search on known search engines (it did say "never what you type", which was too broad), and the landing page quote and the store listing use the same words. Found by lane S while writing the landing page. The landing test that compares the page with the document passes.
+
 ## [2026-10-04] — Lane S: public landing page (S)
 
 Not a BUILD_TASKS.md row. A page for people who do not have the extension yet.
