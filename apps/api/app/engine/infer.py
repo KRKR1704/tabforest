@@ -83,6 +83,8 @@ REPAIR_INSTRUCTION = ("Your previous answer did not match the required JSON sche
 def embed_document(payload: dict[str, Any]) -> str:
     """The DATA block as an embedded document: JSON text, then JSON-escaped (ASCII only)."""
     escaped = json.dumps(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), ensure_ascii=True)[1:-1]
+    # \u003c and \u003e decode to the same text, but a page can no longer write the closing delimiter (R-14).
+    escaped = escaped.replace("<", "\\u003c").replace(">", "\\u003e")
     return f'""" <documents>\n{escaped}\n</documents> """'
 
 

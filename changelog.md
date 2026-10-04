@@ -6,6 +6,25 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — R-14 Prompt-injection suite (R lane, built by D)
+
+### Fixed
+
+- `infer.embed_document`: a page title or text containing `</documents>` could write the closing delimiter of the DATA block from inside it (the block then held two of them). `<` and `>` are now written as `\u003c` and `\u003e`, which decode to exactly the same text, so the closing delimiter is always the only one. Applies to the grove and to Work Context (both use this function).
+
+### Added
+
+- `fixtures/injection/attacks.json`: 15 attack strings (ignore-previous, role override, fake closing delimiter, chat-template tokens, JSON break, spoofed tool call, URL to open, markdown exfiltration, fake user note, fake quote, right-to-left and zero-width characters, base64, a 3,000-character repeat, control bytes, invented refs).
+- `tests/test_injection.py` (75 tests), by the layers of SPEC §12.1, with a model that obeys every injected instruction: the DATA block cannot be closed or reopened from inside and decodes losslessly (grove and Work Context); no model request carries tools, functions or browsing; on injected tabs a hijacked model produces no `stated` or `sourced` claim, no reference outside the snapshot, no note, no quote, confidence at most 0.95 even with ten real references; no url, link or action field exists in any response; on injected documents it cannot invent a source, an owner or a speaker, and only verbatim quotes of real documents survive (a hostile sentence that really is in a document is attributed to that document, never to the user); a flagged cluster is fogged and the run returns, a flagged Work Context request is refused with no retry; the SAMPLE answer is unchanged by injected text.
+
+### Verification
+
+- From `apps/api/`: `pytest app/engine/tests tests` 345 passed, 31 skipped (live tests). Seven deliberate breaks (delimiter escape, unknown-ref filter, confidence cap, owner check, stated downgrade, quote check) were run; each was caught, or is also covered by a second layer (a `stated` claim with no note falls through to a hypothesis; an unverified quote is caught again when its source is looked up).
+
+### Notes
+
+- Not verified against Azure Prompt Shields: that needs the deployment's filter setting and a real call (PRE-R1 says to turn it on; someone with portal access should confirm). Documents have no Prompt Shields "document" flag per item; the whole request is refused when the filter fires.
+
 ## [2026-10-04] — R-11 Work Context: analyze and upload (R lane, built by D)
 
 ### Added
