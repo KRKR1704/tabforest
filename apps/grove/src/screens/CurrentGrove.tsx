@@ -8,6 +8,8 @@ import type { LeafDrop } from '../viz/render';
 import { describeSelection, type GroveSelection } from '../viz/selection';
 import { GroveOutline } from './GroveOutline';
 import { useGroveActions } from './useGroveActions';
+import { NOTICES } from '../grow/controller';
+import { useGroveStore } from '../store/useGroveStore';
 
 interface CurrentGroveProps {
   grove: GroveResponse | null;
@@ -76,6 +78,8 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
   );
   const [draft, setDraft] = useState('');
   const actions = useGroveActions();
+  const groveNotice = useGroveStore((state) => state.groveNotice);
+  const isGrowing = useGroveStore((state) => state.isStreaming);
 
   const detailTree = grove?.trees.find((tree) => tree.cluster_ref === detailTreeId) ?? null;
 
@@ -98,11 +102,23 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
   if (!grove || grove.trees.length === 0) {
     return (
       <div className="mx-auto max-w-2xl px-8 py-12">
-        <p className="font-serif text-lg text-forest-100">No grove yet.</p>
-        <p className="mt-2 text-sm text-forest-400">Grow one from the tabs you have open.</p>
+        {groveNotice && (
+          <p role="alert" className="mb-6 text-sm text-amberCanopy-light">
+            {groveNotice}
+          </p>
+        )}
+        <p className="font-serif text-lg text-forest-100">
+          {isGrowing ? 'Reading your open tabs…' : 'No grove yet.'}
+        </p>
+        <p className="mt-2 text-sm text-forest-400">
+          {isGrowing ? 'Your grove will start growing in a moment.' : 'Grow one from the tabs you have open.'}
+        </p>
       </div>
     );
   }
+
+  // Seedling mode says so in words; so does a grove that is not fresh.
+  const banner = groveNotice ?? (grove.degraded ? grove.banner_text || NOTICES.degraded : null);
 
   const selected = selection ? describeSelection(grove, selection) : null;
   const showsDetail = selection !== null && OPENS_DETAIL.has(selection.kind);
@@ -117,6 +133,8 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
 
     // A tree, or a claim standing at its base, opens Tree Detail on that tree.
     const tree = grove.trees.find((t) => t.cluster_ref === next.treeId);
+    // A tree that is still listening has nothing to detail yet.
+    if (tree?.pending && OPENS_DETAIL.has(next.kind)) return;
     if (tree && OPENS_DETAIL.has(next.kind)) {
       setDetailTreeId(tree.cluster_ref);
       setActiveClaim(claimFor(next));
@@ -182,6 +200,15 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
           </button>
         ))}
       </div>
+
+      {banner && (
+        <p
+          role="alert"
+          className="shrink-0 border-b border-forest-800 bg-forest-900 px-6 py-2 text-sm text-amberCanopy-light"
+        >
+          {banner}
+        </p>
+      )}
 
       <div className="min-h-0 flex-1">
         {view === 'grove' ? (

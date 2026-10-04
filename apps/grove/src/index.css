@@ -55,6 +55,17 @@
     filter: brightness(1.5);
   }
 
+  /* A tree whose AI result has not arrived yet: a soft "listening" shimmer. */
+  .grove-canvas [data-pending='true'] {
+    animation: grove-listening 1.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .grove-canvas [data-pending='true'] {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+
   /* Where a dragged leaf would land. */
   .grove-canvas [data-drop-target='true'] {
     filter: brightness(1.4);
@@ -74,5 +85,15 @@
 
   .pill-provenance {
     @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider;
+  }
+}
+
+@keyframes grove-listening {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
   }
 }
