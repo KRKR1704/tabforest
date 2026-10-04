@@ -6,6 +6,17 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — README: the landing page is at tabforest.nyc (S)
+
+### Changed
+- `README.md`: the "Try it" link is now `https://tabforest.nyc/`, and the Development line names the same address. It was `https://tabforest.azurewebsites.net/welcome/`, which still works.
+
+### Verification
+- `https://tabforest.nyc/` redirects to `/welcome/` and answers 200 with the landing page's title; its script and stylesheet load; the certificate is issued for `tabforest.nyc` and validates; `http://tabforest.nyc/` redirects to HTTPS.
+
+### Notes
+- `www.tabforest.nyc` does not work: it still points at the registrar's parking page and has no certificate. Only the bare name is published. For lane P to decide whether `www` should work.
+
 ## [2026-10-04] — README: where the landing page lives (S)
 
 ### Changed
