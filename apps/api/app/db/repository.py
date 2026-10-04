@@ -5,7 +5,7 @@ user_id; a miss returns None, which routes turn into 404 (never 403).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import asyncpg
@@ -81,21 +81,23 @@ async def session_activity(user_id: UUID, conn: asyncpg.Connection, sessions: li
     return tabs, switches
 
 
-# SPEC §8.5 timeline query, re-bucketed to 30 minutes (two whole 15-minute buckets, X15). The join to
-# cluster_tabs happens in the route through C12, so a reassigned leaf moves lanes on the next read.
+# SPEC §8.5 timeline query, re-bucketed to 30 minutes (X15), read from the raw events. The last 24 hours is a
+# small range (user_id, ts), and the continuous aggregate lags: events that arrive with a timestamp older than its
+# materialization point (a flushed queue, a late batch) stay out of tab_attention_15m until the next policy
+# refresh, which is how the timeline showed nothing right after a real session. Same sums as the aggregate
+# (active_ms is carried by BLUR events), bucketed by event time. The join to cluster_tabs happens in the route.
 _ATTENTION_30M = """
-SELECT time_bucket('30 minutes', bucket) AS t, tab_ref, sum(active_ms)::bigint AS active_ms
-FROM tab_attention_15m
-WHERE user_id = $1 AND tab_ref = ANY($2::uuid[])
-  AND bucket >= time_bucket('30 minutes', $3::timestamptz) AND bucket < $4
+SELECT time_bucket('30 minutes', ts) AS t, tab_ref, sum(active_ms)::bigint AS active_ms
+FROM browser_events
+WHERE user_id = $1 AND tab_ref = ANY($2::uuid[]) AND active_ms > 0
+  AND ts >= time_bucket('30 minutes', $3::timestamptz) AND ts <= $4
 GROUP BY 1, 2
-HAVING sum(active_ms) > 0
 """
 
 
 async def attention_30m(user_id: UUID, conn: asyncpg.Connection, tab_refs: list[UUID], since: datetime,
                         until: datetime) -> list[asyncpg.Record]:
-    """Focused time per (30-minute bucket, tab), from the continuous aggregate."""
+    """Focused time per (30-minute bucket, tab), from the raw events of the range."""
     if not tab_refs:
         return []
     return await conn.fetch(_ATTENTION_30M, user_id, tab_refs, since, until)
@@ -124,16 +126,20 @@ WHERE user_id = $1 AND tab_ref = ANY($2::uuid[]) AND event_type IN ('FOCUS', 'BL
 """
 
 
-async def project_activity(user_id: UUID, conn: asyncpg.Connection, tab_refs: list[UUID]
-                           ) -> tuple[int, int, datetime | None]:
-    """(active_ms from the aggregate, sessions with focus on these tabs, last focus or blur) over
-    everything still stored, i.e. within retention."""
+async def project_activity(user_id: UUID, conn: asyncpg.Connection, tab_refs: list[UUID],
+                           now: datetime) -> tuple[int, int, datetime | None]:
+    """(active_ms, sessions with focus on these tabs, last focus or blur) over everything still stored.
+
+    Attention older than a day comes from the aggregate (the raw rows may be past retention); the last day
+    comes from the raw events, because the aggregate lags behind late batches (see _ATTENTION_30M)."""
     if not tab_refs:
         return 0, 0, None
     active = await conn.fetchval(
-        "SELECT coalesce(sum(active_ms), 0)::bigint FROM tab_attention_15m "
-        "WHERE user_id = $1 AND tab_ref = ANY($2::uuid[])",
-        user_id, tab_refs)
+        "SELECT (SELECT coalesce(sum(active_ms), 0) FROM tab_attention_15m WHERE user_id = $1 "
+        "        AND tab_ref = ANY($2::uuid[]) AND bucket < time_bucket('15 minutes', $3::timestamptz))"
+        " + (SELECT coalesce(sum(active_ms), 0) FROM browser_events WHERE user_id = $1 "
+        "        AND tab_ref = ANY($2::uuid[]) AND ts >= time_bucket('15 minutes', $3::timestamptz))",
+        user_id, tab_refs, now - timedelta(days=1))
     row = await conn.fetchrow(_PROJECT_ACTIVITY, user_id, tab_refs)
     return int(active), int(row["session_count"]), row["last_active_at"]
 

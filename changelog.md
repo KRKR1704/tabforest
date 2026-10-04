@@ -42,6 +42,78 @@ New: `test_cluster.py` (floor rule, burst not merged by time alone, and merged w
 - D's own chickpea, curry and hummus titles were not available; the recipe titles in the fixture are realistic stand-ins. Re-run `gen_title_pairs.py` and `calibrate_redundancy.py` once D's real titles are added.
 - `ruff` is not installed in this venv: lint was not run.
 
+## [2026-10-04] — Grove: opening the page with fewer than two tabs no longer buries the stored grove (D)
+
+The #63 restore still showed "No grove yet" for a real account. Cause: the server stores every grow, including the empty one it returns for 0 or 1 tab, and `GET /api/grove` serves the newest non-degraded run, so each open of the page with few tabs replaced the user's real grove with an empty one.
+
+### Fixed
+
+- The grow that starts when the page opens (`runGrow({ auto: true })`) asks the server for nothing when fewer than two tabs are open. The Grow grove button still always grows.
+
+### Tests
+
+- One new test in `restoreOnOpen.test.tsx`: an automatic grow with one tab sends no request. Grove suite 490 of 490; typecheck clean.
+
+### Notes
+
+- Server side (R, `apps/api/app/engine/persist.py`, `LAST_GROVE_SQL`): the last-grove query should skip a stored grove with no trees (for example `AND jsonb_array_length(response->'trees') > 0`, falling back to the newest only when none has trees). Until then, an account whose newest run is empty shows an empty grove until it grows once with two or more tabs.
+
+## [2026-10-04] — Live-check fixes: Timeline after a real session, flaky stats test (P)
+
+### Fixed
+- Timeline empty right after a real session (Deep's live check, "Nothing recorded in the last 24 hours"). `tab_attention_15m` is a continuous aggregate: events that arrive with a timestamp older than its materialization point (a flushed queue, a late batch) stay out of it until the next policy refresh, about a minute later, while Roopesh's grove reads the raw events and already showed the attention. The timeline now reads the last 24 hours from `browser_events` (same sums, bucketed by event time) and the saved-context totals read the last day from the raw events and older history from the aggregate. On Deep's real data the numbers are identical to the aggregate's once it has caught up: 101,346 ms, 14 tab switches, 3 lanes.
+- `test_stats_db.py::test_real_sql_reads_only_this_users_events_and_sums_their_dwell` failed about half the time (6 of 10 runs): `BLUR` and the next `FOCUS` share a timestamp and the tiebreaker `event_id` is random. `events` and `events_since` in `engine/adapters/stats.py` now order equal timestamps as they happened (OPEN, BLUR, FOCUS, UPDATE, IDLE, ACTIVE, CLOSE), then `event_id`. 12 of 12 runs pass.
+
+### Added
+- One log line for a request that arrives without a bearer token (method and path only). The 401s on events and grow in the live check were requests sent before sign-in finished, and nothing in the log said so.
+
+### Tests
+- Local: `test_late_events_show_up_without_waiting_for_the_aggregate` (fails on the old code, passes now).
+
+### Verification
+- 747 passed, 2 xfailed with the database (including `app/engine/tests`); `ruff check` clean.
+
+### Notes
+- The live API runs the build deployed for the live check; these fixes are not deployed yet.
+
+## [2026-10-04] — Grove: show the stored grove on open, and wait for sign-in before growing (D)
+
+Found by the live check against the deployed API: the Current Grove and Timeline screens were empty on every open even though the server held the user's history (Saved Groves and Privacy, which read the server, were filled).
+
+### Fixed
+
+- On open the Grove page now loads the last grove the server stored (`GET /api/grove`) as soon as the extension says the user is signed in, then grows from the open tabs on top of it. Current Grove and Timeline show the user's history instead of "No grove yet". The stored grove is never replaced by one that grew while the request was in flight, and a failed or empty answer leaves the page as it was (it never falls back to the sample grove).
+- The first grow no longer fires at page load, before sign-in finished; it used to get a 401 and not retry. It runs once the user is known to be signed in, and again after sign-in or sign-out and sign-in.
+- Growing with no open tab keeps the grove already on screen instead of replacing it with an empty one.
+
+### Changed
+
+- `apps/grove/src/App.tsx`, `grow/controller.ts` (`restoreStoredGrove`), `adapters/grove.ts` (`fetchStoredGrove`). The existing "grows on first open" test now waits for the snapshot request instead of looking for the transient "Reading your open tabs" text, because the grow starts after the sign-in check.
+
+### Tests
+
+- New `restoreOnOpen.test.tsx` (7): restore fills an empty page and keeps a copy on the device, nothing from the server leaves the page alone, a restore that finishes after a grow is discarded, an empty tab list keeps the grove, nothing is requested before sign-in, and `fetchStoredGrove` is null for the sample build, a 404 and a network error. Grove suite: 489 of 489 pass; typecheck clean.
+
+### Notes
+
+- Not done here: silent token renewal (the sign-in still lasts about an hour, then the next request is a 401), and the Grove folder belongs to Shriya.
+
+## [2026-10-04] — Live check: the product against the deployed API with a real sign-in (D)
+
+### Added
+
+- `apps/extension/e2e/full-stack/live-check.mjs` and a README section: a visible Chromium with the real extension against the deployed API and the real Azure OpenAI model. One Microsoft sign-in by a person, then automatic: 12 real pages and 3 searches with tab switching, a private page skipped by the Hollow, Grow grove, tree detail, Save context, Resume and Restore, Timeline, prune, Work Context (paste and upload), Ask Memory, privacy. It never deletes anything. It writes `report.md`, `report.json` and a screenshot per screen. The README has setup commands (Playwright, the live build) and a section for an AI agent that runs it for someone.
+- `TOPIC_GAP_MIN` waits between topics while browsing, because the engine merges topics that are opened within minutes of each other.
+
+### Verification
+
+- First live run (before this wording was added): 15 of 18 checks passed against the deployed API. Sign-in, events, Grow with the real model (13.6 s, not degraded), tree detail, Save context, Restore (10 to 13 tabs), prune, Work Context (sourced, 8 s) and privacy all worked. The three failures were the known Grove sign-in race (401 before sign-in), a Timeline that was empty for a 9-second-per-tab session, and the single tree described below; the script now reports the first two as KNOWN.
+
+### Notes
+
+- Findings for the engine owners: tabs opened in a burst (about 2.5 minutes) were merged into one tree, including a branch the model named "Unrelated Wikipedia topics" (the 3-minute temporal bonus); the open-loop threshold of 0.80 is above the measured similarity of real rephrased searches (0.67 to 0.84), so the open question is found only sometimes; prune labelled three related food pages as "says the same".
+- The `TOPIC_GAP_MIN` path has been syntax-checked but not run to completion.
+
 ## [2026-10-04] — R-12: research memory (R)
 
 Insight writer, 5-minute dormancy pass with an advisory lock, `GET /api/memory/search`, and one calibrated similarity threshold shared by the search and the firefly. Only `apps/api/app/engine/**` and this file changed. No migration (`research_insights` and `memory_embeddings` already exist).

@@ -59,6 +59,23 @@ export async function getGrove(): Promise<GroveResponse> {
   }
 }
 
+/**
+ * The grove the server stored last (GET /api/grove). Null when there is none or it cannot be read: unlike
+ * getGrove, this never falls back to the sample, because it is shown as the user's own memory.
+ */
+export async function fetchStoredGrove(): Promise<GroveResponse | null> {
+  if (isMockMode('grove')) return null;
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch(`${apiBaseUrl()}/api/grove`, { method: 'GET', headers });
+    if (!res.ok) return null;
+    const grove = normalizeGrove((await res.json()) as WireGrove);
+    return grove.trees.length > 0 ? grove : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function growGrove(snapshot: SnapshotPayload): Promise<GroveResponse> {
   if (isMockMode('grove')) {
     return mockGroveResponse;
