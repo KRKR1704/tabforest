@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Trees } from 'lucide-react';
-import { GUIDE_KEY, GUIDE_SHOWCASE } from '../lib/guideGrove';
+import { GUIDE_KEY, GUIDE_SHOWCASE, GUIDE_STEPS } from '../lib/guideGrove';
 import { countGroveTabs } from '../lib/grove';
-import { KeyIcon } from '../screens/GroveGuide';
+import { GUIDE_PAUSE_MS, KeyIcon } from '../screens/GroveGuide';
 import { GroveCanvas } from '../viz/GroveCanvas';
 import {
+  DEMO_ACTIONS,
   EXTENSION_ZIP_URL,
   HOW_IT_WORKS,
   INSTALL_NOTES,
@@ -49,8 +50,20 @@ export const Landing: React.FC = () => {
   const treeCount = GUIDE_SHOWCASE.trees.length;
   const tabCount = countGroveTabs(GUIDE_SHOWCASE);
 
+  // "Try a change": one step of the tour, shown as the grove before it and then after.
+  const [trial, setTrial] = useState<{ step: string; run: number } | null>(null);
+  const [changed, setChanged] = useState(false);
+  const step = trial ? GUIDE_STEPS.find((item) => item.id === trial.step) ?? null : null;
+  useEffect(() => {
+    setChanged(false);
+    if (!trial) return;
+    const timer = setTimeout(() => setChanged(true), GUIDE_PAUSE_MS);
+    return () => clearTimeout(timer);
+  }, [trial]);
+
   const watch = () => {
     document.getElementById('demo')?.scrollIntoView?.({ block: 'center' });
+    setTrial(null);
     setGrowKey((key) => key + 1);
   };
 
@@ -112,12 +125,54 @@ export const Landing: React.FC = () => {
                 ))}
               </div>
               <div className="h-[min(56vw,440px)] min-h-[260px]">
-                <GroveCanvas grove={grove} growKey={growKey} />
+                {step && trial ? (
+                  // A fresh canvas per press, so only the one change is animated.
+                  <GroveCanvas
+                    key={`${trial.step}-${trial.run}`}
+                    grove={changed ? step.after : step.before}
+                    growKey={growKey}
+                    growTimeScale={1.25}
+                  />
+                ) : (
+                  <GroveCanvas key="showcase" grove={grove} growKey={growKey} />
+                )}
               </div>
-              <p className="border-t border-forest-800 bg-forest-900 px-4 py-3 text-[13px] text-forest-300">
-                An example: {tabCount} tabs, {treeCount} goals. Your tabs stay open exactly as they are;
-                the grove only shows what they are for.
-              </p>
+
+              <div className="border-t border-forest-800 bg-forest-900 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.09em] text-forest-400">
+                  Try a change
+                </p>
+                <div role="group" aria-label="Try a change" className="mt-2 flex flex-wrap gap-2">
+                  {DEMO_ACTIONS.map((action) => (
+                    <button
+                      key={action.step}
+                      type="button"
+                      aria-pressed={trial?.step === action.step}
+                      onClick={() => setTrial({ step: action.step, run: (trial?.run ?? 0) + 1 })}
+                      className={`rounded-md border px-3 py-1.5 text-[13px] ${
+                        trial?.step === action.step
+                          ? 'border-forest-400 bg-forest-800 text-forest-50'
+                          : 'border-forest-700 text-forest-200 hover:border-forest-400 hover:text-forest-50'
+                      }`}
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+                <p aria-live="polite" className="mt-3 min-h-[2.6em] text-[13px] text-forest-300">
+                  {step ? (
+                    <>
+                      <span className="font-medium text-forest-50">{step.title}.</span> {step.browser}{' '}
+                      {step.grove}
+                    </>
+                  ) : (
+                    <>
+                      An example: {tabCount} tabs, {treeCount} goals. Your tabs stay open exactly as they
+                      are; the grove only shows what they are for.
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
           </div>
         </section>

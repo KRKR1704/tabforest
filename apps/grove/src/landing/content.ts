@@ -94,6 +94,24 @@ export const SKIPPED_ENTIRELY = [
 
 export const WHAT_HAPPENS_NEXT = ['Load it into Chrome', 'Sign in with Microsoft', 'A short tour of what each thing means', 'Your grove opens'] as const;
 
+/**
+ * The "try a change" buttons under the demo. Each plays one step of the tour
+ * (lib/guideGrove.ts) on the example grove.
+ */
+export const DEMO_ACTIONS = [
+  { step: 'leaf', label: 'New tab' },
+  { step: 'trunk', label: 'More time' },
+  { step: 'branch', label: 'New path' },
+  { step: 'mushroom', label: 'Open question' },
+  { step: 'flower', label: 'Answer it' },
+  { step: 'stone', label: 'Confirm a decision' },
+  { step: 'duplicate', label: 'Close a copy' },
+  { step: 'move', label: 'Move a tab' },
+  { step: 'dormant', label: 'Leave it alone' },
+  { step: 'wake', label: 'Come back' },
+  { step: 'sprout', label: 'New goal' },
+] as const;
+
 /** A sentence for each thing in the key, a little fuller than the tour's. */
 export const KEY_DETAILS: Record<string, string> = {
   tree: 'One thing you are working on.',
