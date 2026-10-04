@@ -59,11 +59,20 @@
   .grove-canvas [data-pending='true'] {
     animation: grove-listening 1.6s ease-in-out infinite;
   }
+  /* During the grow intro the leaves are in the air; the shimmer starts once they hang. */
+  .grove-canvas[data-growing='true'] [data-pending='true'] {
+    animation: none;
+  }
   @media (prefers-reduced-motion: reduce) {
     .grove-canvas [data-pending='true'] {
       animation: none;
       opacity: 0.6;
     }
+  }
+
+  /* The Hollow count during the grow intro; the delay is set by the canvas. */
+  .grove-hollow-count {
+    animation: grove-fade-in 300ms ease-out both;
   }
 
   /* Where a dragged leaf would land. */
@@ -85,6 +94,15 @@
 
   .pill-provenance {
     @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider;
+  }
+}
+
+@keyframes grove-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

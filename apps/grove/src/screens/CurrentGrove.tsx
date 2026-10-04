@@ -85,6 +85,7 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
   const actions = useGroveActions();
   const groveNotice = useGroveStore((state) => state.groveNotice);
   const isGrowing = useGroveStore((state) => state.isStreaming);
+  const growSeq = useGroveStore((state) => state.growSeq);
 
   const detailTree = grove?.trees.find((tree) => tree.cluster_ref === detailTreeId) ?? null;
 
@@ -231,6 +232,7 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
                 onDropLeaf={handleDrop}
                 roots={roots}
                 focusTreeId={detailTreeId}
+                growKey={growSeq}
               />
 
               {(caption || pendingNewTree || actions.notice) && (

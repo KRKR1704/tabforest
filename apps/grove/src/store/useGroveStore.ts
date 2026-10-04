@@ -8,6 +8,9 @@ function pendingTree(cluster: {
   project_name: string;
   tab_refs: string[];
   tabs?: GroveTab[];
+  attention_minutes?: number;
+  days_since_active?: number;
+  canopy?: TreeData['canopy'];
 }): TreeData {
   const tabs: GroveTab[] =
     cluster.tabs ??
@@ -23,7 +26,10 @@ function pendingTree(cluster: {
     cluster_ref: cluster.cluster_ref,
     project: { id: cluster.cluster_ref, name: cluster.project_name, is_existing_project_id: null },
     status: 'active',
-    attention_minutes: 0,
+    // Trunk thickness and dormancy come from clustering, so they show before the AI answers.
+    attention_minutes: cluster.attention_minutes ?? 0,
+    days_since_active: cluster.days_since_active,
+    canopy: cluster.canopy,
     last_active_at: new Date().toISOString(),
     goal: empty,
     branches: [
@@ -65,6 +71,8 @@ interface GroveStoreState {
   } | null;
   activeScreen: ActiveScreen;
   isStreaming: boolean;
+  /** Counts grows; goes up each time a clusters line plants a new forest. */
+  growSeq: number;
   streamProgress: {
     clustersReceived: boolean;
     treesReceivedCount: number;
@@ -94,6 +102,7 @@ export const useGroveStore = create<GroveStoreState>((set) => ({
   selectedElement: null,
   activeScreen: 'grove',
   isStreaming: false,
+  growSeq: 0,
   streamProgress: {
     clustersReceived: false,
     treesReceivedCount: 0,
@@ -128,6 +137,7 @@ export const useGroveStore = create<GroveStoreState>((set) => ({
       // Clustering is done: every goal gets its tree at once, still listening.
       set((state) => ({
         isStreaming: true,
+        growSeq: state.growSeq + 1,
         streamProgress: {
           clustersReceived: true,
           treesReceivedCount: 0,
