@@ -22,6 +22,24 @@ The #63 restore still showed "No grove yet" for a real account. Cause: the serve
 
 - Server side (R, `apps/api/app/engine/persist.py`, `LAST_GROVE_SQL`): the last-grove query should skip a stored grove with no trees (for example `AND jsonb_array_length(response->'trees') > 0`, falling back to the newest only when none has trees). Until then, an account whose newest run is empty shows an empty grove until it grows once with two or more tabs.
 
+## [2026-10-04] — Live-check fixes: Timeline after a real session, flaky stats test (P)
+
+### Fixed
+- Timeline empty right after a real session (Deep's live check, "Nothing recorded in the last 24 hours"). `tab_attention_15m` is a continuous aggregate: events that arrive with a timestamp older than its materialization point (a flushed queue, a late batch) stay out of it until the next policy refresh, about a minute later, while Roopesh's grove reads the raw events and already showed the attention. The timeline now reads the last 24 hours from `browser_events` (same sums, bucketed by event time) and the saved-context totals read the last day from the raw events and older history from the aggregate. On Deep's real data the numbers are identical to the aggregate's once it has caught up: 101,346 ms, 14 tab switches, 3 lanes.
+- `test_stats_db.py::test_real_sql_reads_only_this_users_events_and_sums_their_dwell` failed about half the time (6 of 10 runs): `BLUR` and the next `FOCUS` share a timestamp and the tiebreaker `event_id` is random. `events` and `events_since` in `engine/adapters/stats.py` now order equal timestamps as they happened (OPEN, BLUR, FOCUS, UPDATE, IDLE, ACTIVE, CLOSE), then `event_id`. 12 of 12 runs pass.
+
+### Added
+- One log line for a request that arrives without a bearer token (method and path only). The 401s on events and grow in the live check were requests sent before sign-in finished, and nothing in the log said so.
+
+### Tests
+- Local: `test_late_events_show_up_without_waiting_for_the_aggregate` (fails on the old code, passes now).
+
+### Verification
+- 747 passed, 2 xfailed with the database (including `app/engine/tests`); `ruff check` clean.
+
+### Notes
+- The live API runs the build deployed for the live check; these fixes are not deployed yet.
+
 ## [2026-10-04] — Grove: show the stored grove on open, and wait for sign-in before growing (D)
 
 Found by the live check against the deployed API: the Current Grove and Timeline screens were empty on every open even though the server held the user's history (Saved Groves and Privacy, which read the server, were filled).

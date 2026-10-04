@@ -140,6 +140,7 @@ async def current_principal(
                 raise unauthorized("X-Dev-User must be a UUID") from None
             request.state.user_id = principal.user_id
             return principal
+        log.info("no bearer token: %s %s", request.method, request.url.path)   # path only: never a title
         raise unauthorized(MISSING)
 
     token = credentials.credentials.strip()

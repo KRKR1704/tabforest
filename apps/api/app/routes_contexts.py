@@ -40,9 +40,10 @@ RESTORE_OPTIONS = ["important", "all", "summary"]
 Activity = tuple[int, int, datetime | None]   # active_ms, session_count, last_active_at
 
 
-async def _live(user_id: UUID, conn: asyncpg.Connection, project_ids: list[UUID]) -> dict[UUID, Activity]:
+async def _live(user_id: UUID, conn: asyncpg.Connection, project_ids: list[UUID],
+                now: datetime) -> dict[UUID, Activity]:
     tabs = await intents.project_tab_refs(user_id, conn, project_ids)
-    return {pid: await repo.project_activity(user_id, conn, tabs.get(pid, [])) for pid in project_ids}
+    return {pid: await repo.project_activity(user_id, conn, tabs.get(pid, []), now) for pid in project_ids}
 
 
 def _totals(row: asyncpg.Record, live: Activity | None) -> tuple[int, int, str | None, str | None]:
@@ -69,7 +70,7 @@ async def save_context(request: Request, project_id: str, body: SaveContextIn,
         project = await intents.project(user_id, conn, pid) if pid else None
         if project is None:
             raise not_found("Project not found")
-        active, sessions, last = (await _live(user_id, conn, [project.id]))[project.id]
+        active, sessions, last = (await _live(user_id, conn, [project.id], now))[project.id]
         snapshot = {"project_name": project.name, "card": body.card,
                     "tabs": [t.model_dump(mode="json") for t in body.tabs],
                     "totals": {"active_ms": active, "session_count": sessions, "last_active_at": iso(last)}}
@@ -81,14 +82,15 @@ async def save_context(request: Request, project_id: str, body: SaveContextIn,
 
 
 @router.get("/contexts", response_model=ContextList)
-async def list_contexts(request: Request, user_id: UUID = Depends(current_user)) -> ContextList:
+async def list_contexts(request: Request, user_id: UUID = Depends(current_user),
+                        now: datetime = Depends(clock_now)) -> ContextList:
     """The user's saved contexts, newest first."""
     pool = await db_pool(request)
     async with pool.acquire() as conn:
         rows = await repo.list_saved_contexts(user_id, conn)
         pids = sorted({r["project_id"] for r in rows if r["project_id"]}, key=str)
         names = await intents.project_names(user_id, conn, pids)
-        live = await _live(user_id, conn, pids)
+        live = await _live(user_id, conn, pids, now)
         open_questions = await intents.open_question_counts(user_id, conn, pids)
     out = []
     for r in rows:
@@ -122,7 +124,7 @@ async def resume_context(request: Request, context_id: str, user_id: UUID = Depe
         if project and project.cluster_id:
             _, leaves = await intents.tree(user_id, conn, project.cluster_id)
             importance = {str(leaf.tab_ref): leaf.importance for leaf in leaves}
-        live = (await _live(user_id, conn, [pid]))[pid] if project else None
+        live = (await _live(user_id, conn, [pid], now))[pid] if project else None
     snap = row["snapshot"]
     active, sessions, last, as_of = _totals(row, live)
     # Live importance first; a tab the current tree no longer has keeps its saved place (stable sort).

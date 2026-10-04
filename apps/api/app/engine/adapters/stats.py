@@ -95,6 +95,12 @@ class FixtureStats:
 log = logging.getLogger("tabforest.engine.stats")
 EVENTS_SINCE_LIMIT = 20_000
 
+# Events that share a timestamp (the extension emits OPEN, BLUR and FOCUS for one tab switch at the
+# same instant, and event ids are random) come back in the order they happened: open, blur the old
+# tab, focus the new one, then the rest. event_id only breaks what is still tied.
+_ORDER = ("ORDER BY ts, CASE event_type WHEN 'OPEN' THEN 0 WHEN 'BLUR' THEN 1 WHEN 'FOCUS' THEN 2 "
+          "WHEN 'UPDATE' THEN 3 WHEN 'IDLE' THEN 4 WHEN 'ACTIVE' THEN 5 ELSE 6 END, event_id")
+
 _EVENT_COLUMNS = ("event_id, ts, event_type, tab_ref, session_id, previous_tab_ref, active_ms, opener_tab_ref, "
                   "domain, title, dup_key, search_query")
 
@@ -142,7 +148,7 @@ class DbStats:
         try:
             rows = await self.pool.fetch(
                 f"SELECT {_EVENT_COLUMNS} FROM browser_events WHERE user_id = $1 AND tab_ref = ANY($2::uuid[]) "  # noqa: S608
-                "AND ($3::timestamptz IS NULL OR ts >= $3) ORDER BY ts, event_id", user_id, self._uuids(tab_refs), since)
+                "AND ($3::timestamptz IS NULL OR ts >= $3) " + _ORDER, user_id, self._uuids(tab_refs), since)
         except Exception as exc:  # noqa: BLE001 - the engine must run without P's table
             log.warning("stats: browser_events unavailable (%s); using the fixture events", type(exc).__name__)
             return await self.fallback.events(user_id, tab_refs, since)
@@ -155,7 +161,7 @@ class DbStats:
         try:
             rows = await self.pool.fetch(
                 f"SELECT {_EVENT_COLUMNS} FROM browser_events WHERE user_id = $1 AND ts >= $2 "  # noqa: S608
-                "ORDER BY ts, event_id LIMIT $3", user_id, since, EVENTS_SINCE_LIMIT)
+                + _ORDER + " LIMIT $3", user_id, since, EVENTS_SINCE_LIMIT)
         except Exception as exc:  # noqa: BLE001
             log.warning("stats: browser_events unavailable (%s); using the fixture events", type(exc).__name__)
             return await self.fallback.events_since(user_id, since)
