@@ -28,6 +28,38 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 ### Notes
 
 - Grove leaves allow only the nine tab types, so R-5/R-8 should pass document types through `leaf_source_type()` (`pull_request` → `code`; `ticket`, `account_note`, `transcript` → `work_tool`).
+## [2026-10-03] — D-3 worker lifecycle (D)
+
+### Added
+
+- Injectable `CaptureStateStore`: session-only Chrome tab refs, eligible IDs, focus state, previous ref and lastSeenAt under `tf_capture_session`; device-local URL pairs under `tf_capture_urls`. Local URLs survive a fresh browser session.
+- Focus checkpoint/restore methods accumulate pre-persist time once and reconcile the interval since lastSeenAt with a 60-second cap. New timing starts at wake, preventing repeat reconciliation from double-counting.
+- Seven lifecycle tests for repeated worker restarts, capped/idle intervals, disappeared/unknown tabs, storage separation, fresh browser sessions, synchronous listeners and serialized writes, including activation that wakes the worker.
+
+### Changed
+
+- Extended D-2's existing callback chain to await each state save. Listeners remain synchronously registered; callbacks arriving during hydration wait for it.
+- Warm wake queries live tabs, drops disappeared session mappings and emits OPEN only for previously unmapped eligible tabs. Known tabs keep refs and do not get duplicate startup FOCUS. Cold startup retains D-2 snapshot behavior with fresh refs.
+
+### Fixed
+
+- Persist `openedRefs` in session state and suppress repeated OPEN emission from wake reconciliation, onCreated and overlapping snapshots. UPDATE remains unchanged. Remove entries on tab removal or disappearance during wake; older session records without this field start with an empty set.
+- Added four regression cases in lifecycle.test.mjs covering duplicate wake OPEN, persisted suppression, UPDATE preservation and cleanup on removal/disappearance. Reproduced duplicate emissions before the fix.
+
+### Verification
+
+- Branch `feat/d-3-lifecycle`, required capture/focus files present; Node v20.20.2.
+- From apps/extension, using `PATH="/opt/homebrew/opt/node@20/bin:$PATH"`: `pnpm test` passed 6 files / 41 tests; `pnpm typecheck` exited 0; `pnpm build` transformed 10 modules and completed in 124ms. Tests ran with loopback access for the existing mock API tests.
+- With Deep's approval, changed only the snapshot test's conflicting assertions to require no additional startup events, 60 distinct tab refs and 60 unique event IDs, preserving its cap, ordering, skip and opener/UPDATE checks.
+- Final review-fix verification: 6/6 test files and 45/45 tests pass (including 11 lifecycle tests); typecheck exits 0; build exits 0 (10 modules, 79ms), all using the Node 20 PATH prefix.
+- All other test assertions unchanged in this follow-up. `git diff --check` passed; contracts, manifest and dependencies unchanged. No commit or push.
+
+### Notes
+
+- Save URL storage before session checkpoints; saves are serialized, but the two Chrome storage areas do not provide a cross-area transaction. lastSeenAt uses the callback/checkpoint timestamp so async write latency does not shift event timing.
+- Retain local URLs when tabs disappear for later restore. If the stored focused tab disappeared, select the current eligible tab and emit FOCUS using the previous ref; otherwise preserve old focus for the waking activation's BLUR.
+- No event queue or persisted events added. D-2 temporary console logging is unchanged; D-4/D-5 must sanitize/remove it as already recorded.
+- Chrome was not run. Manual check: reload extension, inspect worker console and note a focused tab_ref, close worker DevTools, wait about 40 seconds for inactive status, switch tabs to wake it, reopen worker console and compare refs and BLUR active_ms. Keeping DevTools open can prevent worker sleep.
 
 ## [2026-10-03] — R-1: engine scaffold, adapters, fixtures and contract tests (R)
 

@@ -5,9 +5,19 @@ function event() {
   return { addListener: fn => listeners.push(fn), fire: (...args) => listeners.forEach(fn => fn(...args)) };
 }
 
-export function fakeChrome(initialTabs = [], initialWindow = { id: 1, focused: true }) {
+export function fakeStorage() {
+  const area = () => {
+    const data = {};
+    return { data, get: vi.fn(async key => structuredClone({ [key]: data[key] })),
+      set: vi.fn(async items => Object.assign(data, structuredClone(items))) };
+  };
+  return { session: area(), local: area() };
+}
+
+export function fakeChrome(initialTabs = [], initialWindow = { id: 1, focused: true }, storage = fakeStorage()) {
   const tabs = new Map(initialTabs.map(tab => [tab.id, { ...tab }]));
   const api = {
+    storage,
     tabs: {
       onCreated: event(), onActivated: event(), onUpdated: event(), onRemoved: event(),
       get: vi.fn(async id => {
