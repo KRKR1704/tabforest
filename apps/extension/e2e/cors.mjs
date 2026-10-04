@@ -1,0 +1,15 @@
+import { chromium } from 'playwright';
+import os from 'node:os'; import fs from 'node:fs'; import path from 'node:path';
+const EXT = path.resolve(process.env.EXT); const URL_ = 'https://tabforest.azurewebsites.net';
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tf-e2e-'));
+const context = await chromium.launchPersistentContext(dir, { channel: 'chromium', headless: true, args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
+let [sw] = context.serviceWorkers(); if (!sw) sw = await context.waitForEvent('serviceworker', { timeout: 15000 });
+const id = new URL(sw.url()).host;
+const fromWorker = await sw.evaluate(async u => { try { const r = await fetch(u + '/health'); return { status: r.status, body: await r.text() }; } catch (e) { return { error: String(e) }; } }, URL_);
+console.log('extension id:', id);
+console.log('service worker fetch of /health:', JSON.stringify(fromWorker));
+const page = await context.newPage(); await page.goto(`chrome-extension://${id}/grove.html`);
+const fromPage = await page.evaluate(async u => { try { const r = await fetch(u + '/health'); return { status: r.status, body: await r.text() }; } catch (e) { return { error: String(e) }; } }, URL_);
+console.log('extension page fetch of /health:', JSON.stringify(fromPage));
+console.log('RESULT:', fromWorker.status === 200 && fromPage.status === 200 ? 'PASS (CORS allows our extension origin, HTTPS works, no host permission needed)' : 'FAIL');
+await context.close(); fs.rmSync(dir, { recursive: true, force: true });
