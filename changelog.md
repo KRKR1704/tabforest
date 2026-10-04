@@ -6,6 +6,33 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — P-15 and P-16: demo seed, SAMPLE pages, failure drills (P)
+
+### Added
+- `apps/demo-seed/seed.py` (P-15): seeds one account named by `--email` (fallback login), `--tid --oid` (Microsoft) or `--user-id`; `--dry-run` reads counts only; `--shift-days` moves the history by whole days; `--no-embed` skips Azure.
+  - Three days of browsing history (the 327 events behind `sessions.example.json`), sent through the same ingest code as `POST /api/events`.
+  - The past project "Backend Scaling" of March 12: two sessions and 100 minutes, a cluster with six tabs, the stated note and decision "Redis not needed at expected scale", a research insight, the saved context `s_60000000-…-0003`, and Azure OpenAI embeddings for the insight and the context (through Roopesh's `embed_texts` and its cache).
+  - Both aggregates are refreshed over the March window and the history window (the 3-day policy never reaches March; the 90-day retention job drops those raw rows later).
+  - Every id is fixed and every insert skips what exists, so a second run changes nothing.
+- `/demo` and `/demo/{file}` (`app/demo_pages.py`): the five SAMPLE Contoso documents from `engine/fixtures/sample_docs` as public pages (`<pre>` in `<main><article>`, `no-store`); the answer key and README are not served.
+- `apps/api/scripts/failure_drills.py` and `docs/failure-drills.md` (P-16): the four drills, run for real, with the printed results.
+
+### Fixed
+- `tests/story.py`: the March 12 saved-context insert skips an existing row.
+
+### Tests
+- Local: `test_d1_demo_pages.py` (14), `test_d2_seed.py` (6: twice gives identical counts, the past project through `/api/contexts` and resume, March attention 6,000,000 ms in the aggregate, two accounts stay separate, dry run writes nothing).
+
+### Verification
+- 274 passed with the database; clean export without `.env`: 400 passed, 83 skipped; `ruff check` clean.
+- Seed run twice on a scratch account: 345 events, 8 sessions, 34 tabs, 1 saved context, 2 embeddings both times.
+- Drills: Tiger down → 503 with `Retry-After: 30`; kill during ingest → 1,000 of 1,000 events exactly once after retry and a full resend; wrong Azure key → degraded Seedling grove with 3 fogged trees; late flush keeps the original timestamps.
+
+### Notes
+- The memory hit and the firefly in the real UI depend on R-12 (`/api/memory/search`) and R's grow reading these rows; R-12 is not on `main`, so that gate is not closed.
+- The real demo account has not been seeded yet and the API is not redeployed: the account is still to be named (X6).
+- The seeded history uses the contracts' tab ids, so it shows as unassigned until a grove is grown for those tabs.
+
 ## [2026-10-04] — P-12 to P-14: isolation suite, hardening, CI/CD (P)
 
 ### Added
