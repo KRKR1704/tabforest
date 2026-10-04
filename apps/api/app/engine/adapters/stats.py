@@ -48,6 +48,10 @@ class TabAttention:
 class StatsSource(Protocol):
     async def events(self, user_id: UUID, tab_refs: set[str], since: datetime | None = None) -> list[TabEvent]: ...
 
+    async def events_since(self, user_id: UUID, since: datetime) -> list[TabEvent]:
+        """Every event of the user from `since` on, incl. tabs that are closed now (query families)."""
+        ...
+
     async def attention(self, user_id: UUID, tab_refs: set[str],
                         since: datetime | None = None) -> dict[str, TabAttention]: ...
 
@@ -64,6 +68,9 @@ class FixtureStats:
 
     async def events(self, user_id: UUID, tab_refs: set[str], since: datetime | None = None) -> list[TabEvent]:
         return [e for e in self._events if e.tab_ref in tab_refs and (since is None or e.ts >= since)]
+
+    async def events_since(self, user_id: UUID, since: datetime) -> list[TabEvent]:
+        return [e for e in self._events if e.ts >= since]
 
     async def attention(self, user_id: UUID, tab_refs: set[str],
                         since: datetime | None = None) -> dict[str, TabAttention]:

@@ -6,6 +6,39 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — R-6: per-cluster features, query families, importance, DATA block (R)
+
+### Added
+
+- `apps/api/app/engine/features.py`:
+  - `compute_features()` (async: events through `adapters/stats.py`, query embeddings through the R-4 cache) and the pure `build_features()`.
+  - Per tab: `dwell_min`, `dwell_share`, `revisits` (FOCUS count after the first), `last_focus`, `stale` (no focus ≥ 3 days), `distraction` (< 10 s total focus), `official` (R-2), P's `session_ids`.
+  - Query families (§3.3): queries from the cluster's search tabs and from the last 2 h of events on cluster tabs and on closed tabs linked by an opener edge (the demo's closed tab …029 counts); connected components of cosine ≥ threshold; stable `qf_` ids; `open_loop` = ≥ 3 rephrasings within 2 h (inclusive) and no cluster tab focused > 90 s after the last query; evidence kept (queries, timestamps, open and closed search tabs, short visits ≤ 90 s after the first query, the closing visit).
+  - Comparisons: "X vs Y", "X versus Y", "compare X and Y" in titles and queries ("X or Y" in queries only); resolved when ≥ 70 % of later dwell is on one side's tabs; dormant when unresolved and no cluster focus for ≥ 30 min.
+  - Research phases: contiguous runs by P's `session_id` (sessions are never computed).
+  - `importance_pre()` (evidence term 0) and `finalize_importance(features, evidence_counts)`: 0.45·dwell_share + 0.25·evidence + 0.2·revisits + 0.1·official, each term in [0, 1] (evidence and revisits divided by the cluster maximum).
+  - `to_data_block()`: the §14 DATA payload with short refs `t1..`, `q1..`, `n1..` and a map back to real ids; raises if any UUID would reach the model.
+- `adapters/stats.py`: `events_since(user_id, since)` (all events in a window, closed tabs included); fixture implementation.
+- `engine/scripts/gen_query_pairs.py` → `engine/fixtures/query_pairs.json` (36 queries, 630 labeled pairs, none of the demo's searches) and `engine/scripts/calibrate_queries.py`.
+
+### Tests
+
+- `engine/tests/test_features.py` (14, synthetic events): visit pairing; dwell share, revisits, stale, distraction; phases by session_id; 3 rephrasings exactly 2 h apart → open loop, 2 h 30 s → not; a 91 s follow-up closes the loop, 90 s does not; 2 rephrasings are not enough; families and stable ids; a closed search tab linked by opener joins, an unlinked one does not; comparison patterns, 70/30 resolved vs 60/40 unresolved, dormant after 30 min; importance terms and normalisation; DATA block short refs, no UUIDs, determinism.
+- `engine/tests/test_features_live.py` (7, real embeddings, test user `…00e3`, rows deleted after): STEP 0 experiment; the refresh-token family; threshold precision/recall; stale/distraction; JWT vs session; importance ranking; the Backend Authentication DATA block.
+
+### Verification
+
+- Query calibration: rephrase pairs 0.594–0.871 (mean 0.756), related 0.192–0.699, unrelated 0.004–0.390. Threshold 0.65: precision 0.946, recall 0.972, F1 0.959; plan 0.80: precision 1.000, recall 0.250.
+- Demo Backend Authentication: one family of 4 rephrasings over 33.2 min (tabs 06, 07, 08 + closed …029), open loop, short visits after it on 04, 02, 10. "JWT vs session-based authentication" resolved (all later dwell on JWT tabs); "httponly cookie vs localstorage" unresolved, not dormant (last focus 11:31:50).
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 157 passed, 3 xfailed (R-5's 4-tree test, STEP 0, importance order).
+
+### Notes (deviations from the plan's numbers, and findings)
+
+- Query-family threshold 0.65 instead of the plan's cosine ≥ 0.80 (recall 0.25 with this embedding model); chosen on a labeled set that excludes the demo's searches.
+- Importance with the plan's formula ranks the GitHub example first (0.597: 14.0 min, 5 revisits, 3 citing claims) and the official FastAPI docs second (0.407). `contracts/grove.example.json` lists the docs first (0.91 vs 0.86); those values were hand-set. Recorded as an xfail with the numbers; the formula was not changed.
+- STEP 0 (in memory only; `demo_tabs.json` and contracts untouched): with tabs 13 and 15 opened from Devpost within 3 min, they join GirlHacks (average-linkage distance 0.575 < 0.65) and the demo has 4 trees, but tab 14 (Azure for Students) drops to the meadow, so GirlHacks is still not one complete tree.
+- Not in the plan, added: "X or Y" is only read from queries (too common in titles); a comparison side's tabs are matched by the option's first content word; `comparisons` and per-family `closed_searches` / `short_visits_after` are extra keys in the DATA block for R-7.
+
 ## [2026-10-03] — P-1 to P-6: API app, schema, aggregates, auth, repository, event ingest (P)
 
 ### Added
