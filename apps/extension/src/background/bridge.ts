@@ -2,6 +2,8 @@ import type { BridgeRequest, BridgeReply, MessageType, SendPreviewData } from '.
 import { CaptureStateStore, type SnapshotItem } from './state';
 import { Hollow } from './hollow';
 import { httpUrl } from './url';
+import { AuthError } from './auth';
+import { INTERNAL_AUTH_TYPES, type AuthService, type InternalAuthMessage } from './signin';
 
 type SnapshotData = { open_tabs: SnapshotItem[] };
 type Reply = BridgeReply<Exclude<MessageType, 'GET_SNAPSHOT'>> | { ok: boolean; data?: SnapshotData; error?: string };
@@ -9,6 +11,8 @@ export interface BridgeServices {
   settled: () => Promise<void>;
   wipeLocal?: () => Promise<void>;
   sendPreview: () => Promise<SendPreviewData>;
+  auth?: AuthService;
+  signOut?: () => Promise<void>;
 }
 const known = new Set<MessageType>([
   'GET_SNAPSHOT', 'OPEN_TAB', 'CLOSE_TABS', 'RESTORE', 'GET_URLS', 'SIGN_IN', 'SIGN_OUT',
@@ -47,7 +51,16 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
 
   async function handle(request: BridgeRequest): Promise<Reply> {
     switch (request.type) {
-      case 'SIGN_IN': case 'SIGN_OUT': return { ok: false, error: 'not_implemented' };
+      case 'SIGN_IN': {
+        if (!services.auth) return { ok: false, error: 'not_implemented' };
+        try { return { ok: true, data: await services.auth.signIn() }; }
+        catch (error) { return { ok: false, error: error instanceof AuthError ? error.code : 'handler_failed' }; }
+      }
+      case 'SIGN_OUT': {
+        if (!services.signOut) return { ok: false, error: 'not_implemented' };
+        await services.signOut();
+        return { ok: true, data: null };
+      }
       case 'CLEAR_WORK_ITEMS': return { ok: true, data: null };
       case 'WIPE_LOCAL': {
         if (!services.wipeLocal) return { ok: false, error: 'not_implemented' };
@@ -98,8 +111,8 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         }
         return { ok: true, data: null };
       }
-      case 'GET_AUTH_STATE': return { ok: true, data: { signed_in: false } };
-      case 'GET_TOKEN': return { ok: true, data: { token: null } };
+      case 'GET_AUTH_STATE': return { ok: true, data: services.auth ? await services.auth.state() : { signed_in: false } };
+      case 'GET_TOKEN': return { ok: true, data: { token: services.auth ? await services.auth.token() : null } };
       case 'GET_WORK_ITEMS': return { ok: true, data: { items: [] } };
       case 'GET_SEND_PREVIEW': return { ok: true, data: await services.sendPreview() };
       case 'GET_HOLLOW_COUNT': return { ok: true, data: { count: (await read()).hollow.hollowCount() } };
@@ -136,8 +149,21 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
   api.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
     if (!api.runtime.id || sender.id !== api.runtime.id) { sendResponse({ ok: false, error: 'forbidden' }); return true; }
     const type = message && typeof message === 'object' ? (message as { type?: unknown }).type : undefined;
+    // The sign-in window talks to the worker directly. These messages are never queued behind SIGN_IN,
+    // which waits for that window, and they are accepted only from the sign-in page (checked in the service).
+    if (typeof type === 'string' && INTERNAL_AUTH_TYPES.has(type)) {
+      if (!services.auth) { sendResponse({ ok: false, error: 'not_implemented' }); return true; }
+      void services.auth.handleInternal(message as InternalAuthMessage, sender.url)
+        .then(sendResponse).catch(() => sendResponse({ ok: false, error: 'handler_failed' }));
+      return true;
+    }
     if (typeof type !== 'string' || !known.has(type as MessageType)) {
       sendResponse({ ok: false, error: 'unknown_message' }); return true;
+    }
+    if (type === 'SIGN_IN') {
+      // Waits for the user in the sign-in window, so it must not hold up the other messages.
+      void handle(message as BridgeRequest).then(sendResponse).catch(() => sendResponse({ ok: false, error: 'handler_failed' }));
+      return true;
     }
     pending = pending.then(() => handle(message as BridgeRequest)).then(sendResponse).catch(() => {
       console.warn(type);

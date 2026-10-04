@@ -9,7 +9,8 @@ export function fakeStorage() {
   const area = () => {
     const data = {};
     return { data, get: vi.fn(async key => structuredClone({ [key]: data[key] })),
-      set: vi.fn(async items => Object.assign(data, structuredClone(items))) };
+      set: vi.fn(async items => Object.assign(data, structuredClone(items))),
+      remove: vi.fn(async keys => { for (const key of [].concat(keys)) delete data[key]; }) };
   };
   return { session: area(), local: area() };
 }
@@ -29,7 +30,9 @@ export function fakeChrome(initialTabs = [], initialWindow = { id: 1, focused: t
         (query.windowId === undefined || tab.windowId === query.windowId)).map(tab => ({ ...tab }))),
       create: vi.fn(),
     },
-    windows: { WINDOW_ID_NONE: -1, onFocusChanged: event(), getLastFocused: vi.fn(async () => initialWindow) },
+    windows: { WINDOW_ID_NONE: -1, onFocusChanged: event(), onRemoved: event(), getLastFocused: vi.fn(async () => initialWindow),
+      create: vi.fn(async () => ({ id: 99 })), update: vi.fn(async () => ({})) },
+    identity: { getRedirectURL: () => 'https://test.chromiumapp.org/', launchWebAuthFlow: vi.fn() },
     idle: { onStateChanged: event(), setDetectionInterval: vi.fn(), queryState: vi.fn(async () => 'active') },
     runtime: { id: 'test', onMessage: event(), onInstalled: event(), onStartup: event(), getURL: path => `chrome-extension://test/${path}` },
     action: { onClicked: event() },

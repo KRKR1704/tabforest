@@ -4,5 +4,5 @@ import manifest from './manifest.config';
 
 export default defineConfig({
   plugins: [crx({ manifest })],
-  build: { rollupOptions: { input: { grove: 'grove.html' } } },
+  build: { rollupOptions: { input: { grove: 'grove.html', signin: 'signin.html' } } },
 });

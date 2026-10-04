@@ -25,3 +25,11 @@ overrides the default fixed extension origin for CORS. Stop with Ctrl+C.
 
 Only the toolbar listener and placeholder are implemented. The preflight probe
 remains separate in `preflight/`.
+
+## Sign-in (D-6)
+
+`SIGN_IN` (from the Grove page, or `await signIn()` in the service worker console) opens a small window with an email and password form and a "Sign in with Microsoft" button. The token is kept in `chrome.storage.session` and used as `Authorization: Bearer` for `POST /api/events`. `SIGN_OUT` clears the token and anything waiting to be sent.
+
+- The email login needs the API to run with `FALLBACK_LOGIN=true` and an account in `FALLBACK_ACCOUNTS`; the deployed API answers 404 for it while the flag is off.
+- Microsoft sign-in uses client ID `84bf8d79-85c2-463d-a8eb-c0a4d22bdb24` (public) and the redirect URI `https://<extension id>.chromiumapp.org/`, which must be registered for the app. Override with `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_TENANT`, `VITE_ENTRA_SCOPE` at build time.
+
