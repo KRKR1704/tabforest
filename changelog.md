@@ -6,6 +6,33 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — D-5 Persistent event queue and sync (D)
+
+### Added
+
+- Injectable local queue capped at 5,000 events with oldest-first eviction and cumulative drop count; serialized persistence preserves original event IDs and timestamps.
+- Sender batches up to 500 events outside the queue lock; one in-flight flush/resend at a time, acknowledgment by IDs only after a 2xx with matching accepted/duplicate counts.
+- Persisted last_sent_batch supports explicit resend without changing the queue; global flushNow, resendLastBatch and title-free sendPreview are available alongside hollowCount.
+- Network and server failures retain queued events with persisted 10-second exponential backoff capped at 300 seconds; Retry-After seconds or dates can extend the wait.
+- Automatic 401 retries require a token or stored dev_user_id and respect backoff; manual flush/resend bypass both gates while retaining single-flight protection, and success resets retry state.
+
+### Changed
+
+- Capture awaits local enqueue before completing its event state, keeps sanitized logging and never awaits network delivery; the awake worker timer flushes every 10 seconds, arrivals trigger eligible automatic flushes, and toolbar Grove opens request a manual flush.
+- Mock API rejects empty/oversized batches, unknown fields and unknown event types, supports dev-header CORS and exposes a read-only stored count for integration tests.
+
+### Decisions
+
+- API base uses build-time VITE_API_BASE with local mock default; the deployed URL remains an explicit build setting, not a hardcoded default, and the token provider returns null until D-6.
+- X-Dev-User is sent only for a configured dev_user_id; rejected 422 batches move to persisted count/ID metadata without contents, allowing subsequent batches to proceed.
+- Queue acknowledgment and last_sent_batch are saved together; manual resend never acknowledges or rejects queued items, and all sender operations share one network slot.
+- Only the approved automatic-trigger calls and 401 test changed in existing tests; new suites cover queue, sync, in-process mock resend and worker wiring.
+
+### Verification
+
+- Final Node 20 checkpoint: pnpm test 11/11 files, 124/124 tests; typecheck exit 0; build exit 0 (13 modules, 186ms); real deployed API/Chromium smoke test remains with Deep and P.
+- No dependencies, manifest changes, contract edits, commit or push.
+
 ## [2026-10-03] — D-2b First OPEN after observed blank tabs (D)
 
 ### Fixed
