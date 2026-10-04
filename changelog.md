@@ -6,6 +6,37 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — D-4 The Hollow (D)
+
+### Added
+
+- Central Hollow policy with suffix-matched built-in/user exclusions, decoded auth-path checks, incognito/non-HTTP guards, pause and text redaction; session-persisted distinct-tab counter, exposed as `hollowCount()` in the worker console.
+- Starter domains: banking/payments `chase.com`, `paypal.com`; health `mychart.com`, `myhealth.va.gov`; personal email `mail.google.com`, `outlook.live.com`; password managers `1password.com`, `bitwarden.com`; identity providers `accounts.google.com`, `login.microsoftonline.com`, `appleid.apple.com`.
+- Seventeen new Hollow tests cover all categories, suffix boundaries, auth paths, incognito, pause/expiry, redaction, current-URL transitions, URL storage exclusion, distinct counts/restart and safe events/logs.
+
+### Changed
+
+- D-4b expanded the built-in domain lists to 70 domains: 26 banking/payments, 14 health portals, 12 personal email, 6 password managers and 12 identity providers.
+- Capture evaluates eligibility before storing URLs or emitting any event; excluded navigation removes previously stored URLs and clears dwell without emitting a BLUR about the excluded page. Returning to an allowed page resumes timing. Wake loads purge excluded saved URLs; orphan local URLs are also pruned when policies exclude them.
+- Event logging now prints only `{type, event_id}`; titles redact before 300-code-point truncation, and text URL/email/token redaction also covers search-query content.
+- With Deep's approval, replaced only the old truncation fixture's long token with spaced research text, retaining the exact 300-code-point assertion and every other assertion in that test.
+- With Deep's approval, replaced only the old emit assertion with an exact single-argument `{type, event_id}` log assertion, retaining the rest of that test.
+
+### Verification
+
+- Node 20 PATH prefix: `pnpm test` passed 7 files / 62 tests, including all existing tests and 17 new Hollow tests; `pnpm typecheck` exited 0; `pnpm build` exited 0 (11 modules, 75ms). Existing mock tests used loopback access.
+- Fixed initialization read ordering without changing the existing lifecycle test that checks synchronous listener registration. No other existing test modified.
+- `git diff --check` passed; contracts, manifest, dependencies, preflight and mock API unchanged. No commit or push. Chrome not run.
+
+### Notes
+
+- Built-in domains are a reviewable starter list, not an exhaustive classification of banking/health sites. All built-in/user domains use exact-or-subdomain suffix matching, never substring matching.
+- Auth paths match `/login`, `/signin`, `/oauth`, `/auth` segments case-insensitively after URL decoding; invalid/non-HTTP URLs and malformed encoded paths are blocked.
+- `paused_until` accepts epoch milliseconds, an ISO timestamp or literal `until resumed`; user domains are read from `user_excluded_domains` and trimmed/lowercased, with optional `*.` removed. Settings refresh on capture callbacks; no settings writer or bridge added.
+- Prefer pending navigation URLs for privacy decisions; recheck page eligibility after async hashing. If Chrome has already removed a tab, CLOSE relies on its last observed eligibility. Excluded opener refs are omitted (null).
+- Counter persists session-local tab IDs only, not excluded URLs/titles; removal decrements it. Worker-console `hollowCount()` exposes only the number. D-4b now counts only tabs stopped for a privacy reason (built-in/user domain, auth path or incognito), excluding blank/internal/extension pages and tabs stopped only because capture is paused.
+- Manual check: reload the extension and open worker console; note `hollowCount()`, open a banking domain and an ordinary host's `/login` page, and confirm the count increases by two without event logs for them; an ordinary page should produce logs containing only type and event_id.
+
 ## [2026-10-03] — R-2: title normalization, source types, search queries, duplicates (R)
 
 ### Added

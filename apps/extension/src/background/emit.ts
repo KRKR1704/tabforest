@@ -10,6 +10,5 @@ export type CaptureEvent = BaseEvent & (
 );
 
 export function emit(event: CaptureEvent): void {
-  // TODO(D-4): the Hollow wraps emit() before anything is queued
-  console.log('[tf-capture]', event);
+  console.log({ type: event.type, event_id: event.event_id });
 }

@@ -6,6 +6,7 @@ export const URLS_KEY = 'tf_capture_urls';
 export interface SessionState {
   refs: [number, string][];
   openedRefs: string[];
+  hollowTabs: number[];
   eligible: number[];
   focus: FocusState;
   previousTabRef: string | null;
