@@ -38,6 +38,33 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 - Still on the S-1 shape and to be realigned when their tasks start: the snapshot / bridge mock (`{tabs}` vs the contract's `{open_tabs}`, needed for S-6), timeline, saved contexts, work context, memory, prune, privacy.
 - BUILD_TASKS.md: S-3 row ticked only.
 
+## [2026-10-03] — R-3: R's migrations on Tiger Cloud (R)
+
+### Added
+
+- `db/migrations/200_engine_core.sql`: `projects`, `analysis_runs` (normal table, not a hypertable), `intent_clusters` (goal claim, direction, hypotheses, vines, query families, important tabs, fogged, run), `intent_branches`, `cluster_tabs` (PK `(cluster_id, tab_ref)`, importance, `assigned_by` ai/user, fallen), `decisions`, `unresolved_questions`, `suggested_actions`, `user_notes`, `research_insights`. Every table has `user_id uuid NOT NULL` and an index leading with `user_id`; no foreign keys to P's tables (`user_id`, `tab_ref`, `saved_context_id` are plain uuids); foreign keys only between R's tables (cascade where a child cannot outlive its parent). CHECK constraints on every enum-like column, on confidences (0..1), stated → `user_note_id`, sourced → `quote`, and resolved → `resolved_at`.
+- `db/migrations/201_engine_memory.sql`: `memory_embeddings` (`kind` insight/context/tab/query, `vector(1536)`, `content_hash` SHA-256), DiskANN index (`vector_cosine_ops`, pgvectorscale) and `(user_id, kind)` btree; fails with a clear message if `vector`/`vectorscale` are missing (it does not create extensions).
+- `db/migrations/README.md`: R's files (no README existed).
+- `apps/api/app/engine/scripts/apply_r_migrations.py`: applies only `2xx_*.sql`, each file in one transaction, then prints R's tables (column counts), indexes and CHECK constraints, and the schema diff. Never drops anything.
+
+### Tests
+
+- `engine/tests/test_schema.py` (live, only with `DATABASE_URL`): every persisted contract field maps to an existing column, or is listed as DERIVED or held in P's tables (mapping table printed with `-s`); in ONE rolled-back transaction: the Backend Authentication tree round-trips unchanged (project, cluster, 3 branches, 10 cluster_tabs, carved + mossy stones, the mushroom, the next action, the user note), 51 vectors with the known one nearest under a `user_id` filter (EXPLAIN printed), bad provenance and bad status rejected by CHECK, per-user delete across all R tables leaves 0 rows; 0 rows for the test user after rollback.
+
+### Verification
+
+- `apply_r_migrations.py` run twice: first run 316 schema items added; second run "0 added, 0 removed".
+- `.venv\Scripts\python -m pytest app/engine/tests -q` from `apps/api`: 105 passed, both schema tests ran against Tiger Cloud.
+- Secret check before starting: commit `328d7a8` adds only `apps/api/.env.example` with empty values, placeholders and public identifiers; no other commit adds a key or a postgres URL with a password; `apps/api/.env` was never committed.
+
+### Notes
+
+- `memory_embeddings` uses `UNIQUE (user_id, content_hash)` instead of a global `UNIQUE (content_hash)`: a global key would stop a second user from caching the same tab string and would reveal, through the conflict, that another user embedded it.
+- Work Context results reuse the claim tables: `decisions`/`unresolved_questions`/`suggested_actions` have `quote`, `source`, `source_timestamp` (+ `speaker` on decisions); blockers are `unresolved_questions.kind = 'blocker'`; owners are `suggested_actions.kind = 'ownership'` with `owner` and `task`; `intent_clusters.origin` and `goal_quote/source/source_timestamp` cover the Work Context goal. Document text is never stored; the full response is kept in `analysis_runs.response`.
+- Ids are plain uuids; the API adds the contract prefixes (`p_`, `dec_`, `q_`, `a_`, `n_`, `g_`, `r_`). `user_note_id` is not a foreign key so notes survive cluster re-analysis.
+- At 51 rows the planner uses the `(user_id, kind)` index or a seq scan plus sort, not DiskANN; that is expected at this size (proposal §16: exact scan over one user's rows).
+- Leaf title, domain and source_type are not in R's tables: they come from P's `browser_events` and `tabs` (`tabs.title_norm`, `source_type`, `embedding_hash` are R-written columns that P's migration must create, §4.5).
+
 ## [2026-10-03] — R-2: title normalization, source types, search queries, duplicates (R)
 
 ### Added
