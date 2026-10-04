@@ -11,11 +11,20 @@ export type SourceType =
   | 'discussion'
   | 'video'
   | 'search'
-  | 'work-tool';
+  | 'work-tool'
+  | 'work_tool'
+  | 'article'
+  | 'other';
+
+export type EvidenceKind = 'tab' | 'query' | 'note' | 'document';
+
+export type CanopyColor = 'green' | 'amber';
 
 export interface EvidenceRef {
   ref: string;
   why: string;
+  /** Set by the contract; older short refs (t1, q1) carry the kind in their prefix. */
+  ref_kind?: EvidenceKind;
 }
 
 export interface GroveTab {
@@ -29,6 +38,8 @@ export interface GroveTab {
   opener_tab_ref?: string | null;
   dup_key?: string;
   search_query?: string | null;
+  /** Stale: lies on the ground under its branch (SPEC §9.1). */
+  fallen?: boolean;
 }
 
 export interface GroveBranch {
@@ -40,6 +51,9 @@ export interface GroveBranch {
 }
 
 export interface GoalClaim {
+  id?: string;
+  /** Wording generated from the provenance label by the server (SPEC §2.3). */
+  display_text?: string;
   text: string;
   confidence: number;
   provenance: Provenance;
@@ -47,6 +61,8 @@ export interface GoalClaim {
 }
 
 export interface DirectionClaim {
+  id?: string;
+  display_text?: string;
   text: string;
   confidence: number;
   provenance: Provenance;
@@ -55,6 +71,9 @@ export interface DirectionClaim {
 
 export interface DecisionClaim {
   id: string;
+  display_text?: string;
+  /** Stone encoding: carved for stated or sourced, mossy for inferred. */
+  stone_kind?: 'carved' | 'mossy';
   text: string;
   provenance: Provenance;
   user_note_id?: string | null;
@@ -65,6 +84,8 @@ export interface DecisionClaim {
 
 export interface UnresolvedQuestion {
   id: string;
+  display_text?: string;
+  provenance?: Provenance;
   question: string;
   kind: 'repeated_search' | 'unresolved_comparison' | 'dormant_mid_comparison';
   confidence: number;
@@ -77,6 +98,9 @@ export interface UnresolvedQuestion {
 
 export interface NextAction {
   id: string;
+  display_text?: string;
+  provenance?: Provenance;
+  evidence?: EvidenceRef[];
   action: string;
   unblocks?: string;
   reason?: string;
@@ -92,6 +116,8 @@ export interface RedundantGroup {
 }
 
 export interface HypothesisClaim {
+  id?: string;
+  display_text?: string;
   text: string;
   confidence: number;
   evidence: EvidenceRef[];
@@ -120,6 +146,17 @@ export interface TreeData {
   important_tab_refs: string[];
   hypotheses: HypothesisClaim[];
   tabs: GroveTab[];
+  days_since_active?: number;
+  canopy?: CanopyColor;
+  /** True when the whole tree is low-confidence, e.g. in Seedling mode. */
+  fogged?: boolean;
+  /** Tabs that also appear on another tree. */
+  shared_tab_refs?: string[];
+}
+
+export interface FogTab {
+  tab: GroveTab;
+  reason: string;
 }
 
 export interface MeadowData {
@@ -131,7 +168,7 @@ export interface SproutData {
   sprout_ref: string;
   label: string;
   tab_count: number;
-  age_minutes: number;
+  age_minutes?: number;
   tabs: Array<{
     tab_ref: string;
     domain: string;
@@ -159,6 +196,10 @@ export interface GroveResponse {
   meadow: MeadowData;
   sprouts: SproutData[];
   past_connections?: PastConnection[];
+  /** Tabs with no clear goal: the Unclear fog patch. */
+  fog?: FogTab[];
+  /** Shown when the grove is degraded, e.g. "AI unavailable — showing groups only". */
+  banner_text?: string | null;
 }
 
 // Stream NDJSON message shapes

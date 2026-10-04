@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import type { EvidenceRef, GroveTab, Provenance } from '../types';
+import type { EvidenceKind, EvidenceRef, GroveTab, Provenance } from '../types';
 import { ProvenancePill } from './ProvenancePill';
 
 export interface EvidenceClaim {
@@ -28,8 +28,16 @@ const SOURCE_LABELS: Record<string, string> = {
   d: 'Document',
 };
 
-function sourceLabel(ref: string): string {
-  return SOURCE_LABELS[ref.charAt(0)] ?? 'Evidence';
+const KIND_LABELS: Record<EvidenceKind, string> = {
+  tab: 'Tab',
+  query: 'Search',
+  note: 'Your note',
+  document: 'Document',
+};
+
+function sourceLabel(item: EvidenceRef): string {
+  if (item.ref_kind) return KIND_LABELS[item.ref_kind];
+  return SOURCE_LABELS[item.ref.charAt(0)] ?? 'Evidence';
 }
 
 export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ claim, tabs = [], onClose }) => {
@@ -88,12 +96,12 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ claim, tabs = []
           <p className="mt-3 text-sm text-forest-300">No evidence is recorded for this claim.</p>
         ) : (
           <ul className="mt-3 divide-y divide-forest-800">
-            {claim.evidence.map((item) => {
+            {claim.evidence.map((item, index) => {
               const tab = tabs.find((t) => t.tab_ref === item.ref);
               return (
-                <li key={item.ref} className="py-3">
+                <li key={`${item.ref}-${index}`} className="py-3">
                   <p className="text-xs text-forest-400">
-                    {sourceLabel(item.ref)}
+                    {sourceLabel(item)}
                     {tab && <span> · {tab.domain}</span>}
                   </p>
                   {tab && <p className="mt-0.5 text-sm font-medium text-forest-50">{tab.title}</p>}

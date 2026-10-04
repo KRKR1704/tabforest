@@ -16,7 +16,7 @@ describe('Contracts & Payload Validation', () => {
     expect(mockGroveResponse.schema_version).toBe('1.0');
     expect(mockGroveResponse.trees.length).toBeGreaterThan(0);
     const tree = mockGroveResponse.trees[0];
-    expect(tree.cluster_ref).toBe('c1');
+    expect(tree.cluster_ref).toBe(tree.project.id);
     expect(tree.goal.text).toBeTruthy();
     expect(tree.goal.confidence).toBeGreaterThan(0);
     expect(['stated', 'sourced', 'inferred', 'hypothesis']).toContain(tree.goal.provenance);
