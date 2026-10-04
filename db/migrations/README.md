@@ -8,5 +8,7 @@ R's files (idempotent: `IF NOT EXISTS` only, safe to run twice):
 |---|---|
 | `200_engine_core.sql` | `projects`, `analysis_runs` (normal table), `intent_clusters`, `intent_branches`, `cluster_tabs`, `decisions`, `unresolved_questions`, `suggested_actions`, `user_notes`, `research_insights` |
 | `201_engine_memory.sql` | `memory_embeddings` (`vector(1536)`, DiskANN cosine index, `(user_id, kind)` index); needs the `vector` and `vectorscale` extensions |
+| `202_engine_tokens.sql` | `analysis_runs.tokens` (integer, nullable, `CHECK (tokens >= 0)`): tokens per run, for the per-user daily token budget |
+| `203_engine_snapshot.sql` | `analysis_runs.snapshot` (jsonb, nullable): the open-tab snapshot a grow ran on, so `POST /api/projects/{id}/analyze` can re-run one project |
 
 R can apply only its own files with `apps/api/app/engine/scripts/apply_r_migrations.py` (run from `apps/api`).

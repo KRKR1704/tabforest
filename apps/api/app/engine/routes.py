@@ -1,7 +1,7 @@
 """R's API router. P's main.py includes it and overrides get_user_id with current_user (§4.1).
 
 Endpoints R owns (BUILD_TASKS.md §4.4), added by later tasks:
-    POST  /api/grove/grow            (plain JSON, or NDJSON with ?stream=1)   R-8
+    POST  /api/grove/grow            (plain JSON, or NDJSON with ?stream=1)   R-8, R-9
     GET   /api/grove                                                           R-8
     POST  /api/projects/{id}/analyze                                           R-10
     PATCH /api/claims/{id}                                                     R-10
@@ -25,14 +25,16 @@ from limits import parse
 from pydantic import Field
 from slowapi import Limiter
 
-from . import db
+from . import claims, db
 from .adapters.auth import get_user_id
 from .aoai import AzureOpenAIClient
 from .cluster import MAX_TABS
 from .grove import GrowRun
 from .persist import budget_exceeded, last_grove, persist_run, usage_today
 from .problems import ProblemError
+from .schemas.claims import AssignRequest, AssignResponse, ClaimPatchRequest, NoteCreateRequest, NoteCreateResponse
 from .schemas.common import Strict, TabRef
+from .schemas.grove import Tree
 from .settings import get_settings
 
 log = logging.getLogger("tabforest.engine.routes")
@@ -64,12 +66,15 @@ class GrowRequest(Strict):
     snapshot_at: datetime | None = None
 
 
-def _check_grow_limit(user_id: UUID) -> None:
-    if not limiter.limiter.hit(GROW_LIMIT, "grow", str(user_id)):
-        reset_at, _ = limiter.limiter.get_window_stats(GROW_LIMIT, "grow", str(user_id))
+def _check_limit(user_id: UUID, bucket: str = "grow") -> None:
+    if not limiter.limiter.hit(GROW_LIMIT, bucket, str(user_id)):
+        reset_at, _ = limiter.limiter.get_window_stats(GROW_LIMIT, bucket, str(user_id))
         retry = max(1, int(reset_at - datetime.now().timestamp()) + 1)
-        raise ProblemError(429, "Too Many Requests", "Grow is limited to 10 requests per minute",
+        raise ProblemError(429, "Too Many Requests", f"{bucket.capitalize()} is limited to 10 requests per minute",
                            headers={"Retry-After": str(retry)})
+
+
+_check_grow_limit = _check_limit
 
 
 @router.post("/grove/grow", response_model=None)
@@ -123,6 +128,39 @@ async def whoami(user_id: UUID = Depends(get_user_id)) -> dict[str, str]:
     if get_settings().auth_mode != "dev":
         raise ProblemError(404, "Not Found", "Not found")
     return {"user_id": str(user_id)}
+
+
+@router.patch("/claims/{claim_id}", response_model=None)
+async def patch_claim(claim_id: str, body: ClaimPatchRequest, user_id: UUID = Depends(get_user_id)) -> Any:
+    """Confirm, edit, dismiss or resolve a claim (R-10)."""
+    return JSONResponse(await claims.patch_claim(await db.get_pool(), user_id, claim_id, body))
+
+
+@router.post("/tabs/{tab_ref}/assign", response_model=None)
+async def assign_tab(tab_ref: str, body: AssignRequest, user_id: UUID = Depends(get_user_id)) -> Any:
+    """Move a tab to another tree, or to a new one (pinned: the next grow keeps it there)."""
+    result, status = await claims.assign_tab(await db.get_pool(), user_id, tab_ref, body)
+    return JSONResponse(AssignResponse.model_validate(result).model_dump(mode="json"), status_code=status)
+
+
+@router.post("/notes", response_model=None)
+async def create_note(body: NoteCreateRequest, user_id: UUID = Depends(get_user_id)) -> Any:
+    """"Clear the fog": name a goal, record a decision or a note."""
+    result = await claims.create_note(await db.get_pool(), user_id, body)
+    return JSONResponse(NoteCreateResponse.model_validate(result).model_dump(mode="json"), status_code=201)
+
+
+@router.post("/projects/{project_id}/analyze", response_model=None)
+async def analyze_project(project_id: str, user_id: UUID = Depends(get_user_id)) -> Any:
+    """Re-run inference for one project's current tabs; returns its tree."""
+    _check_limit(user_id, "analyze")
+    client = AzureOpenAIClient()
+    try:
+        tree = await claims.analyze_project(await db.get_pool(), client, user_id, project_id,
+                                            model_name=get_settings().azure_openai_chat_deployment)
+    finally:
+        await client.aclose()
+    return JSONResponse(Tree.model_validate(tree).model_dump(mode="json"))
 
 
 # R-13: prune suggestions live in prune.py; included last so this module stays the single router.
