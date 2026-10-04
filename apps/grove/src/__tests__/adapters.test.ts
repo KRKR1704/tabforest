@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getGrove, growGrove, streamGrowGrove } from '../adapters/grove';
 import { searchMemory, getPruneSuggestions } from '../adapters/memory';
-import { analyzeWorkContext } from '../adapters/workContext';
 import {
   getMe,
   getSessions,
@@ -51,18 +50,6 @@ describe('Adapters Suite (C3–C7)', () => {
 
     const prunes = await getPruneSuggestions();
     expect(prunes.suggestions.length).toBeGreaterThan(0);
-  });
-
-  it('analyzes work context', async () => {
-    const res = await analyzeWorkContext('Cloud Migration', [
-      {
-        title: 'Meeting transcript',
-        source_type: 'paste',
-        text: 'Deploy on Azure Functions',
-      },
-    ]);
-    expect(res.project).toBe('Cloud Migration');
-    expect(res.decisions.length).toBeGreaterThan(0);
   });
 
   it('queries platform endpoints', async () => {

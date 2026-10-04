@@ -3,7 +3,6 @@ import {
   mockGroveResponse,
   mockSnapshot,
   mockTimelineResponse,
-  mockWorkContextResponse,
   mockMemorySearchResponse,
   mockPruneSuggestionsResponse,
   mockUserProfile,
@@ -44,12 +43,6 @@ describe('Contracts & Payload Validation', () => {
       'decision',
       'question',
     ]);
-  });
-
-  it('validates Work Context response with verified quotes', () => {
-    expect(mockWorkContextResponse.project).toBeTruthy();
-    expect(mockWorkContextResponse.decisions[0].quote).toBeTruthy();
-    expect(mockWorkContextResponse.handoff_brief_markdown).toContain('Handoff Brief');
   });
 
   it('validates Memory search and Prune suggestions', () => {

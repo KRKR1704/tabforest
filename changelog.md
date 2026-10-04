@@ -6,6 +6,36 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-9 Work Context (S)
+
+### Added
+- `apps/grove/src/screens/WorkContext.tsx`: three inputs (pages captured by the extension via `GET_WORK_ITEMS`, with "Clear captured pages" → `CLEAR_WORK_ITEMS`; file upload; pasted text with a title and a character count), a Reconstruct button, the result, the handoff brief with "Copy handoff brief", and "Save as work context".
+- `apps/grove/src/components/WorkContextCard.tsx`: the reconstructed project with Goal, Decisions, Blockers, Open questions, Owners, ranked Next actions (and what each unblocks) and Evidence. Each claim has its provenance pill; a sourced claim shows its verbatim quote with speaker, source and timestamp.
+- `apps/grove/src/adapters/workContext.ts` (C6), rewritten to `contracts/work-context.example.json`: `analyzeWorkContext` posts `{ items }` to `/api/work-context/analyze`; `uploadWorkContext` posts multipart `files[]` plus `items_json` to `/api/work-context/upload`. `toWorkItems` turns captures and a paste into items; `fileProblem` checks extension and size before anything is sent.
+- `apps/grove/src/lib/savedWorkContexts.ts`: work contexts kept in `localStorage` (`tabforest:work-contexts`), newest first, with reopen and delete.
+- `resetMockBridge()` in `adapters/bridge.ts`, for tests.
+
+### Changed
+- Work-context types and mock replaced with the contract's shape (`run_id`, `documents`, `goal`, `decisions`, `blockers`, `owners`, `open_questions`, `next_actions`, `handoff_brief`; claims with `quote`, `source`, `timestamp`). The S-1 `analyzeWorkContext(projectName, items)` sent a `project_name` the contract does not have.
+- The stand-in bridge's captured pages are now the contract's three sample pages (fictional Contoso data).
+- `App.tsx` shows the Work Context screen for its rail item.
+
+### Tests
+- `src/__tests__/workContext.test.tsx` (32): items carry the domain and never the URL; pastes and captures without a site go as pasted text; 12,000-character cap; file checks; analyze and upload requests against the contract (JSON body, multipart `files[]` + `items_json`, no manual Content-Type); the server's 413 wording shown; sample labelled when unreachable; local save, replace and delete, and that page text is not stored; card content, quotes on every sourced claim and none on inferred ones, ranked actions, hostile text; the screen's capture list, reconstruct, disabled state, file add/remove/refuse, copy (and its failure), save/reopen/delete; live requests from the screen.
+- Updated 3 tests for the removed S-1 shapes.
+
+### Verification
+- `npm test`: 15 files, 290 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): Work Context listed the 3 captured sample pages; Reconstruct rendered "Customer Authentication Migration" with 9 claims and 8 quotes.
+
+### Notes
+- "Save as work context" stores the reconstruction on this device only. The work-context response has no `project_id`, and `save-context` is per project, so there is no API to save it to; this needs a decision from R and P.
+- Only the reconstruction is stored, not the page text that was handed over (SPEC §6.1).
+- A page is sent with its domain; its full URL stays on the device.
+- When the service cannot be reached, the contract's sample is shown with the notice "This is a sample result, not built from your items."
+- Saved work contexts are not yet cleared by "Delete all" (S-10).
+- BUILD_TASKS.md: S-9 row ticked only.
+
 ## [2026-10-03] — Lane S-8 Saved Groves + Resume (S)
 
 ### Added
