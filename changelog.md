@@ -6,6 +6,22 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Grove: signing in on the page no longer throws the stored grove away (D)
+
+The Grove still looked blank after signing in, although `GET /api/grove` returned the user's stored grove (two trees). Found by replaying the sign-in on the page against the built extension: the old build showed "No grove yet", the fixed build shows the stored grove.
+
+### Fixed
+
+- The sign-in handler on the page started a grow itself, at the same moment the restore effect asked the server for the stored grove. The grow was counted as "started" before it checked how many tabs were open, so the restore was discarded; with fewer than two tabs the grow then did nothing, and the page stayed empty. Now only the effect restores and grows, and only a grow that really asks the server counts as started, so a grow that returns early cannot discard the restore.
+
+### Tests
+
+- New `signInRestore.test.tsx`: signing in with one tab open shows the stored grove; a grow that returns early does not make the restore give up. Both fail on the old code. Grove suite 528 of 528, typecheck clean.
+
+### Notes
+
+- Attention minutes read 0 in the 11:22 live check, but that was not a server regression: the extension counts time only while Chrome sees the computer in use (idle after 60 s without mouse or keyboard input, by design), and nobody touched the computer during the 3 minutes of automated browsing. The live check now samples the idle state while it browses, asks the person to keep using the computer, and reports an idle run as a note instead of a failure (`e2e/full-stack/live-check.mjs`, README). The product behaviour is unchanged.
+
 ## [2026-10-04] — Landing page hosted by the API at /welcome (P)
 
 ### Added
