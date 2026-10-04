@@ -6,6 +6,24 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — Audit of P-7 to P-16: HEAD on /health, serialized CI (P)
+
+### Changed
+- `GET /health` also answers `HEAD`, so `curl -I` and uptime probes get 200 with the HSTS headers instead of 405.
+- `.github/workflows/api.yml`: one workflow run at a time (`group: api-database`). The database tests share Tiger Cloud and the demo story uses fixed project ids, so two runs at once could collide.
+
+### Tests
+- Local: `test_health_answers_head_too`.
+
+### Verification
+- 275 passed with the database; `ruff check` clean.
+- Timeline on the demo story: lanes JWT 1,980,000 ms, OAuth 2.0 246,000 ms, Sessions 372,000 ms; first Backend Authentication bucket 09:30, last 11:30; totals 2,598,000 ms, 28 tab switches, 1 intent switch, 3 unassigned; markers at 10:12:20 (decision) and 10:58:02 (question).
+- Saved context save → list → resume: 8,040,000 ms = 2 h 14 m across 3 sessions.
+- Local process, `curl -I /health`: `strict-transport-security: max-age=31536000; includeSubDomains`, `x-content-type-options: nosniff`, `cache-control: no-store`; a request with only `X-Dev-User` → 401.
+
+### Notes
+- Not verified on the deployed API: the live service still runs the Phase A build, and the deploy job fails because SCM basic-auth publishing is off on the App Service.
+
 ## [2026-10-04] — P-15 and P-16: demo seed, SAMPLE pages, failure drills (P)
 
 ### Added
