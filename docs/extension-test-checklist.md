@@ -38,7 +38,7 @@ Last full run: 2026-10-04, build from `main` plus PRs D-8 and D-10 (unit 206 of 
 | 17 | Sign-out clears token, queue, last batch; capture keeps queueing locally | `e2e/signin.mjs` | Automated, green |
 | 18 | Events reach the deployed API for the signed-in user, rows in the database | P runs the SQL; the extension side was checked on 2026-10-03 (8 accepted) | **Manual** with P |
 | 19 | CORS: the deployed API answers the extension origin only | `e2e/cors.mjs` | Automated, needs the network |
-| 20 | Privacy sync: pause and exclusions reach `PATCH /api/privacy`; read back after sign-in | `e2e/privacy.mjs` (stand-in) | Automated green. Deployed endpoint: not there yet (P-10), **manual** after P deploys |
+| 20 | Privacy sync: pause and exclusions reach `PATCH /api/privacy`; read back after sign-in | `e2e/privacy.mjs` (stand-in) | Automated green. Run against the real API code and a real Postgres on 2026-10-04 (12 of 12). Deployed endpoint: only after the next deploy (P-10, P-11), **manual** after P deploys |
 
 ## 4. Grove, restore, Work Context
 

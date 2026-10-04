@@ -93,6 +93,9 @@ def validation_detail(errors: list[dict[str, Any]]) -> str:
         return f"{path} must be one of {', '.join(allowed)}"
     if first["type"] == "literal_error" and allowed:
         return f"{path} must be {' or '.join(allowed)}"
+    if first["type"] == "literal_error" and path and first["msg"].startswith("Input should be "):
+        # integer literals have no quotes to pick out (contracts/privacy.example.json: "retention_days must be 7, 30 or 90")
+        return f"{path} must be {first['msg'].removeprefix('Input should be ')}"
     if "detail" in ctx:  # a custom error that states its own wording (PydanticCustomError ctx)
         return f"{path} {ctx['detail']}"
     return f"{path}: {first['msg']}" if path else first["msg"]
