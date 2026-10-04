@@ -88,6 +88,23 @@ describe('EvidenceDrawer', () => {
     expect(screen.getByText('Document')).toBeInTheDocument();
   });
 
+  it('labels contract evidence by its ref_kind, whatever the ref looks like', () => {
+    render(
+      <EvidenceDrawer
+        claim={{
+          ...claim,
+          evidence: [
+            { ref: '00000000-0000-4000-8000-000000000001', ref_kind: 'query', why: 'asked four ways' },
+            { ref: 'n_40000000-0000-4000-8000-000000000001', ref_kind: 'note', why: 'written down' },
+          ],
+        }}
+        onClose={() => {}}
+      />
+    );
+    expect(screen.getByText('Search')).toBeInTheDocument();
+    expect(screen.getByText('Your note')).toBeInTheDocument();
+  });
+
   it('shows the verbatim quote of a sourced claim', () => {
     render(
       <EvidenceDrawer
@@ -141,7 +158,7 @@ describe('source code', () => {
     }) as Record<string, string>;
     const offenders = Object.entries(sources)
       .filter(([path]) => !path.includes('__tests__'))
-      .filter(([, code]) => /dangerouslySetInnerHTML|\.innerHTML|\.outerHTML/.test(code))
+      .filter(([, code]) => /dangerouslySetInnerHTML|\.innerHTML|\.outerHTML|\.html\(/.test(code))
       .map(([path]) => path);
     expect(offenders).toEqual([]);
   });

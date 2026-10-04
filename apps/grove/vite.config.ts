@@ -21,6 +21,8 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 3000,
     strictPort: false,
+    // The mock imports the frozen examples in the repo-level contracts/ folder.
+    fs: { allow: [__dirname, path.resolve(__dirname, '../../contracts')] },
   },
   build: {
     outDir: 'dist',

@@ -6,6 +6,38 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-3 D3 Living Grove, and grove realigned to R's contract (S)
+
+### Added
+- `apps/grove/src/viz/layout.ts`: pure grove geometry. d3-hierarchy (`hierarchy` + `cluster`) fans each tree's branches and leaves; trunk width from attention minutes and leaf length from dwell (sqrt scales); amber canopy when dormant 3+ days; sprouts at the left edge, then trees, the Wildflower Meadow and the Unclear fog patch; branch labels nudged apart so they never overlap.
+- `apps/grove/src/viz/render.ts`: D3 draws into the `<svg>` (ground, three-blob canopy, trunk, branches, twigs, teardrop leaves, patches, fog banks, labels) and wires d3-zoom for wheel zoom and drag pan. All text set with `.text()`.
+- `apps/grove/src/viz/GroveCanvas.tsx`: React owns the panel and the Zoom in / Zoom out / Reset view buttons; D3 owns the `<svg>`. `viz/palette.ts`: SVG colors mirroring the Tailwind tokens.
+- `apps/grove/src/adapters/groveContract.ts`: converts the wire format of `contracts/grove.example.json` and `grove.stream.example.ndjson` (C3) into the app's grove types; meadow, fog and sprout tabs are named from the open-tab snapshot.
+
+### Changed
+- `apps/grove/src/mocks/mockData.ts`: the hand-written grove mock (3 trees, S-1 shape) is replaced by the real `contracts/grove.example.json` read through the adapter (4 trees, meadow, fog, sprout, firefly). R's contract drafts (PRE-C1) had made the old mock stale.
+- `apps/grove/src/adapters/grove.ts`: live `getGrove`, `growGrove`, `analyzeProject` and stream lines now pass through the contract adapter instead of being cast to the internal types.
+- `apps/grove/src/types/grove.ts`: optional fields added only (`ref_kind`, `display_text`, `stone_kind`, `fallen`, `days_since_active`, `canopy`, `fogged`, `shared_tab_refs`, `fog`, `banner_text`; wider `SourceType`; `age_minutes` now optional).
+- `apps/grove/src/screens/CurrentGrove.tsx`: shows the canvas, with a Grove / Outline switch. The S-2 text list moved to `screens/GroveOutline.tsx`; it now shows the server's `display_text` wording and skips an empty direction.
+- `apps/grove/src/components/EvidenceDrawer.tsx`: evidence sources are labelled from the contract's `ref_kind` (falls back to the short-ref prefix).
+- `apps/grove/vite.config.ts`: dev server may read the repo-level `contracts/` folder.
+
+### Tests
+- `src/__tests__/groveContract.test.ts` (11): loads the real contract files; mock equals contract; tree identity, dormancy, leaves per branch, stones and mushrooms, claim provenance and evidence kinds, loose-tab titles from the snapshot, fireflies, the degraded example, the stream example.
+- `src/__tests__/groveCanvas.test.tsx` (18): layout (4 trees, one leaf per tab, trunk vs attention, leaf vs dwell, amber rule and fallbacks, no overlap, sprouts at the edge, empty patches) and canvas (4 trees / meadow / fog / sprouts in the DOM, dormancy in words, open vs closed leaves, zoom in / out / reset / limit, hostile titles as text, redraw).
+- Updated 3 existing tests for the new contract ids and the canvas being the default view; added 1 drawer test for `ref_kind`; the no-HTML source scan now also rejects D3 `.html(`.
+
+### Verification
+- `npm test`: 8 files, 89 tests passing. `npm run build`: passes with zero TypeScript errors.
+- Manual (dev server, 1440×820): 4 trees with the Job Search canopy amber, sprout, meadow and fog visible; no overlapping labels (checked by bounding boxes); zoom buttons and drag pan work; no console errors.
+
+### Notes
+- `contracts/` was not edited. The mismatch was fixed in S's adapter (BUILD_TASKS.md §2 rule 3).
+- Branch length uses branch status (active longer than explored): SPEC §9.1 maps it to recency, which the grove contract does not send.
+- Not in S-3: mushrooms, stones, vines, fallen leaves, fireflies and fog density (S-4); click actions and Tree Detail (S-5). Fallen tabs are drawn as ordinary leaves for now.
+- Still on the S-1 shape and to be realigned when their tasks start: the snapshot / bridge mock (`{tabs}` vs the contract's `{open_tabs}`, needed for S-6), timeline, saved contexts, work context, memory, prune, privacy.
+- BUILD_TASKS.md: S-3 row ticked only.
+
 ## [2026-10-03] — R-2: title normalization, source types, search queries, duplicates (R)
 
 ### Added

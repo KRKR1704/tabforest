@@ -12,6 +12,13 @@ import {
 } from '../types';
 import { mockGroveResponse, mockClaimsResponse } from '../mocks/mockData';
 import { sendBridgeMessage } from './bridge';
+import {
+  indexTabs,
+  normalizeGrove,
+  normalizeStreamMessage,
+  type WireGrove,
+  type WireStreamMessage,
+} from './groveContract';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -43,7 +50,7 @@ export async function getGrove(): Promise<GroveResponse> {
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return normalizeGrove((await res.json()) as WireGrove);
   } catch (err) {
     console.warn('[Grove Adapter] getGrove failed, using contract mock fallback:', err);
     return mockGroveResponse;
@@ -66,7 +73,7 @@ export async function growGrove(snapshot: SnapshotPayload): Promise<GroveRespons
       body: JSON.stringify(snapshot),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return normalizeGrove((await res.json()) as WireGrove, indexTabs(snapshot.tabs));
   } catch (err) {
     console.warn('[Grove Adapter] growGrove failed, using contract mock fallback:', err);
     return mockGroveResponse;
@@ -144,7 +151,7 @@ export async function streamGrowGrove(
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
-          const parsed = JSON.parse(line) as StreamMessage;
+          const parsed = normalizeStreamMessage(JSON.parse(line) as WireStreamMessage);
           onMessage(parsed);
           if (parsed.type === 'done' && onDone) {
             onDone(parsed.run_id, parsed.degraded);
@@ -176,7 +183,7 @@ export async function analyzeProject(projectId: string): Promise<GroveResponse> 
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return normalizeGrove((await res.json()) as WireGrove);
   } catch (err) {
     console.warn('[Grove Adapter] analyzeProject fallback:', err);
     return mockGroveResponse;
