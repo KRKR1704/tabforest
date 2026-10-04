@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import type { EvidenceRef, GroveResponse, GroveTab, TreeData } from '../types';
 import type { EvidenceClaim } from '../components/EvidenceDrawer';
 import { TreeDetailDrawer, type ActiveClaim } from '../components/TreeDetailDrawer';
+import { PruneDialog } from '../components/PruneDialog';
 import { hypothesisId } from '../lib/groveEdits';
 import { GroveCanvas, type GroveRoots } from '../viz/GroveCanvas';
 import type { LeafDrop } from '../viz/render';
@@ -15,6 +16,8 @@ interface CurrentGroveProps {
   grove: GroveResponse | null;
   onShowEvidence: (claim: EvidenceClaim, tabs: GroveTab[]) => void;
   onHideEvidence?: () => void;
+  /** Open a saved grove, e.g. the one a firefly leads to. */
+  onResume?: (contextId: string) => Promise<boolean>;
 }
 
 type GroveView = 'grove' | 'outline';
@@ -68,8 +71,10 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
   grove,
   onShowEvidence,
   onHideEvidence,
+  onResume,
 }) => {
   const [view, setView] = useState<GroveView>('grove');
+  const [pruning, setPruning] = useState(false);
   const [selection, setSelection] = useState<GroveSelection | null>(null);
   const [detailTreeId, setDetailTreeId] = useState<string | null>(null);
   const [activeClaim, setActiveClaim] = useState<ActiveClaim | null>(null);
@@ -141,6 +146,8 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
       return;
     }
     if (next.kind === 'leaf' || next.kind === 'fallen-leaf') actions.openTab(next.id);
+    // A vine marks redundant tabs: it opens the prune suggestions.
+    if (next.kind === 'vine') setPruning(true);
   };
 
   const handleDrop = (drop: LeafDrop) => {
@@ -182,7 +189,7 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
       <div
         role="group"
         aria-label="Grove view"
-        className="flex shrink-0 gap-5 border-b border-forest-800 px-6"
+        className="flex shrink-0 items-center gap-5 border-b border-forest-800 px-6"
       >
         {VIEWS.map((option) => (
           <button
@@ -199,6 +206,9 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
             {option.label}
           </button>
         ))}
+        <button type="button" className={`ml-auto ${captionButton}`} onClick={() => setPruning(true)}>
+          Review tabs to prune
+        </button>
       </div>
 
       {banner && (
@@ -274,6 +284,19 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
                             Exclude {caption.domain}
                           </button>
                         )}
+                        {caption.contextId && onResume && (
+                          <button
+                            type="button"
+                            className={`mt-2 ${captionButton}`}
+                            onClick={() =>
+                              void onResume(caption.contextId as string).then((ok) => {
+                                if (!ok) actions.setNotice('That grove could not be opened.');
+                              })
+                            }
+                          >
+                            Open that grove
+                          </button>
+                        )}
                         {caption.inFog && (
                           <form onSubmit={submitClearFog} className="mt-3 space-y-2">
                             <label className="block">
@@ -328,6 +351,18 @@ export const CurrentGrove: React.FC<CurrentGroveProps> = ({
           </div>
         )}
       </div>
+
+      {pruning && (
+        <PruneDialog
+          grove={grove}
+          onClose={() => setPruning(false)}
+          onDone={(message) => {
+            setPruning(false);
+            setSelection(null);
+            actions.setNotice(message);
+          }}
+        />
+      )}
     </div>
   );
 };
