@@ -25,3 +25,5 @@ EXT=../dist node hollow.mjs                # Node 20; EXT is the folder with man
 | `cors.mjs` | Deployed API answers the extension origin | needs the network |
 
 The ID of the loaded extension must be `nldemblgfgcaolkpkajdbefjfnileeoi` (the scripts that talk to stand-in APIs rely on the CORS origin). Not covered because Playwright cannot do it: pressing the `tabGroups` permission prompt, the real right-click menu, Microsoft sign-in.
+
+The whole product in one run (browse, sign in, events, grow, save/restore, prune, Work Context, privacy, delete, with the real model on a throwaway Postgres) is in `full-stack/`; see its README.
