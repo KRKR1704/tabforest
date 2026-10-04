@@ -6,6 +6,95 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — R-9 + R-10: Seedling fallback, claims, assign, notes, analyze; hypothesis cap (R)
+
+### Fixed
+
+- A "Maybe" never shows a confidence of 0.60 or more: every claim that ends as a hypothesis (model-authored or downgraded) gets `min(model_conf, evidence_cap, 0.59)` (`validate.py`). The inferred thresholds (≥ 2 valid refs, ≥ 0.60) are unchanged and tested at 0.60 / 0.59. One older assertion (a hypothesis capped at 0.6) now expects 0.59.
+- `db/migrations/README.md` lists `202_engine_tokens.sql` and `203_engine_snapshot.sql`.
+- A Seedling run no longer renames existing projects to their title-term labels in the database: a fallback tree keeps the project's name.
+
+### Added: R-9 Seedling fallback (§8, §27)
+
+- Every AI-eligible cluster failing (Azure down after aoai's one retry, wrong key, content filter on all): deterministic labels from `labels.py`, every tree fogged with a "Maybe: tabs about …" goal at 0.45, no stones, mushrooms, next actions, hypotheses or fireflies, `degraded: true`, banner "AI unavailable — showing groups only". The shape matches `grove.degraded.example.json`. Some clusters failing keeps R-8's per-cluster behaviour. Invalid JSON gets one repair retry, then a groups-only tree for that cluster. Stream mode: clusters line, fogged tree lines, done with `degraded: true`.
+- Embeddings failing during clustering: `cluster_snapshot_no_embeddings()` uses opener + time + Jaccard of the tabs' title terms in place of cosine. No model call is made, every tree is Seedling-labelled, `degraded: true`, and `analysis_runs.fallback_used = true`. Query families fall back to term-overlap vectors (`features.bow_vectors`).
+- 2–3 tabs: no forced clustering. One sprout, `banner_text` "TabForest learns as you browse", and at most one model call (no repair retry) to name a goal. The sprout's label is the validated goal's wording only when it is inferred or stated with confidence ≥ 0.60; otherwise the top title terms. 0–1 tabs: an empty grove with a 200.
+- `GET /api/grove`: the newest full grove, so an outage never hides the last good one; a degraded grove is returned only when it is the only one stored (`ORDER BY degraded, ts DESC`).
+- `migrations/203_engine_snapshot.sql`: `analysis_runs.snapshot jsonb` stores the tabs a grow ran on, for analyze. Applied; a second run changes nothing.
+
+### Added: R-10 claims, assign, notes, analyze (§5, §17, §24, §27)
+
+- `PATCH /api/claims/{id}` (prefix `dec_`, `dir_`, `h_`, `q_`, `a_`, `g_` picks the table; the response is the claim in its grove shape or `ClaimDismissed`):
+  - confirm: inferred → stated with a note of the user's (kind `decision` for decisions, directions and hypotheses; `goal` for goals; `note` for questions and actions) and `confirmed_at`. A confirmed stone is carved. A confirmed hypothesis moves to the slot of its kind.
+  - edit: the same, with the new text.
+  - dismiss: `dismissed_at` (actions: `status = 'dismissed'`). Any note that made the claim stated is deleted with it, so the next grow does not restore it.
+  - resolve (questions): status resolved + answer + `resolved_at`, mushroom → flower.
+  - Goals cannot be dismissed (422). Only questions can be resolved (422).
+- `POST /api/tabs/{tab_ref}/assign`: to an existing project (+ optional branch label, created when new) or `new_project_name` (201). Writes `cluster_tabs` with `assigned_by='user'`; R-5 already keeps pins.
+- `POST /api/notes` ("Clear the fog"): `goal` on a fog, meadow or sprout tab gives it its own tree named by the user (stated goal, pinned, 201). `goal` on a tab or project in a tree makes that tree's goal stated and clears its fog. `decision` adds a carved stone. `note` is a plain stated note.
+- `POST /api/projects/{id}/analyze` (10/min, shares the token budget): re-runs inference for that project's current tabs from the stored snapshot. It returns one tree; the tree replaces the project's tree in the stored grove, and an `analyze_project` run is recorded.
+- Every mutation updates the stored last grove (`analysis_runs.response`) in the same transaction, under a row lock, so `GET /api/grove` reflects it at once.
+- `carry.py`, applied after the model on every grow and analyze (the model never has the final word):
+  - a goal note makes the goal stated;
+  - every decision note is a carved stone;
+  - a dismissed claim is not suggested again;
+  - a resolved question stays a flower: matched by the search family it cites, else by text similarity; each resolved question matches one new question;
+  - a project the user created keeps its name.
+- Dismissal approach: both. The dismissed texts go to the model ("dismissed_by_user": do not repeat), and a model claim similar to a dismissed text is dropped by code (term overlap on crude stems: Jaccard ≥ 0.5, or one text containing ≥ 75 % of the other). Stated claims are never filtered. A weaker inferred copy of a decision or goal the user already said is dropped as redundant.
+- `problems.py`: the standalone app answers a `user_id` in a body with the contract's 422 problem body (P's app already does).
+
+### Changed
+
+- The direction and the model's own hypotheses are now stored as `decisions` rows (provenance as validated, ids `dir_` / `h_`), so every claim in the grove has a row to confirm, edit or dismiss. `GrowRun.prepare_clusters()` / `build_tree()` replaced `_build` so analyze reuses them. `persist_build()` is split out of `persist_run()`.
+- A project the model named takes the new tree's name on each grow, as before. A user-created project (placeholder cluster with no analysis run) and a Seedling tree keep the stored name.
+
+### Tests
+
+- `test_validate.py`: the hypothesis cap and the unchanged inferred thresholds.
+- `test_seedling.py` (17):
+  - total failure matches the degraded contract's key sets; no fireflies when degraded and fireflies otherwise;
+  - partial failure; invalid JSON twice;
+  - embedding failure: Jaccard clustering, no model call;
+  - 2–3 tabs: goal used or not, never more than one call (including parametrized failures);
+  - 0 and 1 tab; small snapshots over HTTP; stream mode in Seedling;
+  - GET with Azure down (database): the earlier full grove, or the degraded one when it is the only one; `fallback_used` recorded.
+- `test_claims.py` (18, real database, mocked Azure OpenAI):
+  - every claims action, including hypothesis → stone and the idempotent confirm;
+  - re-grow keeps the carved stone, the dismissal and one flower;
+  - goal notes, user-named projects, no rename in Seedling;
+  - assign (existing branch, new tree, 404s); clear the fog; analyze (honours notes and dismissals, one call, 503 and an unchanged tree when the model is down);
+  - HTTP: another user's ids → 404 problem on claims, assign, notes and analyze; `user_id` in the body → 422 problem; no token → 401.
+- `test_claims_live.py` (7, real Azure + database, users `…00ee` and `…00ef`):
+  - wrong key: 200, Seedling, stream, GET still returns the good grove; embeddings down as well;
+  - 3 tabs: sprouts, one call;
+  - the scripted round trip: confirm, edit, dismiss, resolve, assign tab 13 to a new tree, clear the fog on tab 28, GET reflects everything;
+  - analyze;
+  - cross-user: every id from the round trip → 404;
+  - re-grow: the carved stone stays, the pin holds, the dismissed hypothesis does not come back, the flower stays, tab 28's tree keeps its stated goal;
+  - cleanup asserts 0 rows left.
+
+### Verification
+
+- `pytest app/engine/tests -q` from `apps/api`: 250 passed, 2 xfailed (R-5's 4-tree test and the R-6 STEP 0 experiment, unchanged). `check_contracts.py`: PASS, 34 checks. `contracts/` untouched.
+- Real server (uvicorn on port 8100) with `AZURE_OPENAI_API_KEY=not-a-valid-key`:
+  - plain grow: HTTP 200, `degraded: true`, 5 groups-only trees;
+  - stream: clusters at +0.65 s, 5 trees, done with `degraded: true` at +2.28 s;
+  - `GET /api/grove`: the earlier good run;
+  - with embeddings uncached: 3 trees and 14 meadow tabs, 0 model calls, `fallback_used` true.
+- 3 Backend Auth tabs: 200, one sprout labelled "Appears to be choosing an authentication method for a REST API", 1 model call (2,465 tokens).
+- Embedding-failure clustering on the demo: ARI 0.693 (3 trees, 14 tabs in the meadow) against 0.886 with embeddings.
+
+### Notes (deviations from the plan, and findings)
+
+- Assign: the contract's request is `{project_id, branch_label?}` or `{new_project_name}`, so there is no `new_tree` field; the contract was kept. When the tab was in no tree (meadow, fog), `from_project_id` repeats the destination project, because the contract makes it a required string.
+- `suggested_actions` has no `dismissed_at` column, so a dismissed action stores `status = 'dismissed'` only and the dismissal time is not kept.
+- Seedling trees ignore the user's notes entirely (groups only, as specified). A user-named project keeps its stored name but shows its label while the AI is down. Embedding-failure mode cannot match existing projects (no centroids), so carry-over does not apply there.
+- 0–1 tabs return no tabs anywhere in the grove (an empty grove, as specified), not even in the meadow. A small-snapshot run is stored like any other, so it becomes the newest full grove.
+- Analyze with the model down returns 503 and leaves the tree as it is, because a stale tree is better than a groups-only one.
+- Model behaviour seen live: after a next action is edited (a `note`-kind note), a re-grow can turn that note into a stated decision (a second carved stone). Dismissing a hypothesis worded like a stone the user confirmed leaves the stone alone, because stated claims are never filtered.
+- Live fix found by the tests: a single resolved question came back as two flowers when the model asked the loop twice (each grow stores a copy of the flower). Each resolved question now matches one new question, and copies are collapsed on load.
+- `GET /api/grove` and the mutations rely on `analysis_runs.response`, so `203` must be applied before the first grow after deploying (P's `migrate.sh` runs all `2xx` files).
+
 ## [2026-10-04] — Live verification fixes for R-11 and R-13 (R)
 
 ### Fixed
