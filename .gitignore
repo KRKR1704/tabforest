@@ -146,3 +146,6 @@ __pycache__/
 
 # Extension zips (apps/extension/tabforest-extension-*.zip)
 tabforest-extension-*.zip
+
+# The landing page build the deploy copies into the API
+apps/api/app/welcome_site/

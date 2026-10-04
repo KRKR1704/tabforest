@@ -11,9 +11,11 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
 from app.auth import EntraVerifier, current_user
@@ -32,6 +34,10 @@ from app.routes_timeline import router as timeline_router
 from app.telemetry import instrument, setup_telemetry
 
 log = logging.getLogger("tabforest")
+
+# The public landing page (apps/grove, npm run build:landing), copied here by the deploy job and served at
+# /welcome/. It is a plain static folder with relative paths: no code, no data, no secrets.
+WELCOME_SITE = Path(__file__).resolve().parent / "welcome_site"
 
 
 def _configure_logging() -> None:
@@ -121,13 +127,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Cache-Control"] = response.headers.get("Cache-Control", "no-store")
+        if request.url.path.startswith("/welcome"):
+            response.headers.setdefault("Cache-Control", "public, max-age=300")    # the page and its hashed assets
+        else:
+            response.headers["Cache-Control"] = response.headers.get("Cache-Control", "no-store")
         return response
 
     @app.api_route("/health", methods=["GET", "HEAD"], tags=["system"])
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    if WELCOME_SITE.is_dir():
+        app.mount("/welcome", StaticFiles(directory=WELCOME_SITE, html=True), name="welcome")
     app.include_router(demo_router)
     app.include_router(router)
     app.include_router(privacy_router)
