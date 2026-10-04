@@ -6,6 +6,21 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — D-15 Extension test checklist and real-Chromium checks (D)
+
+### Added
+
+- `docs/extension-test-checklist.md`: 30 checks across capture, the Hollow, queue and offline, sign-in, Grove, restore (including after a Chrome restart) and release hygiene, each marked automated (with the script) or manual (with the steps), plus the gaps found.
+- `apps/extension/e2e/`: the real-Chromium Playwright checks used for review (`hollow`, `open`, `sync`, `bridge`, `signin`, `grove`, `workctx`, `restore`, `privacy`, `cors`) and a new `lifecycle.mjs` (API down so events queue, delivery once it is back, duplicate resend, incognito blocked), `variant.mjs` (manifest variants for the two checks that need a permission Chrome grants on a click), a README with the commands, and its own `package.json` (Playwright only; not part of `pnpm test`).
+
+### Verification
+
+- `lifecycle.mjs` 8 of 8, `hollow.mjs` 13 of 13 and `workctx.mjs` 14 of 14 re-run from the new location against a build of main.
+
+### Notes
+
+- A real service-worker stop cannot be forced from Playwright (closing the target does not stop it, and an extension reload disables a command-line-loaded extension), so that item is covered by `tests/lifecycle.test.mjs` plus a manual step in the checklist.
+
 ## [2026-10-04] — D-13 Installable zip and demo profile runbook (D)
 
 ### Added
