@@ -13,8 +13,9 @@ on:
 permissions:
   contents: read
 
+# One run at a time: the database tests share Tiger Cloud, and the demo story uses fixed project ids.
 concurrency:
-  group: api-${{ github.ref }}
+  group: api-database
   cancel-in-progress: false
 
 jobs:
