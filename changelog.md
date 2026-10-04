@@ -6,6 +6,24 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-04] — D-13 Installable zip and demo profile runbook (D)
+
+### Added
+
+- `apps/extension/scripts/build-zip.mjs` (`pnpm build:zip`): builds the extension with the Grove bundled, checks the result and writes `tabforest-extension-<version>.zip`. It refuses to zip when the Grove build is missing, the Grove page is still the placeholder, the manifest key (extension ID) or the approved permission list changed, there are host permissions or content scripts, incognito is not blocked, sourcemaps would ship, or the API address is not the deployed one (override with `VITE_API_BASE`). `tests/build-zip.test.mjs`: 12 tests.
+- `apps/extension/scripts/serve-sample-docs.mjs`: serves the SAMPLE documents as web pages on `http://127.0.0.1:8765/` so they can be added to Work Context with the right-click menu (only the listed files, no path access).
+- `docs/demo-profile.md`: runbook for the clean demo profile: build and load the zip, the 28 demo tabs (generated from `demo_tabs.json`) to browse for real, the three Hollow sites, the sample pages into Work Context, and a ready checklist.
+- `.gitignore`: the zip.
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (201 of 201), `pnpm typecheck` pass. `pnpm build:zip` run with a real Grove build: the zip unzips to a folder that loads in real Chromium with the Grove running on the real bridge (4 of 4 checks, no console errors, no failed requests).
+
+### Notes
+
+- Browsing the 28 tabs for real and the recording are people tasks; the runbook only removes the typing.
+- The Grove's `index.html` asks Google Fonts for a stylesheet (the Grove's own check-dist warns about it). That is a request from the user's browser to Google each time the Grove opens, which `docs/privacy.md` does not mention. Shriya to decide: bundle the fonts or accept and document.
+
 ## [2026-10-04] — D-9 Work Context capture (D)
 
 ### Added
