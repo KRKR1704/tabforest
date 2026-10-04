@@ -23,7 +23,7 @@ export type MemoryOutcome =
 
 /** GET /api/memory/search?q=: "Have I researched this before?" */
 export async function searchMemory(query: string): Promise<MemoryOutcome> {
-  if (isMockMode()) return { ok: true, result: standInSearch(query) };
+  if (isMockMode('memory')) return { ok: true, result: standInSearch(query) };
   try {
     const res = await fetch(`${apiBaseUrl()}/api/memory/search?q=${encodeURIComponent(query)}`, {
       method: 'GET',
@@ -47,7 +47,7 @@ export type PruneOutcome =
  * to closing tabs, so a failure is reported and never replaced by sample data.
  */
 export async function getPruneSuggestions(tabRefs: string[]): Promise<PruneOutcome> {
-  if (isMockMode()) return { ok: true, result: SAMPLE_PRUNE };
+  if (isMockMode('prune')) return { ok: true, result: SAMPLE_PRUNE };
   try {
     const res = await fetch(`${apiBaseUrl()}/api/tabs/prune-suggestions`, {
       method: 'POST',
