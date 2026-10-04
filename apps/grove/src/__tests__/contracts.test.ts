@@ -3,8 +3,6 @@ import {
   mockGroveResponse,
   mockSnapshot,
   mockTimelineResponse,
-  mockSavedContexts,
-  mockWorkContextResponse,
   mockMemorySearchResponse,
   mockPruneSuggestionsResponse,
   mockUserProfile,
@@ -45,19 +43,6 @@ describe('Contracts & Payload Validation', () => {
       'decision',
       'question',
     ]);
-  });
-
-  it('validates Saved Context and Resume Card contracts', () => {
-    expect(mockSavedContexts.list.length).toBeGreaterThan(0);
-    const resume = mockSavedContexts.resumeCard;
-    expect(resume.important_tabs.length).toBeGreaterThan(0);
-    expect(resume.goal).toBeTruthy();
-  });
-
-  it('validates Work Context response with verified quotes', () => {
-    expect(mockWorkContextResponse.project).toBeTruthy();
-    expect(mockWorkContextResponse.decisions[0].quote).toBeTruthy();
-    expect(mockWorkContextResponse.handoff_brief_markdown).toContain('Handoff Brief');
   });
 
   it('validates Memory search and Prune suggestions', () => {

@@ -1,13 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { getGrove, growGrove, streamGrowGrove } from '../adapters/grove';
 import { searchMemory, getPruneSuggestions } from '../adapters/memory';
-import { analyzeWorkContext } from '../adapters/workContext';
 import {
   getMe,
   getSessions,
   getTimeline,
-  getContexts,
-  getPrivacy,
 } from '../adapters/platform';
 import { mockSnapshot } from '../mocks/mockData';
 import { StreamMessage } from '../types';
@@ -54,18 +51,6 @@ describe('Adapters Suite (C3–C7)', () => {
     expect(prunes.suggestions.length).toBeGreaterThan(0);
   });
 
-  it('analyzes work context', async () => {
-    const res = await analyzeWorkContext('Cloud Migration', [
-      {
-        title: 'Meeting transcript',
-        source_type: 'paste',
-        text: 'Deploy on Azure Functions',
-      },
-    ]);
-    expect(res.project).toBe('Cloud Migration');
-    expect(res.decisions.length).toBeGreaterThan(0);
-  });
-
   it('queries platform endpoints', async () => {
     const me = await getMe();
     expect(me.email).toBe('maya@tabforest.local');
@@ -76,10 +61,5 @@ describe('Adapters Suite (C3–C7)', () => {
     const timeline = await getTimeline('p_10000000-0000-4000-8000-000000000001', '24h');
     expect(timeline.status).toBe('ok');
 
-    const contexts = await getContexts();
-    expect(contexts.length).toBeGreaterThan(0);
-
-    const privacy = await getPrivacy();
-    expect(privacy.excluded_domains.length).toBeGreaterThan(0);
   });
 });

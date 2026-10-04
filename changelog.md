@@ -6,6 +6,105 @@ Entry rules: record every meaningful implementation change (not tiny typos); be 
 
 Headings per entry: Added · Changed · Fixed · Removed · Tests · Verification · Notes.
 
+## [2026-10-03] — Lane S-10 Privacy (S)
+
+### Added
+- `apps/grove/src/screens/Privacy.tsx`, with six sections:
+  - Capture: status in words, "Pause for 1 hour", "Pause until tomorrow", "Pause until I resume" and "Resume capture", sent as `PAUSE {until}` over the bridge (`9999-12-31T23:59:59Z` for until resumed, `null` to resume).
+  - The Hollow: the count from `GET_HOLLOW_COUNT` and the built-in categories from SPEC §6.3.
+  - Never analyze these sites: add a site (`EXCLUDE_DOMAIN {domain}`), list, and remove (`PATCH /api/privacy` with `excluded_domains_remove`).
+  - Retention: 7 / 30 / 90 days (`PATCH /api/privacy` with `retention_days`).
+  - What we send: the next batch from `GET_SEND_PREVIEW` (count and a table of event, site, time), refreshed every 5 seconds and on demand.
+  - Delete: one forest (`DELETE /api/projects/{id}`, after an inline confirm) and "Delete all my memory" (a confirm dialog, then `DELETE /api/me`, then `WIPE_LOCAL`).
+- `apps/grove/src/adapters/privacy.ts` (C7): `getPrivacy`, `patchPrivacy`, `deleteForest`, `deleteAccount` in the shapes of `contracts/privacy.example.json` and the `delete_account` example of `contracts/me.example.json`.
+- `apps/grove/src/lib/privacy.ts`: `pauseUntil`, `isPaused`, `describeCapture`, `normalizeDomain`, `HOLLOW_CATEGORIES`.
+
+### Changed
+- "Delete all" also clears what the Grove page keeps on this device: the last grove (S-6), saved work contexts (S-9), the grove in memory and any pinned resume card. Deleting a forest removes its tree and a resume card for that project.
+- `App.tsx` shows the Privacy screen for its rail item.
+
+### Removed
+- S-1 `getPrivacy`, `updatePrivacy`, `deleteProject`, `deleteMe` in `adapters/platform.ts`: their response shapes did not match P's contracts, and they reported success when the call had failed.
+
+### Tests
+- `src/__tests__/privacy.test.tsx` (34): pause times, capture wording, domain normalization; the adapter's stand-in; live requests against the contract examples (GET, five PATCH bodies, the 422 wording, both DELETEs) and that a failed call is reported instead of replaced by stand-in data; the screen's sections, pause / resume, exclude (and a refused non-site), remove exclusion, retention, the live preview and its cleanup on close, forest delete with confirm and cancel, delete-all dialog and cancel; in live mode: retention and removal go to PATCH, pause and exclusion send no PATCH, `DELETE /api/me` happens before `WIPE_LOCAL`, a failed delete wipes nothing, a failed forest delete keeps the tree, and a failed load is shown with "Try again".
+- Updated 1 test for the removed functions.
+
+### Verification
+- `npm test`: 16 files, 324 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): all six sections render; the delete-all dialog opens and cancels.
+
+### Notes
+- Privacy calls never fall back to stand-in data on failure. A failed load, change or delete is shown as an error, and the device is not wiped unless the server delete succeeded.
+- Pause and exclusion go to the extension, which syncs them to the server (contract note 10); the page sends no PATCH for them. In mock mode, with no extension to do that, the page records them in the stand-in itself.
+- Removing an exclusion is sent to the API because the bridge has no message for it; the extension picks it up when it next reads the settings.
+- Hollow categories are shown read-only: SPEC §6.3 calls them editable and the contract says they go through the bridge, but `contracts/bridge.types.ts` has no message to read or change them.
+- "Pause until tomorrow" ends at the next local midnight.
+- The Local Grove toggle (`cloud_ai_enabled`) is P2 and not shown.
+- BUILD_TASKS.md: S-10 row ticked only.
+
+## [2026-10-03] — Lane S-9 Work Context (S)
+
+### Added
+- `apps/grove/src/screens/WorkContext.tsx`: three inputs (pages captured by the extension via `GET_WORK_ITEMS`, with "Clear captured pages" → `CLEAR_WORK_ITEMS`; file upload; pasted text with a title and a character count), a Reconstruct button, the result, the handoff brief with "Copy handoff brief", and "Save as work context".
+- `apps/grove/src/components/WorkContextCard.tsx`: the reconstructed project with Goal, Decisions, Blockers, Open questions, Owners, ranked Next actions (and what each unblocks) and Evidence. Each claim has its provenance pill; a sourced claim shows its verbatim quote with speaker, source and timestamp.
+- `apps/grove/src/adapters/workContext.ts` (C6), rewritten to `contracts/work-context.example.json`: `analyzeWorkContext` posts `{ items }` to `/api/work-context/analyze`; `uploadWorkContext` posts multipart `files[]` plus `items_json` to `/api/work-context/upload`. `toWorkItems` turns captures and a paste into items; `fileProblem` checks extension and size before anything is sent.
+- `apps/grove/src/lib/savedWorkContexts.ts`: work contexts kept in `localStorage` (`tabforest:work-contexts`), newest first, with reopen and delete.
+- `resetMockBridge()` in `adapters/bridge.ts`, for tests.
+
+### Changed
+- Work-context types and mock replaced with the contract's shape (`run_id`, `documents`, `goal`, `decisions`, `blockers`, `owners`, `open_questions`, `next_actions`, `handoff_brief`; claims with `quote`, `source`, `timestamp`). The S-1 `analyzeWorkContext(projectName, items)` sent a `project_name` the contract does not have.
+- The stand-in bridge's captured pages are now the contract's three sample pages (fictional Contoso data).
+- `App.tsx` shows the Work Context screen for its rail item.
+
+### Tests
+- `src/__tests__/workContext.test.tsx` (32): items carry the domain and never the URL; pastes and captures without a site go as pasted text; 12,000-character cap; file checks; analyze and upload requests against the contract (JSON body, multipart `files[]` + `items_json`, no manual Content-Type); the server's 413 wording shown; sample labelled when unreachable; local save, replace and delete, and that page text is not stored; card content, quotes on every sourced claim and none on inferred ones, ranked actions, hostile text; the screen's capture list, reconstruct, disabled state, file add/remove/refuse, copy (and its failure), save/reopen/delete; live requests from the screen.
+- Updated 3 tests for the removed S-1 shapes.
+
+### Verification
+- `npm test`: 15 files, 290 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): Work Context listed the 3 captured sample pages; Reconstruct rendered "Customer Authentication Migration" with 9 claims and 8 quotes.
+
+### Notes
+- "Save as work context" stores the reconstruction on this device only. The work-context response has no `project_id`, and `save-context` is per project, so there is no API to save it to; this needs a decision from R and P.
+- Only the reconstruction is stored, not the page text that was handed over (SPEC §6.1).
+- A page is sent with its domain; its full URL stays on the device.
+- When the service cannot be reached, the contract's sample is shown with the notice "This is a sample result, not built from your items."
+- Saved work contexts are not yet cleared by "Delete all" (S-10).
+- BUILD_TASKS.md: S-9 row ticked only.
+
+## [2026-10-03] — Lane S-8 Saved Groves + Resume (S)
+
+### Added
+- "Save context" in Tree Detail: sends `GET_URLS` for the tree's tabs, then `POST /api/projects/{id}/save-context` with `kind: "resume"`, the card and the tabs.
+- `apps/grove/src/lib/contextCard.ts`: `buildContextCard` (goal, direction, decisions, explored branches, open questions, first next action, in the grove's own claim shapes), `buildContextTabs` (stripped URL, `important`, `excluded_reason` of `exact_duplicate` / `semantic_redundant` / `stale`), `restorePayload`, `formatDuration` ("2 h 14 m"), `formatWhen` ("Yesterday, 11:31 AM").
+- `apps/grove/src/screens/SavedGroves.tsx`: one card per saved context with last active, time invested and sessions, open questions, important-of-total tabs, goal summary, next action, and a Resume button (Open for references). Sample rows are labelled as such when the list cannot be loaded.
+- `apps/grove/src/components/ResumeCard.tsx`, pinned above the grove after Resume: last active, time across sessions, goal, explored paths, direction, decisions, unresolved questions and next action with their provenance pills, then "Restore N important tabs", "Restore all N" and "Just read summary" (only the options in `restore_options`). `store/useResumeStore.ts` holds the resumed context.
+- Restore sends `RESTORE {tab_refs, group_name, fallback_urls}`: the important tabs by default, every saved tab for "all", with `fallback_urls` in the same order as `tab_refs`.
+- `apps/grove/src/adapters/contexts.ts` (C7): `saveContext`, `listContexts`, `resumeContext` in the shapes of `contracts/saved-context.example.json`, with an in-memory stand-in so a context saved offline can be listed and resumed until reload.
+
+### Changed
+- Mock bridge: `GET_URLS` replies `{ urls }` as `contracts/bridge.types.ts` defines (was a bare map); `RESTORE` opens the fallback URL or the tab's site.
+- `apps/grove/src/App.tsx`: Saved Groves screen; the resume card sits above Current Grove, including when no grove has grown yet.
+
+### Removed
+- S-1 `saveContext`, `getContexts`, `resumeContext` in `adapters/platform.ts`, the `SavedContextItem` / `ResumeCardData` types and `mockSavedContexts`: their shapes did not match P's saved-context contract.
+
+### Tests
+- `src/__tests__/savedGroves.test.tsx` (32): the built card and tabs deep-equal the contract's save request; excluded tabs are never important; formatting; restore payloads; adapter in stand-in and live mode (save, list, resume requests against the contract, query strings stripped, failed save throws, sample rows on list failure, 404 on resume); Saved Groves cards; ResumeCard content, options and dismissal; and through `App`: save from Tree Detail (`GET_URLS` then listed first), resume pins the card, Restore important sends exactly the four important refs with fallback URLs, Restore all sends all ten, Just read summary sends nothing.
+- Updated 2 tests for the removed functions.
+
+### Verification
+- `npm test`: 14 files, 260 tests passing. `npm run build`: passes; `check-dist` reports dist/ extension-safe.
+- Manual (dev server): Saved Groves showed the three contract contexts; Resume pinned the card above the grove with the three restore buttons.
+
+### Notes
+- A failed save shows "Could not save this context. Nothing was stored." rather than falling back to the stand-in, so a user never closes tabs believing they were saved.
+- URLs are stripped of query string and fragment again in the adapter before sending, in addition to the bridge doing so.
+- A tab the device has no URL for is sent without `fallback_url`; the contract examples always include one.
+- Saving references (`kind: "references"`) from the prune dialog is S-11; resuming one already works.
+- Restoring into a named tab group depends on the extension (`group_name` is sent).
+- BUILD_TASKS.md: S-8 row ticked only.
 ## [2026-10-03] — D-7 Extension bridge handlers (D)
 
 ### Added

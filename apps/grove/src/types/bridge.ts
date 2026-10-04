@@ -57,6 +57,11 @@ export interface GetUrlsPayload {
   tab_refs: string[];
 }
 
+/** Reply to GET_URLS: stripped URLs by tab_ref, for the tabs the device still knows. */
+export interface GetUrlsData {
+  urls: Record<string, string>;
+}
+
 export interface PausePayload {
   until: string | null;
 }

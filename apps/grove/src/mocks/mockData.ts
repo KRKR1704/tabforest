@@ -2,13 +2,10 @@ import {
   GroveResponse,
   MemorySearchResponse,
   PruneSuggestionsResponse,
-  WorkContextResponse,
   UserProfile,
   PrivacySettings,
   BrowserSession,
   TimelineResponse,
-  SavedContextItem,
-  ResumeCardData,
   SnapshotPayload,
 } from '../types';
 import groveContract from '@contracts/grove.example.json';
@@ -31,133 +28,6 @@ export const mockGroveResponse: GroveResponse = normalizeGrove(
 // The Backend Authentication timeline from the contract (its "story_24h" example).
 export const mockTimelineResponse = timelineContract.examples[0].response
   .body as unknown as TimelineResponse;
-
-export const mockSavedContexts: {
-  list: SavedContextItem[];
-  resumeCard: ResumeCardData;
-} = {
-  list: [
-    {
-      id: 'ctx-1',
-      project_id: 'p-backend-auth',
-      project_name: 'Backend Authentication',
-      title: 'Backend Auth Research Context',
-      kind: 'resume',
-      saved_at: '2026-10-04T14:40:00Z',
-      last_resumed_at: null,
-      time_invested_minutes: 42.5,
-      session_count: 3,
-      open_question_count: 1,
-      goal_summary: 'Choose an authentication architecture for the application',
-      important_tab_count: 4,
-      total_tab_count: 8,
-    },
-  ],
-  resumeCard: {
-    context_id: 'ctx-1',
-    project_name: 'Backend Authentication',
-    goal: 'Choose an authentication architecture for the application',
-    direction: 'JWT appears to be the preferred approach',
-    last_active: '2026-10-04T14:28:00Z',
-    time_invested_text: '2 h 14 m across 3 sessions',
-    open_questions: ['Where should refresh tokens be stored securely?'],
-    next_action: 'Prototype a refresh-token flow using HttpOnly, SameSite=strict cookies',
-    important_tabs: [
-      {
-        tab_ref: 't1',
-        title: 'Security - FastAPI',
-        domain: 'fastapi.tiangolo.com',
-        fallback_url: 'https://fastapi.tiangolo.com/tutorial/security/',
-      },
-      {
-        tab_ref: 't3',
-        title: 'JWT.IO - Introduction',
-        domain: 'jwt.io',
-        fallback_url: 'https://jwt.io/introduction',
-      },
-    ],
-    all_tabs: [
-      {
-        tab_ref: 't1',
-        title: 'Security - FastAPI',
-        domain: 'fastapi.tiangolo.com',
-        fallback_url: 'https://fastapi.tiangolo.com/tutorial/security/',
-      },
-      {
-        tab_ref: 't2',
-        title: 'tiangolo/fastapi: JWT example',
-        domain: 'github.com',
-        fallback_url: 'https://github.com/tiangolo/fastapi',
-      },
-      {
-        tab_ref: 't3',
-        title: 'JWT.IO - Introduction',
-        domain: 'jwt.io',
-        fallback_url: 'https://jwt.io/introduction',
-      },
-      {
-        tab_ref: 't4',
-        title: 'OAuth 2.0 Overview',
-        domain: 'auth0.com',
-        fallback_url: 'https://auth0.com/overview',
-      },
-    ],
-  },
-};
-
-export const mockWorkContextResponse: WorkContextResponse = {
-  project: 'Cloud Migration',
-  goal: 'Migrate data ingestion pipeline to Azure serverless architecture',
-  decisions: [
-    {
-      text: 'Deploy ingestion workers on Azure Functions Consumption tier',
-      provenance: 'sourced',
-      quote: 'We decided to deploy the ingestion workers on Azure Functions Consumption tier for v1',
-      source_title: 'Teams Transcript - Architecture Sync',
-      timestamp: '00:14:32',
-      confidence: 0.95,
-    },
-  ],
-  blockers: [
-    {
-      text: 'Production service principal credentials awaiting Infosec signoff',
-      provenance: 'sourced',
-      quote: 'Production service principal credentials have not been approved by Infosec',
-      source_title: 'Jira CAM-142 Migration Blocker',
-      severity: 'high',
-    },
-  ],
-  owners: [
-    { name: 'Infosec Team', role: 'Credential Approver' },
-    { name: 'Backend Team', role: 'Function Deployment' },
-  ],
-  open_questions: [
-    {
-      question: 'What is the expected cold-start latency budget on Consumption plan?',
-      kind: 'unresolved_comparison',
-      confidence: 0.8,
-    },
-  ],
-  next_actions: [
-    {
-      action: 'Escalate ticket CAM-142 for service principal credentials',
-      priority: 1,
-      owner: 'Backend Lead',
-    },
-  ],
-  handoff_brief_markdown: `# Cloud Migration — Handoff Brief
-
-**Goal**: Migrate data ingestion pipeline to Azure serverless architecture.
-
-### Key Decisions
-- Deploy ingestion workers on Azure Functions Consumption tier (Teams Transcript 00:14:32).
-
-### Critical Blockers
-- Production service principal credentials awaiting Infosec signoff (Jira CAM-142).
-
-### Immediate Next Step
-- Escalate ticket CAM-142 for service principal credentials.`,
-};
 
 export const mockMemorySearchResponse: MemorySearchResponse = {
   query: 'session storage',

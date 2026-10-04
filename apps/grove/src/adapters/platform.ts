@@ -1,19 +1,14 @@
 import {
   UserProfile,
-  PrivacySettings,
   BrowserSession,
   TimelineResponse,
   TimelineResult,
-  SavedContextItem,
-  ResumeCardData,
   TokenData,
 } from '../types';
 import {
   mockUserProfile,
-  mockPrivacySettings,
   mockSessions,
   mockTimelineResponse,
-  mockSavedContexts,
 } from '../mocks/mockData';
 import { isMockMode } from './grove';
 import { sendBridgeMessage } from './bridge';
@@ -44,26 +39,6 @@ export async function getMe(): Promise<UserProfile> {
   } catch (err) {
     console.warn('[Platform Adapter] getMe failed, using mock fallback:', err);
     return mockUserProfile;
-  }
-}
-
-export async function deleteMe(): Promise<{ success: boolean; deleted_rows: number }> {
-  if (isMockMode()) return { success: true, deleted_rows: 42 };
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/me`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] deleteMe failed, using mock fallback:', err);
-    return { success: true, deleted_rows: 42 };
   }
 }
 
@@ -169,141 +144,5 @@ export async function getTimeline(
   } catch (err) {
     console.warn('[Platform Adapter] getTimeline failed, using the stand-in:', err);
     return standInTimeline(projectId, range);
-  }
-}
-
-export async function saveContext(
-  projectId: string,
-  data: { title: string; kind: 'resume' | 'references'; snapshot: any }
-): Promise<{ id: string; saved_at: string }> {
-  if (isMockMode()) {
-    return {
-      id: `ctx-${Date.now()}`,
-      saved_at: new Date().toISOString(),
-    };
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/save-context`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] saveContext fallback:', err);
-    return { id: 'ctx-fallback', saved_at: new Date().toISOString() };
-  }
-}
-
-export async function getContexts(): Promise<SavedContextItem[]> {
-  if (isMockMode()) return mockSavedContexts.list;
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/contexts`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return Array.isArray(data) ? data : data.contexts || [];
-  } catch (err) {
-    console.warn('[Platform Adapter] getContexts fallback:', err);
-    return mockSavedContexts.list;
-  }
-}
-
-export async function resumeContext(id: string): Promise<ResumeCardData> {
-  if (isMockMode()) return mockSavedContexts.resumeCard;
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/contexts/${id}/resume`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] resumeContext fallback:', err);
-    return mockSavedContexts.resumeCard;
-  }
-}
-
-export async function getPrivacy(): Promise<PrivacySettings> {
-  if (isMockMode()) return mockPrivacySettings;
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/privacy`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] getPrivacy fallback:', err);
-    return mockPrivacySettings;
-  }
-}
-
-export async function updatePrivacy(settings: Partial<PrivacySettings>): Promise<PrivacySettings> {
-  if (isMockMode()) {
-    return {
-      ...mockPrivacySettings,
-      ...settings,
-    };
-  }
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/privacy`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: JSON.stringify(settings),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] updatePrivacy fallback:', err);
-    return { ...mockPrivacySettings, ...settings };
-  }
-}
-
-export async function deleteProject(projectId: string): Promise<{ success: boolean; deleted_rows: number }> {
-  if (isMockMode()) return { success: true, deleted_rows: 15 };
-
-  try {
-    const headers = await getAuthHeader();
-    const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('[Platform Adapter] deleteProject fallback:', err);
-    return { success: true, deleted_rows: 15 };
   }
 }

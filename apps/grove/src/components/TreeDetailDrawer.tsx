@@ -31,6 +31,8 @@ interface TreeDetailDrawerProps {
   onAddNote: (kind: NoteKind, text: string) => void;
   onOpenTab: (tabRef: string) => void;
   onExcludeDomain: (domain: string) => void;
+  /** Keep where the user left off: the card, and the tabs worth reopening. */
+  onSaveContext?: () => void;
   onClose: () => void;
 }
 
@@ -201,6 +203,7 @@ export const TreeDetailDrawer: React.FC<TreeDetailDrawerProps> = ({
   onAddNote,
   onOpenTab,
   onExcludeDomain,
+  onSaveContext,
   onClose,
 }) => {
   const [noteKind, setNoteKind] = useState<NoteKind>('decision');
@@ -270,6 +273,11 @@ export const TreeDetailDrawer: React.FC<TreeDetailDrawerProps> = ({
             {tree.project.name}
           </h2>
           <p className="mt-1 text-xs text-forest-400">{meta}</p>
+          {onSaveContext && (
+            <button type="button" onClick={onSaveContext} className={`mt-3 ${actionClass}`}>
+              Save context
+            </button>
+          )}
         </div>
         <button
           type="button"

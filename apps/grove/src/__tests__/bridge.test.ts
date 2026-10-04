@@ -38,7 +38,7 @@ describe('Bridge Adapter (C8)', () => {
   it('handles GET_WORK_ITEMS and CLEAR_WORK_ITEMS', async () => {
     const res = await sendBridgeMessage<void, WorkItemsData>('GET_WORK_ITEMS');
     expect(res.ok).toBe(true);
-    expect(res.data?.items.length).toBe(2);
+    expect(res.data?.items.length).toBe(3);
 
     const clearRes = await sendBridgeMessage('CLEAR_WORK_ITEMS');
     expect(clearRes.ok).toBe(true);
