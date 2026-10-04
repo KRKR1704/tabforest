@@ -25,6 +25,26 @@ Headings per entry: Added · Changed · Fixed · Removed · Tests · Verificatio
 
 - `PATCH /api/privacy` is not on the deployed API yet (P-10); until it is, changes simply wait. There is no bridge message to remove an exclusion, so removal is not synced.
 - `WIPE_LOCAL` also clears the session token (the user is signed out) and the local pause/exclusions; the server copy of both survives until `DELETE /api/me`, and the next sign-in reads it back.
+## [2026-10-04] — D-8 Restore into a named tab group (D)
+
+### Changed
+
+- `RESTORE` (bridge) now opens every ref it can, brings only the first tab to the front and opens the rest quietly behind it, and answers `not_found` only when nothing could be opened (before, one bad ref stopped the whole restore). Tabs already open are reused, as before. URLs come from the local store in `chrome.storage.local` (so they survive a Chrome restart), else from `fallback_urls`; only http(s) is opened.
+- With `group_name`, the restored tabs of one window are put in one green group with that name, but only when the optional `tabGroups` permission is granted. If it was declined, or the group call fails, plain tabs stay open and the restore still succeeds.
+
+### Added
+
+- `public/tf-permissions.js`, added to `grove.html` by `scripts/bundle-grove.mjs` (once, also when run twice): the first time the user clicks a Restore button in the Grove, the click is held, Chrome asks for `tabGroups`, and the click is repeated. Chrome only shows that prompt for a click, and the service worker has no click. The Grove code is not edited.
+- Tests: 5 new (bridge: continue past a bad ref, grouping, declined permission, group failure, one window only, blank name; bundle: script added once).
+
+### Verification
+
+- From `apps/extension/` with Node 20: `pnpm test` (195 of 195), `pnpm typecheck`, `pnpm build` pass.
+- Real Chromium (Playwright, outside the repo): three pages captured, Chrome quit and reopened on the same profile, `RESTORE` with a group name reopened all three from the stored URLs; with `tabGroups` granted they are in one group named "Backend Authentication"; without it they are plain tabs; an unknown ref answers `not_found`. Open (6), bridge (15), sync (13) and Hollow (13) checks still pass.
+
+### Notes
+
+- The permission prompt itself cannot be driven by Playwright; try it once by hand in the Grove. Restored tabs may appear in reverse order in the tab strip (Chrome places background tabs next to the active one).
 
 ## [2026-10-03] — Lane S-11 Ask Memory and pruning (S)
 
