@@ -5,6 +5,7 @@ import { EventSync, API_BASE, SYNC_KEY } from './sync';
 import { AuthStore } from './auth';
 import { createAuthService } from './signin';
 import { createWorkContext } from './work-context';
+import { createPrivacySync } from './privacy-sync';
 import { registerBridge } from './bridge';
 
 const queue = new EventQueue(chrome.storage.local);
@@ -14,6 +15,7 @@ const auth = createAuthService({
 });
 const workContext = createWorkContext({ api: chrome });
 workContext.register();
+const privacy = createPrivacySync({ storage: chrome.storage, token: () => auth.token(), apiBase: API_BASE });
 const sync = new EventSync(queue, chrome.storage.local, { token: () => auth.token() });
 
 chrome.action.onClicked.addListener(() => {
@@ -33,20 +35,24 @@ registerBridge(chrome, {
   wipeLocal: () => sync.reset(() => capture.reset()),
   auth,
   workItems: workContext,
+  privacy,
   // Signing out clears the token and everything waiting to be sent; capture keeps running locally.
   signOut: async () => {
     await auth.signOut();
+    privacy.onSignedOut();
     await sync.reset(async () => {
       await chrome.storage.local.remove([QUEUE_KEY, 'last_sent_batch', SYNC_KEY, 'rejected_events']);
     });
   },
 });
 sync.start();
+privacy.start();
 Object.assign(globalThis, {
   hollowCount: capture.hollowCount,
   flushNow: () => sync.flushNow(),
   resendLastBatch: () => sync.resendLastBatch(),
   sendPreview: () => sync.sendPreview(),
   signIn: () => auth.signIn(),
+  syncPrivacy: () => privacy.tick(),
   addToWorkContext: (selectionText?: string) => workContext.addActiveTab(selectionText),
 });

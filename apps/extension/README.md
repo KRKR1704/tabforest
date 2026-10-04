@@ -48,6 +48,10 @@ cd ../extension && pnpm build:with-grove        # vite build, then copies the Gr
 
 Right-click a page (or selected text) and choose **Add page to Work Context**. The icon shows ✓ when it worked and ! when the page is private, paused or cannot be read. Items stay on this device in `chrome.storage.local` (`tf_work_items`, newest 20, 12,000 characters each) and the Grove reads them with `GET_WORK_ITEMS`; `CLEAR_WORK_ITEMS` removes them. The page text is read only after the click, through `activeTab`, and never includes form fields, editable regions, scripts or hidden elements.
 
+## Privacy sync (D-10)
+
+`EXCLUDE_DOMAIN` and `PAUSE` change the local setting at once and are then sent with `PATCH /api/privacy`; anything that cannot be sent waits (`tf_privacy_pending`) and is retried every minute and after sign-in. After sign-in the server's exclusions and pause are read back (`GET /api/privacy`); exclusions are only ever added locally. `syncPrivacy()` in the worker console forces a round. `WIPE_LOCAL` clears everything in `chrome.storage.local` and `.session`.
+
 ## Restore (D-8)
 
 `RESTORE` reopens the chosen tabs from the local URL store (kept in `chrome.storage.local`, so it works after Chrome restarts), else from `fallback_urls`, and puts them in a named tab group when the optional `tabGroups` permission is granted. The first click on a "Restore ..." button in the Grove asks for that permission (`public/tf-permissions.js`); if it is declined, plain tabs open.

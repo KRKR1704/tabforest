@@ -4,6 +4,7 @@ import { Hollow } from './hollow';
 import { httpUrl } from './url';
 import { AuthError } from './auth';
 import type { WorkContext } from './work-context';
+import type { PrivacySync } from './privacy-sync';
 import { INTERNAL_AUTH_TYPES, type AuthService, type InternalAuthMessage } from './signin';
 
 type SnapshotData = { open_tabs: SnapshotItem[] };
@@ -14,6 +15,7 @@ export interface BridgeServices {
   sendPreview: () => Promise<SendPreviewData>;
   auth?: AuthService;
   workItems?: Pick<WorkContext, 'list' | 'clear'>;
+  privacy?: Pick<PrivacySync, 'record' | 'onSignedIn'>;
   signOut?: () => Promise<void>;
 }
 const known = new Set<MessageType>([
@@ -72,7 +74,11 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
     switch (request.type) {
       case 'SIGN_IN': {
         if (!services.auth) return { ok: false, error: 'not_implemented' };
-        try { return { ok: true, data: await services.auth.signIn() }; }
+        try {
+          const state = await services.auth.signIn();
+          void services.privacy?.onSignedIn();
+          return { ok: true, data: state };
+        }
         catch (error) { return { ok: false, error: error instanceof AuthError ? error.code : 'handler_failed' }; }
       }
       case 'SIGN_OUT': {
@@ -94,6 +100,7 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         }
         if (until === null) await api.storage.local.remove('paused_until');
         else await api.storage.local.set({ paused_until: until });
+        await services.privacy?.record({ paused: until });
         return { ok: true, data: null };
       }
       case 'EXCLUDE_DOMAIN': {
@@ -105,6 +112,7 @@ export function registerBridge(api: typeof chrome, services: BridgeServices): vo
         const existing = Array.isArray(saved.user_excluded_domains)
           ? saved.user_excluded_domains.filter((x: unknown): x is string => typeof x === 'string').map((x: string) => x.toLowerCase()) : [];
         await api.storage.local.set({ user_excluded_domains: [...new Set([...existing, domain])] });
+        await services.privacy?.record({ addDomain: domain });
         return { ok: true, data: null };
       }
       case 'OPEN_TAB': {
